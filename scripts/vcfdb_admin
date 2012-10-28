@@ -2,6 +2,15 @@
 """
 Admin program for vcfdb.
 """
+import os
+import sys
+import shutil
+import optparse
+
+# For development only!
+#sys.path.append(os.path.abspath("../"))
+import vcfdb
+
 
 def main():
     # This is deprecated in favour of argparse since Python 2.7/3.2
@@ -10,7 +19,7 @@ def main():
     parser = optparse.OptionParser(usage=usage) 
     parser.add_option("-d", "--db-dir", dest="dbdir",
             help="set the database base directory to DIR", metavar="DIR",
-            default=DEFAULT_DB_DIR)
+            default=vcfdb.DEFAULT_DB_DIR)
     parser.add_option("-n", "--name", dest="name",
             help="set the database name to NAME", metavar="NAME")
     parser.add_option("-f", "--force", dest="force",
@@ -37,7 +46,7 @@ def main():
             print("database ", fullname, " exists; use -f to force")
             sys.exit(1)
     os.mkdir(fullname)
-    vi = VCFDatabase(fullname)
+    vi = vcfdb.VCFDatabase(fullname)
     vi.parse(vcf_file)
     
        

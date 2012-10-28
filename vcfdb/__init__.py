@@ -4,15 +4,26 @@ Prototype implementation of the Berkeley DB VCF record store.
 import os
 import sys
 import gzip
-import shutil
 import pickle
-import optparse
 import tempfile
 from contextlib import contextmanager
 
 import bsddb3.db as bdb 
 
 from . import schema 
+
+# TODO These are defined both here and in schema.py. This
+# is horrible!
+RECORD_ID = "RECORD_ID"
+CHROM = "CHROM"
+POS = "POS"
+ID = "ID"
+REF = "REF"
+ALT = "ALT"
+QUAL = "QUAL"
+FILTER = "FILTER"
+INFO = "INFO"
+
 
 DEFAULT_DB_DIR="/var/lib/vcfdb"
 
@@ -241,8 +252,8 @@ class VCFDatabase(object):
             print("\t", col.get_id(), "->", col)
         # This is clearly bollocks - but fill in the columns you're 
         # interested in indexing here.
-        self.__indexed_columns = {POS, ALT,  REF, QUAL, FILTER, 
-            (CHROM, POS), (CHROM, FILTER), # etc...
+        self.__indexed_columns = {
+            (schema.CHROM, schema.POS), 
             # INFO columns
             "INFO_DP", "INFO_AF",
             # Genotype columns
@@ -285,7 +296,7 @@ class VCFDatabase(object):
         self.__setup_environment()
         processed = 0
         open_flags = bdb.DB_CREATE|bdb.DB_TRUNCATE
-        col = self.__schema.get_column(RECORD_ID)
+        col = self.__schema.get_column(schema.RECORD_ID)
         self.__primary_db = None
         for data, record in self.__parse_file(vcf_file):
             self.__current_record = record

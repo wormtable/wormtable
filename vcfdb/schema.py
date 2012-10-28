@@ -2,6 +2,8 @@
 # Temporary home for schema information while we are still using pickle
 # for state.
 
+# TODO These are defined both here and in __init_.py. This
+# is horrible!
 RECORD_ID = "RECORD_ID"
 CHROM = "CHROM"
 POS = "POS"

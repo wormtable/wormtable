@@ -6,6 +6,9 @@ import sys
 import time
 import random 
 
+import os
+# For development only!
+sys.path.append(os.path.abspath("../"))
 import vcfdb
 
 def print_record(r):
@@ -160,10 +163,10 @@ def distinct_values_example(vdb):
 
 
 def main():
-    db_name = "mpileup_gatk_qcall_min2"
-    #db_name = "subset"
+    #db_name = "mpileup_gatk_qcall_min2"
+    db_name = "subset"
     sep = "=" * 50
-    with vcfdb.opendb(db_name, dbdir="tmp/vcfdb") as vdb:
+    with vcfdb.opendb(db_name, dbdir="vcfdb") as vdb:
         min_max_example(vdb)
         print(sep)
         get_record_example(vdb)
