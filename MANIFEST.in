@@ -1,0 +1,4 @@
+include example.py tests.py
+include *.txt *.rst
+recursive-include lib main.c test*.c *.h Makefile 
+recursive-include docs *.html *.css *.png *.gif
