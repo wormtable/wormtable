@@ -12,7 +12,9 @@ from contextlib import contextmanager
 
 import bsddb3.db as bdb 
 
-from schema import * # temp, for pickling.
+from . import schema 
+
+DEFAULT_DB_DIR="/var/lib/vcfdb"
 
 class VCFDatabase(object):
     """
@@ -31,7 +33,7 @@ class VCFDatabase(object):
                 "indexed_columns.pickle")
         self.__schema_file = os.path.join(self.__directory, "schema.pickle")
         self.__indexed_columns = set() 
-        self.__schema = VCFSchema()
+        self.__schema = schema.VCFSchema()
    
         
     def __decode_record(self, b):

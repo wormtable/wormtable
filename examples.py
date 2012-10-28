@@ -163,7 +163,7 @@ def main():
     db_name = "mpileup_gatk_qcall_min2"
     #db_name = "subset"
     sep = "=" * 50
-    with vcfdb.opendb(db_name, dbdir="vcfdb") as vdb:
+    with vcfdb.opendb(db_name, dbdir="tmp/vcfdb") as vdb:
         min_max_example(vdb)
         print(sep)
         get_record_example(vdb)

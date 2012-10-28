@@ -1,26 +1,20 @@
-from distutils.core import setup, Extension
+from distutils.core import setup
 
 homepage = "http://www.homepages.ed.ac.uk/jkellehe/"
 f = open("README.rst")
-ercs_readme = f.read()
+vcfdb_readme = f.read()
 f.close()
 
-d = "lib/"
-_ercs_module = Extension('_ercs', 
-    sources = ["_ercsmodule.c", d + "util.c", d + "kdtree.c", d + "ercs.c", 
-            d + "torus.c"],
-    include_dirs = [d],
-    libraries = ["gsl", "gslcblas"])
-
 setup(
-    name = "ercs",
-    version = "1.0.0",
-    description = "Extinction/recolonisation coalescent simulator",
+    name = "vcfdb",
+    version = "0.2.dev",
+    description = "Store and search VCF data with Berkeley DB",
     author = "Jerome Kelleher",
     author_email = "jerome.kelleher@ed.ac.uk",
-    url = homepage + "ercs",
-    download_url = homepage + "download/ercs-1.0.tar.gz",
-    keywords = ["simulation", "coalescent"],
+    url = homepage + "vcfdb",
+    download_url = homepage + "download/vcfdb-1.0.tar.gz",
+    # TODO Fix these keywords and classifiers
+    keywords = ["Databases", "bioinformatics"],
     classifiers = [
         "Programming Language :: C",
         "Programming Language :: Python",
@@ -33,9 +27,8 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    long_description = ercs_readme,
-    ext_modules = [_ercs_module],
-    py_modules = ['ercs']
+    long_description = vcfdb_readme,
+    packages = ['vcfdb']
 )
 
     

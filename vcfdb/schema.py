@@ -12,7 +12,6 @@ QUAL = "QUAL"
 FILTER = "FILTER"
 INFO = "INFO"
 
-DEFAULT_DB_DIR="/var/lib/vcfdb"
 
 class VCFColumn(object):
     """
