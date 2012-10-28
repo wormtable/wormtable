@@ -519,44 +519,4 @@ def opendb(dbname, dbdir=DEFAULT_DB_DIR):
     finally:
         vi.close()
 
-def main():
-    # This is deprecated in favour of argparse since Python 2.7/3.2
-    # I'm using 3.1 here.
-    usage = "usage: %prog [options] vcf-file"
-    parser = optparse.OptionParser(usage=usage) 
-    parser.add_option("-d", "--db-dir", dest="dbdir",
-            help="set the database base directory to DIR", metavar="DIR",
-            default=DEFAULT_DB_DIR)
-    parser.add_option("-n", "--name", dest="name",
-            help="set the database name to NAME", metavar="NAME")
-    parser.add_option("-f", "--force", dest="force",
-            action="store_true", default=False,
-            help="overwrite existing database", metavar="FORCE")
-    (options, args) = parser.parse_args()
-    if len(args) != 1:
-        parser.error("vcf-file is a requried argument")
-   
-    vcf_file = args[0]
-    # test for existence, format, etc...
-    name = options.name
-    dbdir = options.dbdir
-    if name is None:
-        # the default name is the filename stripped of vcf.gz
-        s = os.path.basename(vcf_file)
-        name = s[:s.find(".vcf.gz")] 
-    # the full database dir is bddir + name.
-    fullname = os.path.join(dbdir, name)
-    if os.path.exists(fullname):
-        if options.force:
-            shutil.rmtree(fullname)
-        else: 
-            print("database ", fullname, " exists; use -f to force")
-            sys.exit(1)
-    os.mkdir(fullname)
-    vi = VCFDatabase(fullname)
-    vi.parse(vcf_file)
-    
-       
-if __name__ == "__main__":
-    main()
 

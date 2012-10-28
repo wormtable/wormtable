@@ -3,4 +3,4 @@ vcfdb
 
 Search and store VCF data efficiently with Berkeley DB.
 
-Test update.
+See README.rst for the full README.

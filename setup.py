@@ -28,7 +28,8 @@ setup(
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
     long_description = vcfdb_readme,
-    packages = ['vcfdb']
+    packages = ['vcfdb'],
+    scripts = ['scripts/vcfdb_admin']
 )
 
     
