@@ -5,14 +5,12 @@ import os
 import sys
 import gzip
 import pickle
+import struct 
 import tempfile
 from contextlib import contextmanager
 
 import bsddb3.db as bdb 
 
-
-# TODO These are defined both here and in schema.py. This
-# is horrible!
 RECORD_ID = "RECORD_ID"
 CHROM = "CHROM"
 POS = "POS"
@@ -22,7 +20,6 @@ ALT = "ALT"
 QUAL = "QUAL"
 FILTER = "FILTER"
 INFO = "INFO"
-
 
 DEFAULT_DB_DIR="/var/lib/vcfdb"
 
@@ -120,10 +117,13 @@ class NumberColumn(VCFColumn):
     def default_value(self):
         return -1 
 
-class IntegerColumn(NumberColumn):
+class LongIntegerColumn(NumberColumn):
     """
-    Class representing columns with integer values.
+    Class representing columns with large integer values.
     """
+    def __init__(self):
+        super().__init__(12)
+
     def __str__(self):
         return "Integer:" + super().__str__()
         
@@ -141,6 +141,32 @@ class IntegerColumn(NumberColumn):
         """
         return int(string)
 
+
+class ShortIntegerColumn(NumberColumn):
+    """
+    Class representing columns with small integer values.
+    """
+    def __init__(self):
+        super().__init__(6)
+
+    def __str__(self):
+        return "Integer:" + super().__str__()
+        
+    def encode(self, value):
+        """
+        Encodes the specified integer value as bytes object.
+        """
+        fmt = "{0:0" +  str(self._width) + "d}" 
+        s = fmt.format(value)
+        return s.encode()
+    
+    def decode(self, string):
+        """
+        Decodes the specified string into an integer value.
+        """
+        return int(string)
+
+         
          
 class FloatColumn(NumberColumn):
     """
@@ -171,35 +197,51 @@ class StringColumn(VCFColumn):
     """
     def __str__(self):
         return "String:" + super().__str__()
-    
+   
+
+def column_type_factory(ctype):
+    """
+    Returns a column of the appropriate type given the specified type string.
+    """ 
+    if ctype == "Integer":
+        col = ShortIntegerColumn()
+    elif ctype == "Float":
+        col = FloatColumn(10)
+    elif ctype == "String":
+        col = StringColumn()
+    else:
+        raise ValueError("Unexpected column:", d)
+    return col
 
 def column_factory(cid, d):
     """
     Generates a column object representing a column descibed by the 
-    specified dictionary.
+    specified dictionary. 
     """ 
     #print("column factory:", d)
     description = d["Description"]
     ctype = d["Type"]
     number = d["Number"]
     #print("\t", cid, ":", description, ":", ctype, ":",  number)
+    columns = {}
     if number == "1":
-        if ctype == "Integer":
-            col = IntegerColumn(6)
-        elif ctype == "Float":
-            col = FloatColumn(10)
-        elif ctype == "String":
-            col = StringColumn()
-        else:
-            raise ValueError("Unexpected column:", d)
-    else:
-        # for now, treat these columns as strings. Ultimately we should 
-        # try to parse them and present them as individual columns 
-        # available for indexing.
+        col = column_type_factory(ctype)
+        columns[cid] = col
+    elif number == "." or number == "0":
+        # For now treat as strings
         col = StringColumn()
-    col.set_description(description)
-    col.set_id(cid)
-    return col
+        columns[cid] = col
+    else:
+        # number should be an integer
+        n = int(number)
+        for j in range(n):
+            cid_col = cid + "_{0}".format(j)
+            col = column_type_factory(ctype) 
+            columns[cid_col] = col
+    for col_id, col in columns.items():
+        col.set_description(description)
+        col.set_id(col_id)
+    return columns 
 
 class VCFSchema(object):
     """
@@ -222,11 +264,11 @@ class VCFSchema(object):
             col.set_id(c)
             self.__columns[c] = col
         c = RECORD_ID 
-        col = IntegerColumn(12)
+        col = LongIntegerColumn()
         col.set_id(c)
         self.__columns[c] = col
         c = POS
-        col = IntegerColumn(12)
+        col = LongIntegerColumn()
         col.set_id(c)
         self.__columns[c] = col
         c = QUAL
@@ -241,15 +283,16 @@ class VCFSchema(object):
         self.__genotypes.append(genotype)
         for d in self.__genotype_columns:
             cid = genotype + "_" + d["ID"]
-            self.__columns[cid] = column_factory(cid, d)
+            for col_id, col in column_factory(cid, d).items():
+                self.__columns[col_id] = col 
 
     def add_info_column(self, d):
         """
         Adds an INFO column with the specified desrciption and type.
         """
         cid = "INFO_" + d["ID"]
-        col = column_factory(cid, d)
-        self.__columns[cid] = col
+        for col_id, col in column_factory(cid, d).items():
+            self.__columns[col_id] = col 
 
     def add_genotype_column(self, d):
         """
@@ -288,7 +331,79 @@ class VCFSchema(object):
         Returns the jth genotype id.
         """
         return self.__genotypes[j]
+   
 
+    def generate_packing_format(self):
+        """
+        All data for the headers has been read in and we can now decide the 
+        canonical packing format for the records.
+        """
+        self.__short_integer_columns = [] 
+        self.__long_integer_columns = [] 
+        self.__float_columns = []
+        self.__string_columns = []
+        for k, v in self.__columns.items():
+            if isinstance(v, LongIntegerColumn):
+                self.__long_integer_columns.append(k)
+            elif isinstance(v, ShortIntegerColumn):
+                self.__short_integer_columns.append(k)
+            elif isinstance(v, FloatColumn):
+                self.__float_columns.append(k)
+            elif isinstance(v, StringColumn):
+                self.__string_columns.append(k)
+        self.__long_integer_columns.sort()
+        self.__short_integer_columns.sort()
+        self.__float_columns.sort() 
+        self.__string_columns.sort()
+         
+        print("long integers = ", self.__long_integer_columns)
+        print("short integers = ", self.__short_integer_columns)
+        print("floats = ", self.__float_columns)
+        print("strings = ", self.__string_columns)
+
+
+    def pack_record(self, d, record_id):
+        """
+        Packs the specified record into a binary form suitable for 
+        storage and retreival.
+        """
+        d[RECORD_ID] = record_id
+        b = bytearray(8192)
+        offset = 0
+        for col in self.__long_integer_columns:
+            value = d[col]
+            fmt = ">q"
+            struct.pack_into(fmt, b, offset, value)
+            offset += struct.calcsize(fmt) 
+            #print("\t", col, "->", value, ":", offset)
+        for col in self.__short_integer_columns:
+            value = -1
+            if col in d:
+                value = d[col]
+            fmt = ">h"
+            struct.pack_into(fmt, b, offset, value)
+            offset += struct.calcsize(fmt) 
+            #print("\t", col, "->", value, ":", offset)
+        for col in self.__float_columns:
+            value = -1.0
+            if col in d:
+                value = d[col]
+            fmt = ">f"
+            struct.pack_into(fmt, b, offset, value)
+            offset += struct.calcsize(fmt) 
+            #print("\t", col, "->", value, ":", offset)
+        for col in self.__string_columns:
+            value = "." 
+            if col in d:
+                value = d[col]
+            #print("\t", col, "->", value.encode())
+            v = value.encode()
+            b[offset:offset + len(v)] = v
+            offset += len(v)
+            b[offset] = 0
+            offset += 1
+        #print("b = ", b[:offset] )
+        print(offset, len(d["record"]))
 
 class VCFDatabase(object):
     """
@@ -364,9 +479,9 @@ class VCFDatabase(object):
             # for a good summary of system V shared memory.
             segment_size = 32 * 1024 * 1024
             cache_size = 512 * 1024 * 1024
-            print("allocating ", cache_size, " in ", cache_size / segment_size, " chunks")
+            #print("allocating ", cache_size, " in ", cache_size / segment_size, " chunks")
             self.__environment.set_cachesize(0, cache_size, cache_size // segment_size) 
-            print("stored cache size: ", self.__environment.get_cachesize())
+            #print("stored cache size: ", self.__environment.get_cachesize())
             flags = bdb.DB_CREATE|bdb.DB_INIT_MPOOL|bdb.DB_SYSTEM_MEM
             self.__environment.set_shm_key(0xbeefdead)
             #self.__environment.set_shm_key(0xdeadbeef)
@@ -459,7 +574,31 @@ class VCFDatabase(object):
                 for k in range(len(fmt)):
                     column = self.__schema.get_genotype(j) + "_" + fmt[k].decode()
                     value = tokens[k]
-                    d[column] = value
+                    # this is HORRIBLE!!
+                    # README: There are major problems here. The main issue is that 
+                    # abstraction doesn't really work. We need to distinguish between 
+                    # parsing columns, where must be extract several values of the 
+                    # same type from a particular string and DatabaseColumns which 
+                    # only ever correpond to one value. So, what we really 
+                    # need are two different types of column, which can be derived 
+                    # from each other fairly easily.
+                    mulicolumn = False
+                    try:
+                        self.__schema.get_column(column)
+                        multicolumn = True
+                    except KeyError:
+                        pass
+                    print(column, "->", value, "->", multicolumn)
+                    if not multicolumn: 
+                        d[column] = value
+                    else:
+                        # this is a number > 1 column
+                        subtokens = value.split(b",")
+                        for l in range(len(subtokens)):
+                            col = column + "_{0}".format(l)
+                            print(col, "->", subtokens[l])
+                            d[col] = value
+                        
             j += 1
         decoded = {}
         for k, v in d.items():
@@ -483,7 +622,7 @@ class VCFDatabase(object):
         tokens = s.split("=")
         d[tokens[0]] = tokens[1]
         return d
-            
+        
     
     def __process_header(self, s):
         """
@@ -545,14 +684,15 @@ class VCFDatabase(object):
                 self.__process_meta_information(s)
                 s = (f.readline()).decode()
             self.__process_header(s)
+            self.__schema.generate_packing_format()
             self.__setup_indexed_columns()
             # save the schema 
             with open(self.__schema_file, "wb") as fs:
                 pickle.dump(self.__schema, fs)
-            
             # Now process the records
             for l in f:
-                yield l.strip(), self.__parse_record(l)
+                d = self.__parse_record(l)
+                yield l.strip(), d
     
     def parse(self, vcf_file):
         """
@@ -564,6 +704,9 @@ class VCFDatabase(object):
         col = self.__schema.get_column(RECORD_ID)
         self.__primary_db = None
         for data, record in self.__parse_file(vcf_file):
+            record['record'] = data 
+            self.__schema.pack_record(record, processed)
+            
             self.__current_record = record
             # Awful - the header processing code is hidden away in here
             if self.__primary_db == None:
