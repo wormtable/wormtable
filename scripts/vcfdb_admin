@@ -43,10 +43,12 @@ def main():
             print("database ", fullname, " exists; use -f to force")
             sys.exit(1)
     os.mkdir(fullname)
-    vi = vcfdb.VCFDatabase(fullname)
-    vi.parse(vcf_file)
-    
-    print("done!")
+    #vi = vcfdb.VCFDatabase(fullname)
+    #vi.parse(vcf_file)
+    # For the moment, let's just parse this.
+    parser = vcfdb.VCFFileParser(vcf_file)
+    parser.parse()
+
        
 if __name__ == "__main__":
     main()

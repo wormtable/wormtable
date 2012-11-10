@@ -4,6 +4,7 @@ Prototype implementation of the Berkeley DB VCF record store.
 import os
 import sys
 import gzip
+import bz2
 import pickle
 import struct 
 import tempfile
@@ -404,6 +405,320 @@ class VCFSchema(object):
             offset += 1
         #print("b = ", b[:offset] )
         print(offset, len(d["record"]))
+
+
+class VCFFileColumn(object):
+    """
+    Class representing a column in a VCF file.
+    """
+    NUMBER_ANY = -1
+    TYPE_INTEGER = 0
+    TYPE_FLOAT = 1
+    TYPE_FLAG = 2
+    TYPE_STRING = 3
+    TYPE_CHAR = 4
+    
+    TYPE_MAP = {
+        TYPE_INTEGER: "Integer",
+        TYPE_FLOAT: "Float",
+        TYPE_FLAG: "Flag", 
+        TYPE_STRING: "String",
+        TYPE_CHAR: "Character"}
+  
+    PARSER_MAP = {
+        TYPE_INTEGER: int, 
+        TYPE_FLOAT: float, 
+        TYPE_FLAG: int, 
+        TYPE_STRING: str,
+        TYPE_CHAR: str} 
+    
+    def parse(self, s):
+        """
+        Parses the specified value into the appropriate Python types.
+        """
+        p = self.PARSER_MAP[self.type]
+        v = []
+        for tok in s.split(","):
+            v.append(p(tok))
+        if self.number != self.NUMBER_ANY:
+            assert(len(v) == self.number)
+        return v 
+
+    def __str__(self):
+        t = self.TYPE_MAP[self.type]
+        s = "{0}:type={1}:number={2}:desc={3}".format(self.name, t,
+                self.number, self.description)
+        return s
+
+def vcf_file_column_factory(line):
+    """
+    Constructs a VCFFileColumn object from the specified line from a VCF file.
+    """
+    d = {}
+    s = line[line.find("<") + 1: line.find(">")]
+    for j in range(3):
+        k = s.find(",")
+        tokens = s[:k].split("=")
+        s = s[k + 1:]
+        d[tokens[0]] = tokens[1]
+    tokens = s.split("=")
+    d[tokens[0]] = tokens[1]
+    
+    col = VCFFileColumn()
+    col.description = d["Description"]
+    col.name = d["ID"]
+    
+    st = d["Type"]
+    if st == "Integer":
+        t = VCFFileColumn.TYPE_INTEGER
+    elif st == "Float":
+        t = VCFFileColumn.TYPE_FLOAT
+    elif st == "Flag":
+        t = VCFFileColumn.TYPE_FLAG
+    elif st == "Character":
+        t = VCFFileColumn.TYPE_CHAR
+    elif st == "String":
+        t = VCFFileColumn.TYPE_STRING
+    else:
+        raise ValueError("Unknown type:", st)
+        
+    col.type = t 
+    number = d["Number"]
+    if number == ".":
+        col.number = VCFFileColumn.NUMBER_ANY
+    else:
+        col.number = int(number) 
+    return col 
+    
+
+
+class VCFFileParser(object):
+    """
+    Class responsible for parsing a VCF file. First we contruct the database
+    schema by parsing the header and ...
+    
+    TODO: finish docs once the process is sorted. The basic idea is that 
+    this class is solely responsible for parsing the VCF file and contructing 
+    the schema.
+    """
+    def __init__(self, vcf_file, progress_callback=None):
+        """
+        Allocates a new VCFFileParser for the specified file. This can be 
+        either plain text, gzipped or bzipped.
+        """
+        self._file_path = vcf_file
+        self._progress_callback = progress_callback
+        self._version = -1.0
+        self._genotypes = []
+        self._info_columns = {}
+        self._genotype_columns = {}
+        self._schema = None
+
+    def _define_schema(self):
+        """
+        After the file headers have been read we can allocate the 
+        schema, which defines the method of packing and unpacking 
+        data from database records.
+        """
+        self._schema = Schema()
+        self._schema.add_long_integer_column(RECORD_ID, 1)
+        self._schema.add_long_integer_column(POS, 1)
+        self._schema.add_string_column(CHROM, 1) #enum
+        self._schema.add_string_column(ID, 1)
+        self._schema.add_string_column(REF, 1)
+        self._schema.add_string_column(ALT, 1)
+        self._schema.add_float_column(QUAL, 1)
+        self._schema.add_string_column(FILTER, 1) #enum
+        
+        for name, col in self._info_columns.items():
+            print(name, "->", col)
+
+        self._schema.finalise()
+
+
+    def _open_file(self):
+        """
+        Opens the source file so that it can be read by the parsing code. 
+        Throws an error if it is not one of the supported formats:
+        .vcf, .vcf.gz or .vcf.bz2
+        """
+        path = self._file_path
+        if path.endswith(".vcf.gz"):
+            f = gzip.open(path, 'rb') 
+        elif path.endswith(".vcf.bz2"):
+            f = bz2.BZ2File(path, 'rb') 
+        elif path.endswith(".vcf"):
+            f = open(path, 'rb') 
+        else:
+            raise ValueError("Unsupported file format")
+        return f
+    
+    def _parse_version(self, s):
+        """
+        Parse the VCF version number from the specified string.
+        """
+        self._version = -1.0
+        tokens = s.split("v")
+        if len(tokens) == 2:
+            self._version = float(tokens[1])
+   
+
+    def _parse_meta_information(self, line):
+        """
+        Processes the specified meta information line to obtain the values 
+        of the various columns and their types.
+        """
+        if line.startswith("##INFO"):
+            col = vcf_file_column_factory(line)
+            self._info_columns[col.name] = col
+        elif line.startswith("##FORMAT"):
+            col = vcf_file_column_factory(line)
+            self._genotype_columns[col.name] = col
+        else:
+            #print("NOT PARSED:", line)
+            pass
+            # TODO insert another case here to deal with the FILTER column
+            # and add enumeration values to it.
+
+    def _parse_header_line(self, s):
+        """
+        Processes the specified header string to get the genotype labels.
+        """
+        self._genotypes = s.split()[9:]
+
+    def _parse_record(self, s):
+        """
+        Parses the specified vcf record.
+        """
+        l = s.split()
+        # These aren't the same - need to sort it out.
+        self._schema.set_value(CHROM, l[0])
+        self._schema.set_value(POS, int(l[1]))
+        self._schema.set_value(ID, l[2])
+        self._schema.set_value(REF, l[3])
+        self._schema.set_value(ALT, l[4])
+        self._schema.set_value(QUAL, float(l[5]))
+        self._schema.set_value(FILTER, l[6])
+        for mapping in l[7].split(";"):
+            tokens = mapping.split("=")
+            col = self._info_columns[tokens[0]]
+            db_name = INFO + "_" + col.name 
+            if len(tokens) == 2:
+                self._schema.set_value(db_name, col.parse(tokens[1]))
+            else:
+                # This must be a flag column.
+                assert(col.type == VCFColumn.TYPE_FLAG)
+                self._schema.set_value(col, 1)
+
+
+    def _read_header(self, f):
+        """
+        Reads the header for this VCF file, constructing the database
+        schema and getting the parser prepared for processing records.
+        """
+        # Read the header
+        s = (f.readline()).decode()
+        self._parse_version(s)
+        if self._version < 4.0:
+            raise ValueError("VCF versions < 4.0 not supported")
+        while s.startswith("##"):
+            self._parse_meta_information(s)
+            s = (f.readline()).decode()
+        self._parse_header_line(s)
+    
+    def _read_records(self, f):
+        """
+        Reads the records from the VCF file, presenting records ready
+        for storage to the database.
+        """
+        for line in f:
+            self._schema.clear_record()
+            self._parse_record(line.decode())
+            # callback into the database and store the record?
+
+
+    
+    def parse(self):
+        """
+        Parses this vcf file.
+        """
+        with self._open_file() as f:
+            self._read_header(f)
+            self._define_schema()
+            self._read_records(f)
+
+
+
+    
+class Schema(object):
+    """
+    Class representing a schema for database records. In this schema 
+    we have a set of columns supporting storage for arrays of 
+    integer, float and string data.
+    """
+    def __init__(self):
+        self.__long_integer_columns = {}
+        self.__short_integer_columns = {}
+        self.__float_columns = {}
+        self.__string_columns = {}
+    
+    def add_long_integer_column(self, name, num_values):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of long integer values.
+        """
+        self.__long_integer_columns[name] = num_values
+
+    def add_short_integer_column(self, name, num_values):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of short_integer values.
+        """
+        self.__short_integer_columns[name] = num_values
+
+    def add_float_column(self, name, num_values):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of float values.
+        """
+        self.__float_columns[name] = num_values
+
+    def add_boolean_column(self, name, num_values):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of boolean values.
+        """
+        self.__boolean_columns[name] = num_values
+    
+    def add_string_column(self, name, num_values):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of string values.
+        """
+        self.__string_columns[name] = num_values
+
+
+    def finalise(self):
+        """
+        Finalises this schema, by taking all the columns that have 
+        been added, and calculating and storing their record offsets.
+        """
+
+    def clear_record(self):
+        """
+        Clears the current record, making it ready for values to 
+        be set.
+        """
+
+    def set_value(self, col, value):
+        """
+        Sets the value for the specified column to the specified 
+        value.
+        """
+        print("set ", col, "->", value)
+
+
+
 
 class VCFDatabase(object):
     """
