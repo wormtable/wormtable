@@ -24,388 +24,388 @@ INFO = "INFO"
 
 DEFAULT_DB_DIR="/var/lib/vcfdb"
 
-class VCFColumn(object):
-    """
-    Class representing a column in a VCF database. This encapsulates information 
-    about the type, desciption, and so on, and provides encoders and decoders
-    appropriate to the column.
-    """
-    def __init__(self):
-        self._description = None 
-        self._id = None
-
-    def set_description(self, description):
-        """
-        Sets the column description to the specified value.
-        """
-        self._description = description
-
-    def set_id(self, cid):
-        """
-        Sets the ID for this column to the specified value.
-        """
-        self._id = cid
-    
-    def get_id(self):
-        """
-        Returns the ID of this column.
-        """
-        return self._id
-
-    def encode(self, value):
-        """
-        Encodes the specified value as bytes object.
-        """
-        return value.encode()
-    
-    def decode(self, b):
-        """
-        Decodes the specified bytes into a python value of the 
-        appropriate type.
-        """
-        return b.decode()
-    
-    def default_value(self):
-        return "."
-
-    def __str__(self):
-        return "ID={0}; DESC={1}".format(self._id, self._description)
-
-
-class CompoundColumn(VCFColumn):
-    """
-    Class representing a compound column in the VCF database. Compound
-    columns are obtained by concatenating two or more columns 
-    together.
-    """
-    def __init__(self, colid, columns):
-        self._id = colid
-        self._columns = columns
-
-    def encode(self, value):
-        """
-        Encodes the specified tuple of values as a concatenated list 
-        of bytes.
-        """
-        v = b""
-        for j in range(len(self._columns)):
-            col = self._columns[j]
-            v += col.encode(value[j]) + b"_"
-        return v[:-1] 
-    
-    def decode(self, b):
-        """
-        Decodes the specified _ delimited value into a tuple of values.
-        """ 
-        values = b.split(b"_")
-        t = list(values) 
-        for j in range(len(self._columns)):
-            t[j] = self._columns[j].decode(values[j])
-        return tuple(t)
-
-
-class NumberColumn(VCFColumn):
-    """
-    Class representing columns with numeric values.
-    """
-    def __init__(self, width):
-        super().__init__()
-        self._width = width
-    
-    def __str__(self):
-        return "width={0};".format(self._width) + super().__str__() 
-    
-    def default_value(self):
-        return -1 
-
-class LongIntegerColumn(NumberColumn):
-    """
-    Class representing columns with large integer values.
-    """
-    def __init__(self):
-        super().__init__(12)
-
-    def __str__(self):
-        return "Integer:" + super().__str__()
-        
-    def encode(self, value):
-        """
-        Encodes the specified integer value as bytes object.
-        """
-        fmt = "{0:0" +  str(self._width) + "d}" 
-        s = fmt.format(value)
-        return s.encode()
-    
-    def decode(self, string):
-        """
-        Decodes the specified string into an integer value.
-        """
-        return int(string)
-
-
-class ShortIntegerColumn(NumberColumn):
-    """
-    Class representing columns with small integer values.
-    """
-    def __init__(self):
-        super().__init__(6)
-
-    def __str__(self):
-        return "Integer:" + super().__str__()
-        
-    def encode(self, value):
-        """
-        Encodes the specified integer value as bytes object.
-        """
-        fmt = "{0:0" +  str(self._width) + "d}" 
-        s = fmt.format(value)
-        return s.encode()
-    
-    def decode(self, string):
-        """
-        Decodes the specified string into an integer value.
-        """
-        return int(string)
-
-         
-         
-class FloatColumn(NumberColumn):
-    """
-    Class representing columns with floating point values.
-    """
-    def __str__(self):
-        return "Float:" + super().__str__()
-
-    def encode(self, value):
-        """
-        Encodes the specified float value as bytes object.
-        """
-        fmt = "{0:0" +  str(self._width) + ".2f}" 
-        s = fmt.format(value)
-        return s.encode()
-
-    def decode(self, string):
-        """
-        Decodes the specified string into a float value.
-        """
-        return float(string)
-     
-
-
-class StringColumn(VCFColumn):
-    """
-    Class representing a column with arbitrary string values.
-    """
-    def __str__(self):
-        return "String:" + super().__str__()
-   
-
-def column_type_factory(ctype):
-    """
-    Returns a column of the appropriate type given the specified type string.
-    """ 
-    if ctype == "Integer":
-        col = ShortIntegerColumn()
-    elif ctype == "Float":
-        col = FloatColumn(10)
-    elif ctype == "String":
-        col = StringColumn()
-    else:
-        raise ValueError("Unexpected column:", d)
-    return col
-
-def column_factory(cid, d):
-    """
-    Generates a column object representing a column descibed by the 
-    specified dictionary. 
-    """ 
-    #print("column factory:", d)
-    description = d["Description"]
-    ctype = d["Type"]
-    number = d["Number"]
-    #print("\t", cid, ":", description, ":", ctype, ":",  number)
-    columns = {}
-    if number == "1":
-        col = column_type_factory(ctype)
-        columns[cid] = col
-    elif number == "." or number == "0":
-        # For now treat as strings
-        col = StringColumn()
-        columns[cid] = col
-    else:
-        # number should be an integer
-        n = int(number)
-        for j in range(n):
-            cid_col = cid + "_{0}".format(j)
-            col = column_type_factory(ctype) 
-            columns[cid_col] = col
-    for col_id, col in columns.items():
-        col.set_description(description)
-        col.set_id(col_id)
-    return columns 
-
-class VCFSchema(object):
-    """
-    Class representing the columns of a VCF database, including information 
-    on the id, type and width of each column.
-    """
-    def __init__(self):
-        self.__genotypes = []
-        self.__genotype_columns = []
-        self.__columns = {}
-        self.__add_fixed_columns()
-
-    def __add_fixed_columns(self):
-        """
-        Sets up the fixed column schema.
-        """
-        string_cols = [CHROM, ID, REF, ALT, FILTER]
-        for c in string_cols:
-            col = StringColumn()
-            col.set_id(c)
-            self.__columns[c] = col
-        c = RECORD_ID 
-        col = LongIntegerColumn()
-        col.set_id(c)
-        self.__columns[c] = col
-        c = POS
-        col = LongIntegerColumn()
-        col.set_id(c)
-        self.__columns[c] = col
-        c = QUAL
-        col = FloatColumn(10)
-        col.set_id(c)
-        self.__columns[c] = col
-    
-    def add_genotype(self, genotype):
-        """
-        Adds the specified  genotype to this schema
-        """
-        self.__genotypes.append(genotype)
-        for d in self.__genotype_columns:
-            cid = genotype + "_" + d["ID"]
-            for col_id, col in column_factory(cid, d).items():
-                self.__columns[col_id] = col 
-
-    def add_info_column(self, d):
-        """
-        Adds an INFO column with the specified desrciption and type.
-        """
-        cid = "INFO_" + d["ID"]
-        for col_id, col in column_factory(cid, d).items():
-            self.__columns[col_id] = col 
-
-    def add_genotype_column(self, d):
-        """
-        Adds a genotype column with the specified description and type.
-        """
-        self.__genotype_columns.append(d)
-    
-    def add_compound_column(self, cid):
-        """
-        Adds a compound column with the specified id.
-        """
-        cols = [self.get_column(scid) for scid in cid] 
-        col = CompoundColumn(cid, cols)
-        self.__columns[cid] = col 
-
-    def get_columns(self):
-        """
-        Returns an iterator over all columns.
-        """
-        return self.__columns.values()
-   
-    def get_column_ids(self):
-        """
-        Returns the list of column ids.
-        """
-        return self.__columns.keys()
-    
-    def get_column(self, cid):
-        """
-        Returns the column with the specified id.
-        """
-        return self.__columns[cid]
-
-    def get_genotype(self, j):
-        """
-        Returns the jth genotype id.
-        """
-        return self.__genotypes[j]
-   
-
-    def generate_packing_format(self):
-        """
-        All data for the headers has been read in and we can now decide the 
-        canonical packing format for the records.
-        """
-        self.__short_integer_columns = [] 
-        self.__long_integer_columns = [] 
-        self.__float_columns = []
-        self.__string_columns = []
-        for k, v in self.__columns.items():
-            if isinstance(v, LongIntegerColumn):
-                self.__long_integer_columns.append(k)
-            elif isinstance(v, ShortIntegerColumn):
-                self.__short_integer_columns.append(k)
-            elif isinstance(v, FloatColumn):
-                self.__float_columns.append(k)
-            elif isinstance(v, StringColumn):
-                self.__string_columns.append(k)
-        self.__long_integer_columns.sort()
-        self.__short_integer_columns.sort()
-        self.__float_columns.sort() 
-        self.__string_columns.sort()
-         
-        print("long integers = ", self.__long_integer_columns)
-        print("short integers = ", self.__short_integer_columns)
-        print("floats = ", self.__float_columns)
-        print("strings = ", self.__string_columns)
-
-
-    def pack_record(self, d, record_id):
-        """
-        Packs the specified record into a binary form suitable for 
-        storage and retreival.
-        """
-        d[RECORD_ID] = record_id
-        b = bytearray(8192)
-        offset = 0
-        for col in self.__long_integer_columns:
-            value = d[col]
-            fmt = ">q"
-            struct.pack_into(fmt, b, offset, value)
-            offset += struct.calcsize(fmt) 
-            #print("\t", col, "->", value, ":", offset)
-        for col in self.__short_integer_columns:
-            value = -1
-            if col in d:
-                value = d[col]
-            fmt = ">h"
-            struct.pack_into(fmt, b, offset, value)
-            offset += struct.calcsize(fmt) 
-            #print("\t", col, "->", value, ":", offset)
-        for col in self.__float_columns:
-            value = -1.0
-            if col in d:
-                value = d[col]
-            fmt = ">f"
-            struct.pack_into(fmt, b, offset, value)
-            offset += struct.calcsize(fmt) 
-            #print("\t", col, "->", value, ":", offset)
-        for col in self.__string_columns:
-            value = "." 
-            if col in d:
-                value = d[col]
-            #print("\t", col, "->", value.encode())
-            v = value.encode()
-            b[offset:offset + len(v)] = v
-            offset += len(v)
-            b[offset] = 0
-            offset += 1
-        #print("b = ", b[:offset] )
-        print(offset, len(d["record"]))
-
+#class VCFColumn(object):
+#    """
+#    Class representing a column in a VCF database. This encapsulates information 
+#    about the type, desciption, and so on, and provides encoders and decoders
+#    appropriate to the column.
+#    """
+#    def __init__(self):
+#        self._description = None 
+#        self._id = None
+#
+#    def set_description(self, description):
+#        """
+#        Sets the column description to the specified value.
+#        """
+#        self._description = description
+#
+#    def set_id(self, cid):
+#        """
+#        Sets the ID for this column to the specified value.
+#        """
+#        self._id = cid
+#    
+#    def get_id(self):
+#        """
+#        Returns the ID of this column.
+#        """
+#        return self._id
+#
+#    def encode(self, value):
+#        """
+#        Encodes the specified value as bytes object.
+#        """
+#        return value.encode()
+#    
+#    def decode(self, b):
+#        """
+#        Decodes the specified bytes into a python value of the 
+#        appropriate type.
+#        """
+#        return b.decode()
+#    
+#    def default_value(self):
+#        return "."
+#
+#    def __str__(self):
+#        return "ID={0}; DESC={1}".format(self._id, self._description)
+#
+#
+#class CompoundColumn(VCFColumn):
+#    """
+#    Class representing a compound column in the VCF database. Compound
+#    columns are obtained by concatenating two or more columns 
+#    together.
+#    """
+#    def __init__(self, colid, columns):
+#        self._id = colid
+#        self._columns = columns
+#
+#    def encode(self, value):
+#        """
+#        Encodes the specified tuple of values as a concatenated list 
+#        of bytes.
+#        """
+#        v = b""
+#        for j in range(len(self._columns)):
+#            col = self._columns[j]
+#            v += col.encode(value[j]) + b"_"
+#        return v[:-1] 
+#    
+#    def decode(self, b):
+#        """
+#        Decodes the specified _ delimited value into a tuple of values.
+#        """ 
+#        values = b.split(b"_")
+#        t = list(values) 
+#        for j in range(len(self._columns)):
+#            t[j] = self._columns[j].decode(values[j])
+#        return tuple(t)
+#
+#
+#class NumberColumn(VCFColumn):
+#    """
+#    Class representing columns with numeric values.
+#    """
+#    def __init__(self, width):
+#        super().__init__()
+#        self._width = width
+#    
+#    def __str__(self):
+#        return "width={0};".format(self._width) + super().__str__() 
+#    
+#    def default_value(self):
+#        return -1 
+#
+#class LongIntegerColumn(NumberColumn):
+#    """
+#    Class representing columns with large integer values.
+#    """
+#    def __init__(self):
+#        super().__init__(12)
+#
+#    def __str__(self):
+#        return "Integer:" + super().__str__()
+#        
+#    def encode(self, value):
+#        """
+#        Encodes the specified integer value as bytes object.
+#        """
+#        fmt = "{0:0" +  str(self._width) + "d}" 
+#        s = fmt.format(value)
+#        return s.encode()
+#    
+#    def decode(self, string):
+#        """
+#        Decodes the specified string into an integer value.
+#        """
+#        return int(string)
+#
+#
+#class ShortIntegerColumn(NumberColumn):
+#    """
+#    Class representing columns with small integer values.
+#    """
+#    def __init__(self):
+#        super().__init__(6)
+#
+#    def __str__(self):
+#        return "Integer:" + super().__str__()
+#        
+#    def encode(self, value):
+#        """
+#        Encodes the specified integer value as bytes object.
+#        """
+#        fmt = "{0:0" +  str(self._width) + "d}" 
+#        s = fmt.format(value)
+#        return s.encode()
+#    
+#    def decode(self, string):
+#        """
+#        Decodes the specified string into an integer value.
+#        """
+#        return int(string)
+#
+#         
+#         
+#class FloatColumn(NumberColumn):
+#    """
+#    Class representing columns with floating point values.
+#    """
+#    def __str__(self):
+#        return "Float:" + super().__str__()
+#
+#    def encode(self, value):
+#        """
+#        Encodes the specified float value as bytes object.
+#        """
+#        fmt = "{0:0" +  str(self._width) + ".2f}" 
+#        s = fmt.format(value)
+#        return s.encode()
+#
+#    def decode(self, string):
+#        """
+#        Decodes the specified string into a float value.
+#        """
+#        return float(string)
+#     
+#
+#
+#class StringColumn(VCFColumn):
+#    """
+#    Class representing a column with arbitrary string values.
+#    """
+#    def __str__(self):
+#        return "String:" + super().__str__()
+#   
+#
+#def column_type_factory(ctype):
+#    """
+#    Returns a column of the appropriate type given the specified type string.
+#    """ 
+#    if ctype == "Integer":
+#        col = ShortIntegerColumn()
+#    elif ctype == "Float":
+#        col = FloatColumn(10)
+#    elif ctype == "String":
+#        col = StringColumn()
+#    else:
+#        raise ValueError("Unexpected column:", d)
+#    return col
+#
+#def column_factory(cid, d):
+#    """
+#    Generates a column object representing a column descibed by the 
+#    specified dictionary. 
+#    """ 
+#    #print("column factory:", d)
+#    description = d["Description"]
+#    ctype = d["Type"]
+#    number = d["Number"]
+#    #print("\t", cid, ":", description, ":", ctype, ":",  number)
+#    columns = {}
+#    if number == "1":
+#        col = column_type_factory(ctype)
+#        columns[cid] = col
+#    elif number == "." or number == "0":
+#        # For now treat as strings
+#        col = StringColumn()
+#        columns[cid] = col
+#    else:
+#        # number should be an integer
+#        n = int(number)
+#        for j in range(n):
+#            cid_col = cid + "_{0}".format(j)
+#            col = column_type_factory(ctype) 
+#            columns[cid_col] = col
+#    for col_id, col in columns.items():
+#        col.set_description(description)
+#        col.set_id(col_id)
+#    return columns 
+#
+#class VCFSchema(object):
+#    """
+#    Class representing the columns of a VCF database, including information 
+#    on the id, type and width of each column.
+#    """
+#    def __init__(self):
+#        self.__genotypes = []
+#        self.__genotype_columns = []
+#        self.__columns = {}
+#        self.__add_fixed_columns()
+#
+#    def __add_fixed_columns(self):
+#        """
+#        Sets up the fixed column schema.
+#        """
+#        string_cols = [CHROM, ID, REF, ALT, FILTER]
+#        for c in string_cols:
+#            col = StringColumn()
+#            col.set_id(c)
+#            self.__columns[c] = col
+#        c = RECORD_ID 
+#        col = LongIntegerColumn()
+#        col.set_id(c)
+#        self.__columns[c] = col
+#        c = POS
+#        col = LongIntegerColumn()
+#        col.set_id(c)
+#        self.__columns[c] = col
+#        c = QUAL
+#        col = FloatColumn(10)
+#        col.set_id(c)
+#        self.__columns[c] = col
+#    
+#    def add_genotype(self, genotype):
+#        """
+#        Adds the specified  genotype to this schema
+#        """
+#        self.__genotypes.append(genotype)
+#        for d in self.__genotype_columns:
+#            cid = genotype + "_" + d["ID"]
+#            for col_id, col in column_factory(cid, d).items():
+#                self.__columns[col_id] = col 
+#
+#    def add_info_column(self, d):
+#        """
+#        Adds an INFO column with the specified desrciption and type.
+#        """
+#        cid = "INFO_" + d["ID"]
+#        for col_id, col in column_factory(cid, d).items():
+#            self.__columns[col_id] = col 
+#
+#    def add_genotype_column(self, d):
+#        """
+#        Adds a genotype column with the specified description and type.
+#        """
+#        self.__genotype_columns.append(d)
+#    
+#    def add_compound_column(self, cid):
+#        """
+#        Adds a compound column with the specified id.
+#        """
+#        cols = [self.get_column(scid) for scid in cid] 
+#        col = CompoundColumn(cid, cols)
+#        self.__columns[cid] = col 
+#
+#    def get_columns(self):
+#        """
+#        Returns an iterator over all columns.
+#        """
+#        return self.__columns.values()
+#   
+#    def get_column_ids(self):
+#        """
+#        Returns the list of column ids.
+#        """
+#        return self.__columns.keys()
+#    
+#    def get_column(self, cid):
+#        """
+#        Returns the column with the specified id.
+#        """
+#        return self.__columns[cid]
+#
+#    def get_genotype(self, j):
+#        """
+#        Returns the jth genotype id.
+#        """
+#        return self.__genotypes[j]
+#   
+#
+#    def generate_packing_format(self):
+#        """
+#        All data for the headers has been read in and we can now decide the 
+#        canonical packing format for the records.
+#        """
+#        self.__short_integer_columns = [] 
+#        self.__long_integer_columns = [] 
+#        self.__float_columns = []
+#        self.__string_columns = []
+#        for k, v in self.__columns.items():
+#            if isinstance(v, LongIntegerColumn):
+#                self.__long_integer_columns.append(k)
+#            elif isinstance(v, ShortIntegerColumn):
+#                self.__short_integer_columns.append(k)
+#            elif isinstance(v, FloatColumn):
+#                self.__float_columns.append(k)
+#            elif isinstance(v, StringColumn):
+#                self.__string_columns.append(k)
+#        self.__long_integer_columns.sort()
+#        self.__short_integer_columns.sort()
+#        self.__float_columns.sort() 
+#        self.__string_columns.sort()
+#         
+#        print("long integers = ", self.__long_integer_columns)
+#        print("short integers = ", self.__short_integer_columns)
+#        print("floats = ", self.__float_columns)
+#        print("strings = ", self.__string_columns)
+#
+#
+#    def pack_record(self, d, record_id):
+#        """
+#        Packs the specified record into a binary form suitable for 
+#        storage and retreival.
+#        """
+#        d[RECORD_ID] = record_id
+#        b = bytearray(8192)
+#        offset = 0
+#        for col in self.__long_integer_columns:
+#            value = d[col]
+#            fmt = ">q"
+#            struct.pack_into(fmt, b, offset, value)
+#            offset += struct.calcsize(fmt) 
+#            #print("\t", col, "->", value, ":", offset)
+#        for col in self.__short_integer_columns:
+#            value = -1
+#            if col in d:
+#                value = d[col]
+#            fmt = ">h"
+#            struct.pack_into(fmt, b, offset, value)
+#            offset += struct.calcsize(fmt) 
+#            #print("\t", col, "->", value, ":", offset)
+#        for col in self.__float_columns:
+#            value = -1.0
+#            if col in d:
+#                value = d[col]
+#            fmt = ">f"
+#            struct.pack_into(fmt, b, offset, value)
+#            offset += struct.calcsize(fmt) 
+#            #print("\t", col, "->", value, ":", offset)
+#        for col in self.__string_columns:
+#            value = "." 
+#            if col in d:
+#                value = d[col]
+#            #print("\t", col, "->", value.encode())
+#            v = value.encode()
+#            b[offset:offset + len(v)] = v
+#            offset += len(v)
+#            b[offset] = 0
+#            offset += 1
+#        #print("b = ", b[:offset] )
+#        print(offset, len(d["record"]))
+#
 
 class VCFFileColumn(object):
     """
@@ -442,7 +442,27 @@ class VCFFileColumn(object):
             v.append(p(tok))
         if self.number != self.NUMBER_ANY:
             assert(len(v) == self.number)
-        return v 
+        return v[0] if self.number == 1 else v
+    
+    def get_db_column(self):
+        """
+        Returns a DBColumn instance suitable to represent this VCFFileColumn.
+        """ 
+        if self.type == self.TYPE_INTEGER:
+            dbc = IntegerColumn()
+            # We default to 16 bit integers; this should probably be a 
+            # configuration option.
+            dbc.set_size(2) 
+        elif self.type == self.TYPE_FLOAT:
+            dbc = FloatColumn()
+        elif self.type == self.TYPE_FLAG:
+            dbc = IntegerColumn()
+            dbc.set_size(1) 
+        elif self.type in [self.TYPE_STRING, self.TYPE_CHAR]:
+            dbc = StringColumn()
+        dbc.set_description(self.description)
+        dbc.set_num_values(1 if self.type == self.TYPE_FLAG else self.number)
+        return dbc 
 
     def __str__(self):
         t = self.TYPE_MAP[self.type]
@@ -461,13 +481,11 @@ def vcf_file_column_factory(line):
         tokens = s[:k].split("=")
         s = s[k + 1:]
         d[tokens[0]] = tokens[1]
-    tokens = s.split("=")
+    tokens = s.split("=", 1)
     d[tokens[0]] = tokens[1]
-    
     col = VCFFileColumn()
     col.description = d["Description"]
     col.name = d["ID"]
-    
     st = d["Type"]
     if st == "Integer":
         t = VCFFileColumn.TYPE_INTEGER
@@ -520,18 +538,24 @@ class VCFFileParser(object):
         schema, which defines the method of packing and unpacking 
         data from database records.
         """
-        self._schema = Schema()
-        self._schema.add_long_integer_column(RECORD_ID, 1)
-        self._schema.add_long_integer_column(POS, 1)
-        self._schema.add_string_column(CHROM, 1) #enum
-        self._schema.add_string_column(ID, 1)
-        self._schema.add_string_column(REF, 1)
-        self._schema.add_string_column(ALT, 1)
-        self._schema.add_float_column(QUAL, 1)
-        self._schema.add_string_column(FILTER, 1) #enum
+        self._schema = DBSchema()
+        # TODO Get the text of these descriptions from the file format
+        # definition and put them in here as constants.
+        self._schema.add_integer_column(POS, 8, 1, "Chromosome position")
+        self._schema.add_string_column(CHROM, 1, "Chromosome") #enum
+        self._schema.add_string_column(ID, 1, "Identifiers")
+        self._schema.add_string_column(REF, 1, "Reference allele")
+        self._schema.add_string_column(ALT, 1, "Alternative allele")
+        self._schema.add_float_column(QUAL, 1, "Quality")
+        self._schema.add_string_column(FILTER, 1, "Filter") #enum
         
         for name, col in self._info_columns.items():
-            print(name, "->", col)
+            self._schema.add_vcf_column(INFO + "_" + name, col)
+        for genotype in self._genotypes:
+            for name, col in self._genotype_columns.items():
+                self._schema.add_vcf_column(genotype + "_" + name, col)
+        
+        
 
         self._schema.finalise()
 
@@ -591,7 +615,6 @@ class VCFFileParser(object):
         Parses the specified vcf record.
         """
         l = s.split()
-        # These aren't the same - need to sort it out.
         self._schema.set_value(CHROM, l[0])
         self._schema.set_value(POS, int(l[1]))
         self._schema.set_value(ID, l[2])
@@ -606,9 +629,24 @@ class VCFFileParser(object):
             if len(tokens) == 2:
                 self._schema.set_value(db_name, col.parse(tokens[1]))
             else:
-                # This must be a flag column.
-                assert(col.type == VCFColumn.TYPE_FLAG)
-                self._schema.set_value(col, 1)
+                assert(col.type == VCFFileColumn.TYPE_FLAG)
+                self._schema.set_value(db_name, 1)
+        fmt  = l[8].split(":")
+        j = 0
+        for genotype_values in l[9:]:
+            tokens = genotype_values.split(":")
+            if len(tokens) == len(fmt):
+                for k in range(len(fmt)):
+                    col = self._genotype_columns[fmt[k]]
+                    db_name = self._genotypes[j] + "_" + fmt[k]
+                    self._schema.set_value(db_name, col.parse(tokens[k]))
+            elif len(tokens) > 1:
+                # We can treat a genotype value on its own as missing values.
+                # We can have skipped columns at the end though, which we 
+                # should deal with properly. So, put in a loud complaint 
+                # here and fix later.
+                print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
+            j += 1
 
 
     def _read_header(self, f):
@@ -635,8 +673,6 @@ class VCFFileParser(object):
             self._schema.clear_record()
             self._parse_record(line.decode())
             # callback into the database and store the record?
-
-
     
     def parse(self):
         """
@@ -649,60 +685,150 @@ class VCFFileParser(object):
 
 
 
+class DBColumn(object):
+    """
+    Class representing a single column in a DBSchema. Each column has a 
+    fixed type, and a methods to encode and decode values to and from 
+    db format. Columns represent arrays of values, and can be either 
+    single values, fixed length arrays or variable length arrays.
+    """
+    def __init__(self):
+        self._description = "" 
+        self._name = "" 
+        self._num_values = 0
+
+    def __str__(self):
+        return "name={0}; num={1}; desc={2}".format(self._name, self._num_values, 
+                self._description)
     
-class Schema(object):
+    def set_description(self, description):
+        """
+        Sets the column description to the specified value.
+        """
+        self._description = description
+
+    def set_name(self, cname):
+        """
+        Sets the ID for this column to the specified value.
+        """
+        self._name = cname
+   
+    def set_num_values(self, num_values):
+        """
+        Sets the number of values in this column to the specified value.
+        """
+        self._num_values = num_values
+
+    def get_name(self):
+        """
+        Returns the name of this column.
+        """
+        return self._name
+        
+
+    def encode(self, py_value):
+        """
+        Encodes the specified python value as a binary db format and 
+        returns the resulting bytes object. 
+        """
+        ret = None
+        return ret
+
+    def decode(self, db_value):
+        """
+        Decodes the specified bytes object representing a database 
+        value for this column and returns the resulting Python
+        value.
+        """
+        ret = None
+        return ret
+
+
+class IntegerColumn(DBColumn):
+    """
+    Class representing signed integer columns.
+    """
+    def __init__(self):
+        self._size = 1    
+            
+    def set_size(self, size):
+        """
+        Sets the size of this integer column to the specified column in 
+        bytes.
+        """ 
+        assert(size in [1, 2, 4, 8])
+        self._size = size
+
+class FloatColumn(DBColumn):
+    """
+    Class representing IEEE floating point columns. 
+    """
+
+class StringColumn(DBColumn):
+    """
+    Class representing String columns.
+    """
+    
+class DBSchema(object):
     """
     Class representing a schema for database records. In this schema 
     we have a set of columns supporting storage for arrays of 
     integer, float and string data.
     """
     def __init__(self):
-        self.__long_integer_columns = {}
-        self.__short_integer_columns = {}
-        self.__float_columns = {}
-        self.__string_columns = {}
+        self.__columns = {} 
+
+    def add_integer_column(self, name, size, num_values, description):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of integer values of the specified size in bytes. 
+        """
+        col = IntegerColumn()
+        col.set_name(name)
+        col.set_size(size)
+        col.set_num_values(num_values)
+        col.set_description(description)
+        self.__columns[name] = col 
     
-    def add_long_integer_column(self, name, num_values):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of long integer values.
-        """
-        self.__long_integer_columns[name] = num_values
-
-    def add_short_integer_column(self, name, num_values):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of short_integer values.
-        """
-        self.__short_integer_columns[name] = num_values
-
-    def add_float_column(self, name, num_values):
+    def add_float_column(self, name, num_values, description):
         """
         Adds a column with the specified name to hold the specified 
         number of float values.
         """
-        self.__float_columns[name] = num_values
+        col = FloatColumn()
+        col.set_name(name)
+        col.set_num_values(num_values)
+        col.set_description(description)
+        self.__columns[name] = col 
 
-    def add_boolean_column(self, name, num_values):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of boolean values.
-        """
-        self.__boolean_columns[name] = num_values
-    
-    def add_string_column(self, name, num_values):
+    def add_string_column(self, name, num_values, description):
         """
         Adds a column with the specified name to hold the specified 
         number of string values.
         """
-        self.__string_columns[name] = num_values
+        col = StringColumn()
+        col.set_name(name)
+        col.set_num_values(num_values)
+        col.set_description(description)
+        self.__columns[name] = col 
 
+
+    def add_vcf_column(self, name, vcf_column):
+        """
+        Adds a column corresponding to the specified vcf column to this 
+        schema.
+        """
+        col = vcf_column.get_db_column()
+        col.set_name(name)
+        self.__columns[name] = col 
 
     def finalise(self):
         """
         Finalises this schema, by taking all the columns that have 
         been added, and calculating and storing their record offsets.
         """
+        for name, col in self.__columns.items():
+            print(name, "->", col)
 
     def clear_record(self):
         """
@@ -710,15 +836,17 @@ class Schema(object):
         be set.
         """
 
-    def set_value(self, col, value):
+    def set_value(self, col_name, value):
         """
         Sets the value for the specified column to the specified 
         value.
         """
-        print("set ", col, "->", value)
-
-
-
+        print("set ", col_name, "->", value)
+        col = self.__columns[col_name]
+        #dbv = col.encode(value)
+        #assert value == col.decode(dbv)
+        #print(col_name, ":", value, "->", dbv)
+        
 
 class VCFDatabase(object):
     """
