@@ -23,6 +23,8 @@ FILTER = "FILTER"
 INFO = "INFO"
 
 DEFAULT_DB_DIR="/var/lib/vcfdb"
+MAX_RECORD_SIZE = 65536 # 64KiB 
+
 
 #class VCFColumn(object):
 #    """
@@ -548,15 +550,11 @@ class VCFFileParser(object):
         self._schema.add_string_column(ALT, 1, "Alternative allele")
         self._schema.add_float_column(QUAL, 1, "Quality")
         self._schema.add_string_column(FILTER, 1, "Filter") #enum
-        
         for name, col in self._info_columns.items():
             self._schema.add_vcf_column(INFO + "_" + name, col)
         for genotype in self._genotypes:
             for name, col in self._genotype_columns.items():
                 self._schema.add_vcf_column(genotype + "_" + name, col)
-        
-        
-
         self._schema.finalise()
 
 
@@ -670,6 +668,7 @@ class VCFFileParser(object):
         for storage to the database.
         """
         for line in f:
+            #print("record size = ", len(line))
             self._schema.clear_record()
             self._parse_record(line.decode())
             # callback into the database and store the record?
@@ -692,10 +691,46 @@ class DBColumn(object):
     db format. Columns represent arrays of values, and can be either 
     single values, fixed length arrays or variable length arrays.
     """
+    
+    _byte_order = ">" # big-endian for now so we can sort integers.
+    
     def __init__(self):
         self._description = "" 
         self._name = "" 
         self._num_values = 0
+        self._storage_format = ""
+        self._offset = 0
+
+    def set_offset(self, offset):
+        """
+        Sets the offset at which we read the values in this column to the specified 
+        value.
+        """
+        self._offset = offset
+
+    def get_offset(self):
+        """
+        Returns the storage offset for this column.
+        """
+        return self._offset
+
+    def is_fixed_size(self):
+        """
+        Returns true if this column can be packed into a fixed number of bytes.
+        """
+        return self._num_values >= 1
+
+    def get_pack_format(self):
+        """
+        Returns a string representing the pack format used by the struct 
+        module.
+        """
+        if self._num_values > 0:
+            s = self._byte_order + self._storage_format * self._num_values
+        else:
+            s = self._byte_order + self._storage_format 
+            
+        return s
 
     def __str__(self):
         return "name={0}; num={1}; desc={2}".format(self._name, self._num_values, 
@@ -724,7 +759,12 @@ class DBColumn(object):
         Returns the name of this column.
         """
         return self._name
-        
+
+    def get_num_values(self):
+        """
+        Returns the number of values in this column.
+        """
+        return self._num_values
 
     def encode(self, py_value):
         """
@@ -748,27 +788,38 @@ class IntegerColumn(DBColumn):
     """
     Class representing signed integer columns.
     """
-    def __init__(self):
-        self._size = 1    
-            
+    storage_format_map = {
+        1: "b",
+        2: "h",
+        4: "i",
+        8: "q"
+    }
+
     def set_size(self, size):
         """
         Sets the size of this integer column to the specified column in 
         bytes.
         """ 
-        assert(size in [1, 2, 4, 8])
-        self._size = size
+        self._storage_format = self.storage_format_map[size] 
+        
+        
+
 
 class FloatColumn(DBColumn):
     """
     Class representing IEEE floating point columns. 
     """
+    def __init__(self):
+        self._storage_format = "f"
+
 
 class StringColumn(DBColumn):
     """
     Class representing String columns.
     """
-    
+    def is_fixed_size(self):
+        return False
+
 class DBSchema(object):
     """
     Class representing a schema for database records. In this schema 
@@ -777,7 +828,9 @@ class DBSchema(object):
     """
     def __init__(self):
         self.__columns = {} 
-
+        self.__current_record = bytearray(MAX_RECORD_SIZE)
+        self.__free_region = 0
+        
     def add_integer_column(self, name, size, num_values, description):
         """
         Adds a column with the specified name to hold the specified 
@@ -827,26 +880,148 @@ class DBSchema(object):
         Finalises this schema, by taking all the columns that have 
         been added, and calculating and storing their record offsets.
         """
-        for name, col in self.__columns.items():
-            print(name, "->", col)
+        fixed_columns = [col.get_name() for col in self.__columns.values()
+                if col.is_fixed_size()]
+        non_fixed_columns = [col.get_name() for col in self.__columns.values()
+                if not col.is_fixed_size()]
+        # Give them a canonical order.
+        fixed_columns.sort()
+        non_fixed_columns.sort()
+        offset = 0
+        for col_name in fixed_columns:
+            col = self.__columns[col_name]
+            col.set_offset(offset)
+            fmt = col.get_pack_format()
+            #print(col.get_name(), "->", repr(col), ":", col.get_num_values())
+            packed_size = struct.calcsize(fmt)
+            offset += packed_size
+            #print("\tformat = ", fmt, ":", packed_size)
+        print("end of fixed region = ", offset)
+        for col_name in non_fixed_columns:
+            col = self.__columns[col_name]
+            col.set_offset(offset)
+            # for each non-fixed column we allocate it 2 bytes so it can
+            # record the offset at which it starts
+            fmt = "=HH"
+            packed_size = struct.calcsize(fmt)
+            print(col_name, "->", repr(col), ":", col.get_num_values())
+            offset += packed_size
+        self.__free_region_start = offset    
+        
 
     def clear_record(self):
         """
         Clears the current record, making it ready for values to 
         be set.
         """
+        print(self.__current_record)
+        print("size = ", self.__free_region)
+        # We should really zero this out up to where it was last used.
+        self.__current_record = bytearray(MAX_RECORD_SIZE)
+        # TODO: Set default values for fixed values.
+        self.__free_region = self.__free_region_start
 
     def set_value(self, col_name, value):
         """
         Sets the value for the specified column to the specified 
         value.
         """
-        print("set ", col_name, "->", value)
         col = self.__columns[col_name]
-        #dbv = col.encode(value)
-        #assert value == col.decode(dbv)
-        #print(col_name, ":", value, "->", dbv)
-        
+        # TODO: delegate these to the Column class
+        if col.is_fixed_size():
+            fmt = col.get_pack_format()
+            offset = col.get_offset()
+            if col.get_num_values() == 1:
+                struct.pack_into(fmt, self.__current_record, offset, value)
+            else:
+                struct.pack_into(fmt, self.__current_record, offset, *value)
+            #v = self.get_value(col_name)
+            #print("\t to offset ", offset, "->", v)
+        else:
+            # This is all a total mess, and needs to be moved up into the 
+            # column classes so we can share functionality and so on.
+            # The Column class should have a store_record function which 
+            # takes the binary buffer as its argument.
+            # The basic ideas here work well enough though.
+            
+            print("set ", col_name, "->", value)
+            if isinstance(col, StringColumn):
+                # Lists of strings must be encoded - this is a very 
+                # poor implementation. FIXME
+                # This should be done at the encoded level using NULL bytes.
+                if col.get_num_values() == 1:
+                    v = value
+                else:   
+                    v = ""
+                    for s in value:
+                        v += s + ","
+                    print("mapped", value, "to ", v)
+                fmt = "=HH"
+                offset = col.get_offset()
+                start = self.__free_region
+                end = start + len(v)
+                self.__free_region = end 
+                print("\trecording", start, end, "at offset ", offset)
+                struct.pack_into(fmt, self.__current_record, offset, start, end)
+                self.__current_record[start:end] = v.encode()
+                print("\tfree region at", self.__free_region) 
+                print("\tretrieved:", self.get_value(col_name))
+            else:
+                n = len(value)
+                print("non string length ", n)
+                fmt = "=HH"
+                offset = col.get_offset()
+                start = self.__free_region
+                end = start + n * struct.calcsize(col.get_pack_format())
+                self.__free_region = end 
+                print("\tpack format = ", col.get_pack_format())
+                print("\trecording", start, end, "at offset ", offset)
+                struct.pack_into(fmt, self.__current_record, offset, start, end)
+                fmt = col.get_pack_format()
+                offset = start
+                for j in range(n):
+                    struct.pack_into(fmt, self.__current_record, offset, value[j])
+                    offset +=  struct.calcsize(col.get_pack_format())
+                print("\tretrieved:", self.get_value(col_name))
+
+
+
+    def get_value(self, col_name):
+        """
+        Returns the value of the specified column in the current record.
+        """
+        col = self.__columns[col_name]
+        ret = None
+        if col.is_fixed_size():
+            fmt = col.get_pack_format()
+            offset = col.get_offset()
+            t = struct.unpack_from(fmt, self.__current_record, offset)
+            assert len(t) == col.get_num_values()
+            ret = t
+            if len(t) == 1:
+                ret = t[0]
+        else:
+            if isinstance(col, StringColumn):
+                fmt = "=HH"
+                offset = col.get_offset()
+                start, end = struct.unpack_from(fmt, self.__current_record, offset)
+                b = self.__current_record[start:end] 
+                ret = b.decode()
+            else:
+                fmt = "=HH"
+                offset = col.get_offset()
+                start, end = struct.unpack_from(fmt, self.__current_record, offset)
+                b = self.__current_record[start:end] 
+                fmt = col.get_pack_format()
+                offset = start
+                ret = []
+                while offset < end:
+                    t = struct.unpack_from(fmt, self.__current_record, offset)
+                    ret.append(t[0])
+                    offset +=  struct.calcsize(col.get_pack_format())
+
+        return ret
+
 
 class VCFDatabase(object):
     """
