@@ -1,20 +1,40 @@
-from distutils.core import setup
+import re
+from distutils.core import setup, Extension
 
-homepage = "http://www.homepages.ed.ac.uk/jkellehe/"
-f = open("README.rst")
+f = open("README.txt")
 vcfdb_readme = f.read()
 f.close()
 
+# Following the recommendations of PEP 396 we parse the version number 
+# out of the module.
+def parse_version(module_file):
+    """
+    Parses the version string from the specified file.
+    
+    This implementation is ugly, but there doesn't seem to be a good way
+    to do this in general at the moment.
+    """ 
+    f = open(module_file)
+    s = f.read()
+    f.close()
+    match = re.findall("__version__ = '([^']+)'", s)
+    return match[0]
+
+vcfdb_version = parse_version("vcfdb.py") 
+
+_vcfdb_module = Extension('_vcfdb', 
+    sources = ["_vcfdbmodule.c"])
+
 setup(
     name = "vcfdb",
-    version = "0.2.dev",
+    version = vcfdb_version, 
     description = "Store and search VCF data with Berkeley DB",
     author = "Jerome Kelleher",
     author_email = "jerome.kelleher@ed.ac.uk",
-    url = homepage + "vcfdb",
-    download_url = homepage + "download/vcfdb-1.0.tar.gz",
-    # TODO Fix these keywords and classifiers
-    keywords = ["Databases", "bioinformatics"],
+    url = "http://pypi.python.org/pypi/vcfdb", 
+    keywords = ["add", "some", "keywords"], 
+    license = "GNU GPLv3",
+    platforms = ["POSIX"], 
     classifiers = [
         "Programming Language :: C",
         "Programming Language :: Python",
@@ -28,8 +48,8 @@ setup(
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
     long_description = vcfdb_readme,
-    packages = ['vcfdb'],
-    scripts = ['scripts/vcfdb_admin']
+    ext_modules = [_vcfdb_module],
+    py_modules = ['vcfdb']
 )
 
     

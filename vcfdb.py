@@ -12,6 +12,8 @@ from contextlib import contextmanager
 
 import bsddb3.db as bdb 
 
+__version__ = '0.0.1-dev'
+
 RECORD_ID = "RECORD_ID"
 CHROM = "CHROM"
 POS = "POS"
@@ -629,8 +631,8 @@ class VCFFileParser(object):
             else:
                 assert(col.type == VCFFileColumn.TYPE_FLAG)
                 self._schema.set_value(db_name, 1)
-        fmt  = l[8].split(":")
         j = 0
+        fmt  = l[8].split(":")
         for genotype_values in l[9:]:
             tokens = genotype_values.split(":")
             if len(tokens) == len(fmt):
@@ -802,8 +804,6 @@ class IntegerColumn(DBColumn):
         """ 
         self._storage_format = self.storage_format_map[size] 
         
-        
-
 
 class FloatColumn(DBColumn):
     """
@@ -914,8 +914,8 @@ class DBSchema(object):
         Clears the current record, making it ready for values to 
         be set.
         """
-        print(self.__current_record)
-        print("size = ", self.__free_region)
+        #print(self.__current_record)
+        #print("size = ", self.__free_region)
         # We should really zero this out up to where it was last used.
         self.__current_record = bytearray(MAX_RECORD_SIZE)
         # TODO: Set default values for fixed values.
@@ -927,6 +927,8 @@ class DBSchema(object):
         value.
         """
         col = self.__columns[col_name]
+        #col.set_store_record(value, self.__current_record)
+
         # TODO: delegate these to the Column class
         if col.is_fixed_size():
             fmt = col.get_pack_format()
@@ -944,7 +946,7 @@ class DBSchema(object):
             # takes the binary buffer as its argument.
             # The basic ideas here work well enough though.
             
-            print("set ", col_name, "->", value)
+            #print("set ", col_name, "->", value)
             if isinstance(col, StringColumn):
                 # Lists of strings must be encoded - this is a very 
                 # poor implementation. FIXME
@@ -955,34 +957,35 @@ class DBSchema(object):
                     v = ""
                     for s in value:
                         v += s + ","
-                    print("mapped", value, "to ", v)
+                    #print("mapped", value, "to ", v)
                 fmt = "=HH"
                 offset = col.get_offset()
                 start = self.__free_region
                 end = start + len(v)
                 self.__free_region = end 
-                print("\trecording", start, end, "at offset ", offset)
+                #print("\trecording", start, end, "at offset ", offset)
                 struct.pack_into(fmt, self.__current_record, offset, start, end)
                 self.__current_record[start:end] = v.encode()
-                print("\tfree region at", self.__free_region) 
-                print("\tretrieved:", self.get_value(col_name))
+                #print("\tfree region at", self.__free_region) 
+                #print("\tretrieved:", self.get_value(col_name))
             else:
                 n = len(value)
-                print("non string length ", n)
+                #print("non string length ", n)
                 fmt = "=HH"
                 offset = col.get_offset()
                 start = self.__free_region
                 end = start + n * struct.calcsize(col.get_pack_format())
                 self.__free_region = end 
-                print("\tpack format = ", col.get_pack_format())
-                print("\trecording", start, end, "at offset ", offset)
+                #print("\tpack format = ", col.get_pack_format())
+                #print("\trecording", start, end, "at offset ", offset)
                 struct.pack_into(fmt, self.__current_record, offset, start, end)
                 fmt = col.get_pack_format()
                 offset = start
                 for j in range(n):
                     struct.pack_into(fmt, self.__current_record, offset, value[j])
                     offset +=  struct.calcsize(col.get_pack_format())
-                print("\tretrieved:", self.get_value(col_name))
+                #print("\tretrieved:", self.get_value(col_name))
+                
 
 
 
