@@ -23,7 +23,8 @@ def parse_version(module_file):
 vcfdb_version = parse_version("vcfdb.py") 
 
 _vcfdb_module = Extension('_vcfdb', 
-    sources = ["_vcfdbmodule.c"])
+    sources = ["_vcfdbmodule.c"],
+    libraries = ["db"])
 
 setup(
     name = "vcfdb",

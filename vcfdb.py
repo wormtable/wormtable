@@ -10,6 +10,8 @@ import struct
 import tempfile
 from contextlib import contextmanager
 
+import _vcfdb
+
 import bsddb3.db as bdb 
 
 __version__ = '0.0.1-dev'
@@ -682,8 +684,22 @@ class VCFFileParser(object):
         with self._open_file() as f:
             self._read_header(f)
             self._define_schema()
-            self._read_records(f)
+            table = _vcfdb.Table() 
+            table.open()
+            # for now, set buffer to be a bytearray from here
+            table.record_buffer = bytearray(MAX_RECORD_SIZE)
+            print("table = ", table) 
+            print("table.record_buffer = ", table.record_buffer)
+            print("table.record_length = ", table.record_length)
+            # TODO: set up the linkage that allows the schema
+            # access to the buffer in the table, and then 
+            # see if we can store some records in the DB 
+            # from C
+            
 
+            #self._read_records(f)
+
+            table.close() 
 
 
 class DBColumn(object):
@@ -896,7 +912,7 @@ class DBSchema(object):
             packed_size = struct.calcsize(fmt)
             offset += packed_size
             #print("\tformat = ", fmt, ":", packed_size)
-        print("end of fixed region = ", offset)
+        #print("end of fixed region = ", offset)
         for col_name in non_fixed_columns:
             col = self.__columns[col_name]
             col.set_offset(offset)
@@ -904,7 +920,7 @@ class DBSchema(object):
             # record the offset at which it starts
             fmt = "=HH"
             packed_size = struct.calcsize(fmt)
-            print(col_name, "->", repr(col), ":", col.get_num_values())
+            #print(col_name, "->", repr(col), ":", col.get_num_values())
             offset += packed_size
         self.__free_region_start = offset    
         

@@ -46,6 +46,8 @@ def main():
     #vi = vcfdb.VCFDatabase(fullname)
     #vi.parse(vcf_file)
     # For the moment, let's just parse this.
+    
+    
     parser = vcfdb.VCFFileParser(vcf_file)
     parser.parse()
 
