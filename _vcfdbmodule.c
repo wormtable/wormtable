@@ -16,6 +16,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *record_buffer;
     int record_length;
+    int record_number;
     DB *primary_db;
     DB **secondary_dbs;
     unsigned int num_secondary_dbs;
@@ -41,6 +42,7 @@ Table_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         self->record_length = 0;
+        self->record_number = 0;
         
         self->primary_db = NULL;
         self->secondary_dbs = NULL;
@@ -60,6 +62,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
 static PyMemberDef Table_members[] = {
     {"record_buffer", T_OBJECT_EX, offsetof(Table, record_buffer), 0, "first name"},
     {"record_length", T_INT, offsetof(Table, record_length), 0, "record length"},
+    {"record_number", T_INT, offsetof(Table, record_number), 0, "record number"},
     {NULL}  /* Sentinel */
 };
 
@@ -80,7 +83,7 @@ Table_open(Table* self)
             NULL,       /* Transaction pointer */
             "tmp/primary.db", /* On-disk file that holds the database. */
             NULL,       /* Optional logical database name */
-            DB_BTREE,   /* Database access method */
+            DB_RECNO,   /* Database access method */
             flags,      /* Open flags */
             0);         /* File mode (using defaults) */
     if (ret != 0) {
@@ -106,9 +109,47 @@ Table_close(Table* self)
 }
 
 static PyObject *
-Table_insert_record(Table* self)
+Table_store_record(Table* self)
 {
-    printf("Insert record\n");
+    int ret;
+    Py_buffer buff;
+    
+    u_int32_t flags = DB_APPEND;
+    u_int32_t len = self->record_length;
+    //db_recno_t recno = self->record_number;
+    DBT key, data;
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    if (!PyByteArray_Check(self->record_buffer)) {
+        printf("Not a byte array!\n");
+        goto out;
+    }
+    if (PyObject_GetBuffer(self->record_buffer, &buff, PyBUF_SIMPLE) != 0) {
+        printf("Cannot get buffer!!\n");
+        goto out;
+    }
+    /*
+    printf("C:");
+    for (ret = 0; ret <= len; ret++) {
+        printf("%d", ((unsigned char *) buff.buf)[ret]);
+        
+    }
+    */
+    //printf("\n");
+    //fflush(stdout);
+
+    data.size = len;
+    data.data = buff.buf;
+
+    ret = self->primary_db->put(self->primary_db, NULL, &key, &data, flags);
+    if (ret != 0) {
+        printf("ERROR!! %d\n", ret);
+    }
+    
+    //recno = (db_recno_t) key.data;
+    //printf("store record %d with len = %d\n", recno, len);
+out:
+
     return Py_BuildValue("");
 }
 
@@ -116,8 +157,8 @@ Table_insert_record(Table* self)
 
 static PyMethodDef Table_methods[] = {
     {"open", (PyCFunction) Table_open, METH_NOARGS, "Open the table" },
+    {"store_record", (PyCFunction) Table_store_record, METH_NOARGS, "store a record" },
     {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
-    {"insert_record", (PyCFunction) Table_insert_record, METH_NOARGS, "insert a record" },
     {NULL}  /* Sentinel */
 };
 

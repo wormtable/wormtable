@@ -560,7 +560,7 @@ class VCFFileParser(object):
             for name, col in self._genotype_columns.items():
                 self._schema.add_vcf_column(genotype + "_" + name, col)
         self._schema.finalise()
-
+        
 
     def _open_file(self):
         """
@@ -675,6 +675,7 @@ class VCFFileParser(object):
             #print("record size = ", len(line))
             self._schema.clear_record()
             self._parse_record(line.decode())
+            self._schema.store_record()
             # callback into the database and store the record?
     
     def parse(self):
@@ -684,22 +685,8 @@ class VCFFileParser(object):
         with self._open_file() as f:
             self._read_header(f)
             self._define_schema()
-            table = _vcfdb.Table() 
-            table.open()
-            # for now, set buffer to be a bytearray from here
-            table.record_buffer = bytearray(MAX_RECORD_SIZE)
-            print("table = ", table) 
-            print("table.record_buffer = ", table.record_buffer)
-            print("table.record_length = ", table.record_length)
-            # TODO: set up the linkage that allows the schema
-            # access to the buffer in the table, and then 
-            # see if we can store some records in the DB 
-            # from C
-            
-
-            #self._read_records(f)
-
-            table.close() 
+            self._read_records(f)
+        self._schema.close()
 
 
 class DBColumn(object):
@@ -844,9 +831,12 @@ class DBSchema(object):
     """
     def __init__(self):
         self.__columns = {} 
-        self.__current_record = bytearray(MAX_RECORD_SIZE)
         self.__free_region = 0
-        
+        self.__database = _vcfdb.Table() 
+        self.__database.open()
+        self.__database.record_buffer = bytearray(MAX_RECORD_SIZE)
+        self.__database.record_number = 1 
+    
     def add_integer_column(self, name, size, num_values, description):
         """
         Adds a column with the specified name to hold the specified 
@@ -930,12 +920,38 @@ class DBSchema(object):
         Clears the current record, making it ready for values to 
         be set.
         """
-        #print(self.__current_record)
-        #print("size = ", self.__free_region)
-        # We should really zero this out up to where it was last used.
-        self.__current_record = bytearray(MAX_RECORD_SIZE)
+        # Zero out the record - better done in C
+        for j in range(self.__free_region_start):
+            self.__database.record_buffer[j] = 0
         # TODO: Set default values for fixed values.
         self.__free_region = self.__free_region_start
+        
+        # TEMP: use self.__current_record for crap code below.
+        self.__current_record = self.__database.record_buffer
+
+        
+
+    def store_record(self):
+        """
+        Pushes the record into the underlying database.
+        """
+        """
+        print("P:", end="")
+        for j in range(self.__free_region):
+            print(self.__current_record[j], sep="", end="")
+        print()
+        """
+        sys.stdout.flush()
+        self.__database.record_length = self.__free_region
+        self.__database.store_record()
+
+        self.__database.record_number += 1
+
+    def close(self):
+        """
+        This shouldn't be here.
+        """
+        self.__database.close()
 
     def set_value(self, col_name, value):
         """
