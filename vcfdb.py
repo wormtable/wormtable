@@ -30,6 +30,611 @@ DEFAULT_DB_DIR="/var/lib/vcfdb"
 MAX_RECORD_SIZE = 65536 # 64KiB 
 
 
+
+class VCFFileColumn(object):
+    """
+    Class representing a column in a VCF file.
+    """
+    NUMBER_ANY = -1
+    TYPE_INTEGER = 0
+    TYPE_FLOAT = 1
+    TYPE_FLAG = 2
+    TYPE_STRING = 3
+    TYPE_CHAR = 4
+    
+    TYPE_MAP = {
+        TYPE_INTEGER: "Integer",
+        TYPE_FLOAT: "Float",
+        TYPE_FLAG: "Flag", 
+        TYPE_STRING: "String",
+        TYPE_CHAR: "Character"}
+  
+    PARSER_MAP = {
+        TYPE_INTEGER: int, 
+        TYPE_FLOAT: float, 
+        TYPE_FLAG: int, 
+        TYPE_STRING: str,
+        TYPE_CHAR: str} 
+    
+    def parse(self, s):
+        """
+        Parses the specified value into the appropriate Python types.
+        """
+        p = self.PARSER_MAP[self.type]
+        v = []
+        for tok in s.split(","):
+            v.append(p(tok))
+        if self.number != self.NUMBER_ANY:
+            assert(len(v) == self.number)
+        return v[0] if self.number == 1 else v
+    
+    def get_db_column(self):
+        """
+        Returns a DBColumn instance suitable to represent this VCFFileColumn.
+        """ 
+        dbc = DBColumn()
+        if self.type == self.TYPE_INTEGER:
+            # We default to 16 bit integers; this should probably be a 
+            # configuration option.
+            dbc.set_element_type(DBColumn.ELEMENT_TYPE_INT_2) 
+            dbc.set_num_elements(self.number)
+        elif self.type == self.TYPE_FLOAT:
+            dbc.set_element_type(DBColumn.ELEMENT_TYPE_FLOAT) 
+            dbc.set_num_elements(self.number)
+        elif self.type == self.TYPE_FLAG:
+            dbc.set_element_type(DBColumn.ELEMENT_TYPE_INT_1) 
+            dbc.set_num_elements(1)
+        elif self.type in [self.TYPE_STRING, self.TYPE_CHAR]:
+            dbc.set_element_type(DBColumn.ELEMENT_TYPE_CHAR) 
+            dbc.set_num_elements(-1)
+        dbc.set_description(self.description)
+        return dbc 
+
+    def __str__(self):
+        t = self.TYPE_MAP[self.type]
+        s = "{0}:type={1}:number={2}:desc={3}".format(self.name, t,
+                self.number, self.description)
+        return s
+
+def vcf_file_column_factory(line):
+    """
+    Constructs a VCFFileColumn object from the specified line from a VCF file.
+    """
+    d = {}
+    s = line[line.find("<") + 1: line.find(">")]
+    for j in range(3):
+        k = s.find(",")
+        tokens = s[:k].split("=")
+        s = s[k + 1:]
+        d[tokens[0]] = tokens[1]
+    tokens = s.split("=", 1)
+    d[tokens[0]] = tokens[1]
+    col = VCFFileColumn()
+    col.description = d["Description"]
+    col.name = d["ID"]
+    st = d["Type"]
+    if st == "Integer":
+        t = VCFFileColumn.TYPE_INTEGER
+    elif st == "Float":
+        t = VCFFileColumn.TYPE_FLOAT
+    elif st == "Flag":
+        t = VCFFileColumn.TYPE_FLAG
+    elif st == "Character":
+        t = VCFFileColumn.TYPE_CHAR
+    elif st == "String":
+        t = VCFFileColumn.TYPE_STRING
+    else:
+        raise ValueError("Unknown type:", st)
+        
+    col.type = t 
+    number = d["Number"]
+    if number == ".":
+        col.number = VCFFileColumn.NUMBER_ANY
+    else:
+        col.number = int(number) 
+    return col 
+    
+
+
+class VCFFileParser(object):
+    """
+    Class responsible for parsing a VCF file. First we contruct the database
+    schema by parsing the header and ...
+    
+    TODO: finish docs once the process is sorted. The basic idea is that 
+    this class is solely responsible for parsing the VCF file and contructing 
+    the schema.
+    """
+    def __init__(self, vcf_file, database):
+        """
+        Allocates a new VCFFileParser for the specified file. This can be 
+        either plain text, gzipped or bzipped.
+        """
+        self._file_path = vcf_file
+        self._version = -1.0
+        self._genotypes = []
+        self._info_columns = {}
+        self._genotype_columns = {}
+        self._database = database
+        self._file_size = float(os.stat(vcf_file).st_size)
+
+    def get_schema(self):
+        """
+        After the file headers have been read we can allocate the 
+        schema, which defines the method of packing and unpacking 
+        data from database records.
+        """
+        schema = Schema()
+        # TODO Get the text of these descriptions from the file format
+        # definition and put them in here as constants.
+        schema.add_integer_column(POS, 8, 1, "Chromosome position")
+        schema.add_string_column(CHROM, 1, "Chromosome") #enum
+        schema.add_string_column(ID, 1, "Identifiers")
+        schema.add_string_column(REF, 1, "Reference allele")
+        schema.add_string_column(ALT, 1, "Alternative allele")
+        schema.add_float_column(QUAL, 1, "Quality")
+        schema.add_string_column(FILTER, 1, "Filter") #enum
+        for name, col in self._info_columns.items():
+            schema.add_vcf_column(INFO + "_" + name, col)
+        for genotype in self._genotypes:
+            for name, col in self._genotype_columns.items():
+                schema.add_vcf_column(genotype + "_" + name, col)
+        schema.finalise()
+        return schema 
+
+    def open_file(self):
+        """
+        Opens the source file so that it can be read by the parsing code. 
+        Throws an error if it is not one of the supported formats:
+        .vcf or .vcf.gz 
+        """
+        path = self._file_path
+        if path.endswith(".vcf.gz"):
+            f = gzip.open(path, 'rb') 
+            self._backing_file = f.fileobj
+        elif path.endswith(".vcf"):
+            f = open(path, 'rb') 
+            self._backing_file = f
+        else:
+            raise ValueError("Unsupported file format")
+        return f
+   
+    def get_progress(self):
+        """
+        Returns the progress through the file as a fraction.
+        """
+        return self._backing_file.tell() / self._file_size
+
+    def _parse_version(self, s):
+        """
+        Parse the VCF version number from the specified string.
+        """
+        self._version = -1.0
+        tokens = s.split("v")
+        if len(tokens) == 2:
+            self._version = float(tokens[1])
+   
+
+    def _parse_meta_information(self, line):
+        """
+        Processes the specified meta information line to obtain the values 
+        of the various columns and their types.
+        """
+        if line.startswith("##INFO"):
+            col = vcf_file_column_factory(line)
+            self._info_columns[col.name] = col
+        elif line.startswith("##FORMAT"):
+            col = vcf_file_column_factory(line)
+            self._genotype_columns[col.name] = col
+        else:
+            #print("NOT PARSED:", line)
+            pass
+            # TODO insert another case here to deal with the FILTER column
+            # and add enumeration values to it.
+
+    def _parse_header_line(self, s):
+        """
+        Processes the specified header string to get the genotype labels.
+        """
+        self._genotypes = s.split()[9:]
+
+    def parse_record(self, s):
+        """
+        Parses the specified vcf record.
+        """
+        db = self._database
+        l = s.split()
+        db.set_record_value(CHROM, l[0])
+        db.set_record_value(POS, int(l[1]))
+        db.set_record_value(ID, l[2])
+        db.set_record_value(REF, l[3])
+        db.set_record_value(ALT, l[4])
+        db.set_record_value(QUAL, float(l[5]))
+        db.set_record_value(FILTER, l[6])
+        for mapping in l[7].split(";"):
+            tokens = mapping.split("=")
+            col = self._info_columns[tokens[0]]
+            db_name = INFO + "_" + col.name 
+            if len(tokens) == 2:
+                db.set_record_value(db_name, col.parse(tokens[1]))
+            else:
+                assert(col.type == VCFFileColumn.TYPE_FLAG)
+                db.set_record_value(db_name, 1)
+        j = 0
+        fmt  = l[8].split(":")
+        for genotype_values in l[9:]:
+            tokens = genotype_values.split(":")
+            if len(tokens) == len(fmt):
+                for k in range(len(fmt)):
+                    col = self._genotype_columns[fmt[k]]
+                    db_name = self._genotypes[j] + "_" + fmt[k]
+                    db.set_record_value(db_name, col.parse(tokens[k]))
+            elif len(tokens) > 1:
+                # We can treat a genotype value on its own as missing values.
+                # We can have skipped columns at the end though, which we 
+                # should deal with properly. So, put in a loud complaint 
+                # here and fix later.
+                print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
+            j += 1
+
+    def read_header(self, f):
+        """
+        Reads the header for this VCF file, constructing the database
+        schema and getting the parser prepared for processing records.
+        """
+        # Read the header
+        s = (f.readline()).decode()
+        self._parse_version(s)
+        if self._version < 4.0:
+            raise ValueError("VCF versions < 4.0 not supported")
+        while s.startswith("##"):
+            self._parse_meta_information(s)
+            s = (f.readline()).decode()
+        self._parse_header_line(s)
+    
+        
+class DBColumn(object):
+    """
+    Class representing a single column in a Schema. 
+    """
+    
+    _byte_order = ">" # big-endian for now so we can sort integers.
+    VARIABLE_RECORD_OFFSET_FORMAT = ">HH" 
+    
+    ELEMENT_TYPE_CHAR = 0
+    ELEMENT_TYPE_INT_1 = 1
+    ELEMENT_TYPE_INT_2 = 2
+    ELEMENT_TYPE_INT_4 = 3
+    ELEMENT_TYPE_INT_8 = 4
+    ELEMENT_TYPE_FLOAT = 5
+    
+    STORAGE_FORMAT_MAP = {
+        ELEMENT_TYPE_CHAR : "c",
+        ELEMENT_TYPE_INT_1 : "b",
+        ELEMENT_TYPE_INT_2 : "h",
+        ELEMENT_TYPE_INT_4 : "i",
+        ELEMENT_TYPE_INT_8 : "q",
+        ELEMENT_TYPE_FLOAT : "f"
+    }
+
+    def __init__(self):
+        self._description = "" 
+        self._name = "" 
+        self._num_elements = -1 
+        self._element_type = self.ELEMENT_TYPE_CHAR
+        self._offset = 0
+
+    def set_element_type(self, element_type):
+        """
+        Sets the column element type to the specified value.
+        """
+        self._element_type = element_type
+
+    def set_offset(self, offset):
+        """
+        Sets the offset at which we read the values in this column to the specified 
+        value.
+        """
+        self._offset = offset
+
+    def get_offset(self):
+        """
+        Returns the storage offset for this column.
+        """
+        return self._offset
+
+    def get_fixed_region_size(self):
+        """
+        Returns the number of bytes occupied by this column within the 
+        fixed region.
+        """
+        s = self.VARIABLE_RECORD_OFFSET_FORMAT 
+        if self._num_elements > 0:
+            fmt = self.STORAGE_FORMAT_MAP[self._element_type]
+            s = self._byte_order + fmt * self._num_elements
+        return struct.calcsize(s)
+
+    
+    def __str__(self):
+        return "name={0}; num={1}; desc={2}".format(self._name, self._num_elements, 
+                self._description)
+    
+    def set_description(self, description):
+        """
+        Sets the column description to the specified value.
+        """
+        self._description = description
+
+    def set_name(self, cname):
+        """
+        Sets the ID for this column to the specified value.
+        """
+        self._name = cname
+   
+    def set_num_elements(self, num_elements):
+        """
+        Sets the number of values in this column to the specified value.
+        """
+        self._num_elements = num_elements
+
+    def get_name(self):
+        """
+        Returns the name of this column.
+        """
+        return self._name
+
+    def get_num_elements(self):
+        """
+        Returns the number of values in this column.
+        """
+        return self._num_elements
+
+    def set_value(self, value, record_buffer):
+        """
+        Encodes the specified Python value into its raw binary equivalent 
+        and stores it in the specified record buffer. 
+        
+        FIXME: This is a mess, but it's all as a result of the String 
+        type. We're going to have to use Enumerations I think, or 
+        it'll always be rubbish. Big space gains to be made too.
+        """
+        buff = record_buffer.storage
+        s = self.STORAGE_FORMAT_MAP[self._element_type]
+        offset = self._offset
+        if self._num_elements < 0:
+            n = len(value)
+            fmt = self._byte_order + n * s 
+            start = record_buffer.free_offset
+            length = struct.calcsize(fmt)
+            record_buffer.free_offset += length
+            struct.pack_into(self.VARIABLE_RECORD_OFFSET_FORMAT, buff, 
+                    self._offset, start, length)
+            offset = start
+        else: 
+            fmt = self._byte_order + s * self._num_elements
+            n = self._num_elements
+        if n == 1:
+            v = value
+            if isinstance(v, list):
+                v = value[0]
+            struct.pack_into(fmt, buff, offset, v)
+        else:
+            if self._element_type == self.ELEMENT_TYPE_CHAR:
+                v = value
+                if isinstance(value, list):
+                    # IGNORE LISTS OF STRINGS!!
+                    pass
+                else :
+                    struct.pack_into(fmt, buff, offset, *v)
+            else:
+                struct.pack_into(fmt, buff, offset, *value)
+
+
+    def get_value(self, record_buffer):
+        """
+        Returns the value of this column in the specifed record buffer.
+        """
+        ret = None
+        buff = record_buffer.storage
+        s = self.STORAGE_FORMAT_MAP[self._element_type]
+        n  = self._num_elements
+        if n < 0: 
+            start, length = struct.unpack_from(self.VARIABLE_RECORD_OFFSET_FORMAT,
+                    buff, self._offset)
+            n = length // struct.calcsize(s)
+            fmt = self._byte_order + n * s 
+            t = struct.unpack_from(fmt, buff, start)
+
+        else: 
+            if self._element_type != self.ELEMENT_TYPE_CHAR:
+                fmt = self._byte_order + s * n 
+                t = struct.unpack_from(fmt, buff, self._offset)
+                ret = t
+                if len(t) == 1:
+                    ret = t[0]
+
+        return ret
+
+
+
+
+
+class Schema(object):
+    """
+    Class representing a schema for database records. In this schema 
+    we have a set of columns supporting storage for arrays of 
+    integer, float and string data.
+    """
+    def __init__(self):
+        self.__columns = {} 
+        self.__fixed_region_size = 0 
+            
+    def get_fixed_region_size(self):
+        """
+        Returns the length of the fixed region of a record from this 
+        schema.
+        """
+        return self.__fixed_region_size
+        
+    def get_column(self, name):
+        """
+        Returns the column with the specified name.
+        """
+        return self.__columns[name]
+    
+    def add_integer_column(self, name, size, num_values, description):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of integer values of the specified size in bytes. 
+        """
+        size_map = {
+            1: DBColumn.ELEMENT_TYPE_INT_1,
+            2: DBColumn.ELEMENT_TYPE_INT_2,
+            4: DBColumn.ELEMENT_TYPE_INT_4,
+            8: DBColumn.ELEMENT_TYPE_INT_8
+        }
+        col = DBColumn()
+        col.set_name(name)
+        col.set_element_type(size_map[size])
+        col.set_num_elements(num_values)
+        col.set_description(description)
+        self.__columns[name] = col 
+    
+    def add_float_column(self, name, num_values, description):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of float values.
+        """
+        col = DBColumn()
+        col.set_name(name)
+        col.set_element_type(DBColumn.ELEMENT_TYPE_FLOAT)
+        col.set_num_elements(num_values)
+        col.set_description(description)
+        self.__columns[name] = col 
+
+    def add_string_column(self, name, num_values, description):
+        """
+        Adds a column with the specified name to hold the specified 
+        number of string values.
+        """
+        col = DBColumn()
+        col.set_name(name)
+        col.set_element_type(DBColumn.ELEMENT_TYPE_CHAR)
+        col.set_num_elements(-1)
+        col.set_description(description)
+        self.__columns[name] = col 
+
+    def add_vcf_column(self, name, vcf_column):
+        """
+        Adds a column corresponding to the specified vcf column to this 
+        schema.
+        """
+        col = vcf_column.get_db_column()
+        col.set_name(name)
+        self.__columns[name] = col 
+
+    def finalise(self):
+        """
+        Finalises this schema, by taking all the columns that have 
+        been added, and calculating and storing their record offsets.
+        """
+        offset = 0
+        for col in self.__columns.values():
+            col.set_offset(offset)
+            offset += col.get_fixed_region_size() 
+        self.__fixed_region_size = offset
+        
+
+
+class RecordBuffer(object):
+    """
+    Thin wrapper around a bytearray object in which we keep the index of 
+    the next free location.
+    """
+    def __init__(self, storage, free_offset):
+        self.storage = storage
+        self.free_offset = free_offset
+
+
+class Database(object):
+    """
+    Class representing a database of site information. 
+    """
+    
+    def __init__(self, directory):
+        self.__directory = directory
+        self.__schema = None
+        self.__record_id = 0
+        self.__primary_key_format = ">Q"
+        self.__bdb = _vcfdb.BerkeleyDatabase()
+        self.__bdb.record_buffer = bytearray(MAX_RECORD_SIZE)
+        self.__bdb.key_length = struct.calcsize(self.__primary_key_format)
+        self.__bdb.key_buffer = bytearray(self.__bdb.key_length)
+        self.__record_buffer = RecordBuffer(self.__bdb.record_buffer, 0)
+
+    def set_record_value(self, column, value):
+        """
+        Sets the value for the specified column to the specified value 
+        in the current database record.
+        """
+        #print("storing ", column, "->", value)
+        col = self.__schema.get_column(column)
+        col.set_value(value, self.__record_buffer)
+        v = col.get_value(self.__record_buffer)
+        #print(col.get_name(), ":", value, "->", v)
+
+
+    def __prepare_record(self):
+        """
+        Prepares a new record for storage by setting all columns to their 
+        default values and encoding a new key.
+        """
+        struct.pack_into(self.__primary_key_format, self.__bdb.key_buffer, 0, 
+                self.__record_id)
+        buff = self.__record_buffer.storage
+        for j in range(self.__record_buffer.free_offset):
+            buff[j] = 0
+        self.__record_buffer.free_offset = self.__schema.get_fixed_region_size() 
+            
+    def __commit_record(self):
+        """
+        Commits the current record into the database.
+        """
+        self.__bdb.record_buffer[0] = 0
+        self.__bdb.record_length = self.__record_buffer.free_offset
+        self.__bdb.store_record()
+        
+
+
+    def parse_vcf(self, vcf_file, indexed_columns=[], progress_callback=None):
+        """
+        Parses the specified vcf file, generating a new database in 
+        with the specified indexed columns. The specified callback 
+        function is called periodically if not None.
+        """
+        parser = VCFFileParser(vcf_file, self)
+        self.__bdb.open()
+        last_progress = 0 
+        with parser.open_file() as f:
+            parser.read_header(f)
+            self.__schema = parser.get_schema()
+            self.__record_id = 1 
+            for line in f:
+                # the parser calls back to set_record value for all values
+                self.__prepare_record()
+                parser.parse_record(line.decode())
+                self.__commit_record()
+                self.__record_id += 1
+                progress = int(parser.get_progress() * 1000)
+                if progress != last_progress:
+                    last_progress = progress 
+                    if progress_callback is not None:
+                        progress_callback(progress, self.__record_id)
+        self.__bdb.close()
+           
+
+######################## OLD CODE ############################################
+
 #class VCFColumn(object):
 #    """
 #    Class representing a column in a VCF database. This encapsulates information 
@@ -412,650 +1017,6 @@ MAX_RECORD_SIZE = 65536 # 64KiB
 #        #print("b = ", b[:offset] )
 #        print(offset, len(d["record"]))
 #
-
-class VCFFileColumn(object):
-    """
-    Class representing a column in a VCF file.
-    """
-    NUMBER_ANY = -1
-    TYPE_INTEGER = 0
-    TYPE_FLOAT = 1
-    TYPE_FLAG = 2
-    TYPE_STRING = 3
-    TYPE_CHAR = 4
-    
-    TYPE_MAP = {
-        TYPE_INTEGER: "Integer",
-        TYPE_FLOAT: "Float",
-        TYPE_FLAG: "Flag", 
-        TYPE_STRING: "String",
-        TYPE_CHAR: "Character"}
-  
-    PARSER_MAP = {
-        TYPE_INTEGER: int, 
-        TYPE_FLOAT: float, 
-        TYPE_FLAG: int, 
-        TYPE_STRING: str,
-        TYPE_CHAR: str} 
-    
-    def parse(self, s):
-        """
-        Parses the specified value into the appropriate Python types.
-        """
-        p = self.PARSER_MAP[self.type]
-        v = []
-        for tok in s.split(","):
-            v.append(p(tok))
-        if self.number != self.NUMBER_ANY:
-            assert(len(v) == self.number)
-        return v[0] if self.number == 1 else v
-    
-    def get_db_column(self):
-        """
-        Returns a DBColumn instance suitable to represent this VCFFileColumn.
-        """ 
-        if self.type == self.TYPE_INTEGER:
-            dbc = IntegerColumn()
-            # We default to 16 bit integers; this should probably be a 
-            # configuration option.
-            dbc.set_size(2) 
-        elif self.type == self.TYPE_FLOAT:
-            dbc = FloatColumn()
-        elif self.type == self.TYPE_FLAG:
-            dbc = IntegerColumn()
-            dbc.set_size(1) 
-        elif self.type in [self.TYPE_STRING, self.TYPE_CHAR]:
-            dbc = StringColumn()
-        dbc.set_description(self.description)
-        dbc.set_num_values(1 if self.type == self.TYPE_FLAG else self.number)
-        return dbc 
-
-    def __str__(self):
-        t = self.TYPE_MAP[self.type]
-        s = "{0}:type={1}:number={2}:desc={3}".format(self.name, t,
-                self.number, self.description)
-        return s
-
-def vcf_file_column_factory(line):
-    """
-    Constructs a VCFFileColumn object from the specified line from a VCF file.
-    """
-    d = {}
-    s = line[line.find("<") + 1: line.find(">")]
-    for j in range(3):
-        k = s.find(",")
-        tokens = s[:k].split("=")
-        s = s[k + 1:]
-        d[tokens[0]] = tokens[1]
-    tokens = s.split("=", 1)
-    d[tokens[0]] = tokens[1]
-    col = VCFFileColumn()
-    col.description = d["Description"]
-    col.name = d["ID"]
-    st = d["Type"]
-    if st == "Integer":
-        t = VCFFileColumn.TYPE_INTEGER
-    elif st == "Float":
-        t = VCFFileColumn.TYPE_FLOAT
-    elif st == "Flag":
-        t = VCFFileColumn.TYPE_FLAG
-    elif st == "Character":
-        t = VCFFileColumn.TYPE_CHAR
-    elif st == "String":
-        t = VCFFileColumn.TYPE_STRING
-    else:
-        raise ValueError("Unknown type:", st)
-        
-    col.type = t 
-    number = d["Number"]
-    if number == ".":
-        col.number = VCFFileColumn.NUMBER_ANY
-    else:
-        col.number = int(number) 
-    return col 
-    
-
-
-class VCFFileParser(object):
-    """
-    Class responsible for parsing a VCF file. First we contruct the database
-    schema by parsing the header and ...
-    
-    TODO: finish docs once the process is sorted. The basic idea is that 
-    this class is solely responsible for parsing the VCF file and contructing 
-    the schema.
-    """
-    def __init__(self, vcf_file, progress_callback=None):
-        """
-        Allocates a new VCFFileParser for the specified file. This can be 
-        either plain text, gzipped or bzipped.
-        """
-        self._file_path = vcf_file
-        self._progress_callback = progress_callback
-        self._version = -1.0
-        self._genotypes = []
-        self._info_columns = {}
-        self._genotype_columns = {}
-        self._schema = None
-
-    def _define_schema(self):
-        """
-        After the file headers have been read we can allocate the 
-        schema, which defines the method of packing and unpacking 
-        data from database records.
-        """
-        self._schema = DBSchema()
-        # TODO Get the text of these descriptions from the file format
-        # definition and put them in here as constants.
-        self._schema.add_integer_column(POS, 8, 1, "Chromosome position")
-        self._schema.add_string_column(CHROM, 1, "Chromosome") #enum
-        self._schema.add_string_column(ID, 1, "Identifiers")
-        self._schema.add_string_column(REF, 1, "Reference allele")
-        self._schema.add_string_column(ALT, 1, "Alternative allele")
-        self._schema.add_float_column(QUAL, 1, "Quality")
-        self._schema.add_string_column(FILTER, 1, "Filter") #enum
-        for name, col in self._info_columns.items():
-            self._schema.add_vcf_column(INFO + "_" + name, col)
-        for genotype in self._genotypes:
-            for name, col in self._genotype_columns.items():
-                self._schema.add_vcf_column(genotype + "_" + name, col)
-        self._schema.finalise()
-        
-
-    def _open_file(self):
-        """
-        Opens the source file so that it can be read by the parsing code. 
-        Throws an error if it is not one of the supported formats:
-        .vcf, .vcf.gz or .vcf.bz2
-        """
-        path = self._file_path
-        if path.endswith(".vcf.gz"):
-            f = gzip.open(path, 'rb') 
-        elif path.endswith(".vcf.bz2"):
-            f = bz2.BZ2File(path, 'rb') 
-        elif path.endswith(".vcf"):
-            f = open(path, 'rb') 
-        else:
-            raise ValueError("Unsupported file format")
-        return f
-    
-    def _parse_version(self, s):
-        """
-        Parse the VCF version number from the specified string.
-        """
-        self._version = -1.0
-        tokens = s.split("v")
-        if len(tokens) == 2:
-            self._version = float(tokens[1])
-   
-
-    def _parse_meta_information(self, line):
-        """
-        Processes the specified meta information line to obtain the values 
-        of the various columns and their types.
-        """
-        if line.startswith("##INFO"):
-            col = vcf_file_column_factory(line)
-            self._info_columns[col.name] = col
-        elif line.startswith("##FORMAT"):
-            col = vcf_file_column_factory(line)
-            self._genotype_columns[col.name] = col
-        else:
-            #print("NOT PARSED:", line)
-            pass
-            # TODO insert another case here to deal with the FILTER column
-            # and add enumeration values to it.
-
-    def _parse_header_line(self, s):
-        """
-        Processes the specified header string to get the genotype labels.
-        """
-        self._genotypes = s.split()[9:]
-
-    def _parse_record(self, s):
-        """
-        Parses the specified vcf record.
-        """
-        l = s.split()
-        self._schema.set_value(CHROM, l[0])
-        self._schema.set_value(POS, int(l[1]))
-        self._schema.set_value(ID, l[2])
-        self._schema.set_value(REF, l[3])
-        self._schema.set_value(ALT, l[4])
-        self._schema.set_value(QUAL, float(l[5]))
-        self._schema.set_value(FILTER, l[6])
-        for mapping in l[7].split(";"):
-            tokens = mapping.split("=")
-            col = self._info_columns[tokens[0]]
-            db_name = INFO + "_" + col.name 
-            if len(tokens) == 2:
-                self._schema.set_value(db_name, col.parse(tokens[1]))
-            else:
-                assert(col.type == VCFFileColumn.TYPE_FLAG)
-                self._schema.set_value(db_name, 1)
-        j = 0
-        fmt  = l[8].split(":")
-        for genotype_values in l[9:]:
-            tokens = genotype_values.split(":")
-            if len(tokens) == len(fmt):
-                for k in range(len(fmt)):
-                    col = self._genotype_columns[fmt[k]]
-                    db_name = self._genotypes[j] + "_" + fmt[k]
-                    self._schema.set_value(db_name, col.parse(tokens[k]))
-            elif len(tokens) > 1:
-                # We can treat a genotype value on its own as missing values.
-                # We can have skipped columns at the end though, which we 
-                # should deal with properly. So, put in a loud complaint 
-                # here and fix later.
-                print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
-            j += 1
-
-
-    def _read_header(self, f):
-        """
-        Reads the header for this VCF file, constructing the database
-        schema and getting the parser prepared for processing records.
-        """
-        # Read the header
-        s = (f.readline()).decode()
-        self._parse_version(s)
-        if self._version < 4.0:
-            raise ValueError("VCF versions < 4.0 not supported")
-        while s.startswith("##"):
-            self._parse_meta_information(s)
-            s = (f.readline()).decode()
-        self._parse_header_line(s)
-    
-    def _read_records(self, f):
-        """
-        Reads the records from the VCF file, presenting records ready
-        for storage to the database.
-        """
-        for line in f:
-            #print("record size = ", len(line))
-            self._schema.clear_record()
-            self._parse_record(line.decode())
-            self._schema.store_record()
-            # callback into the database and store the record?
-    
-    def parse(self):
-        """
-        Parses this vcf file.
-        """
-        with self._open_file() as f:
-            self._read_header(f)
-            self._define_schema()
-            self._read_records(f)
-        self._schema.close()
-
-
-class DBColumn(object):
-    """
-    Class representing a single column in a DBSchema. Each column has a 
-    fixed type, and a methods to encode and decode values to and from 
-    db format. Columns represent arrays of values, and can be either 
-    single values, fixed length arrays or variable length arrays.
-    """
-    
-    _byte_order = ">" # big-endian for now so we can sort integers.
-    
-    def __init__(self):
-        self._description = "" 
-        self._name = "" 
-        self._num_values = 0
-        self._storage_format = ""
-        self._offset = 0
-
-    def set_offset(self, offset):
-        """
-        Sets the offset at which we read the values in this column to the specified 
-        value.
-        """
-        self._offset = offset
-
-    def get_offset(self):
-        """
-        Returns the storage offset for this column.
-        """
-        return self._offset
-
-    def is_fixed_size(self):
-        """
-        Returns true if this column can be packed into a fixed number of bytes.
-        """
-        return self._num_values >= 1
-
-    def get_pack_format(self):
-        """
-        Returns a string representing the pack format used by the struct 
-        module.
-        """
-        if self._num_values > 0:
-            s = self._byte_order + self._storage_format * self._num_values
-        else:
-            s = self._byte_order + self._storage_format 
-            
-        return s
-
-    def __str__(self):
-        return "name={0}; num={1}; desc={2}".format(self._name, self._num_values, 
-                self._description)
-    
-    def set_description(self, description):
-        """
-        Sets the column description to the specified value.
-        """
-        self._description = description
-
-    def set_name(self, cname):
-        """
-        Sets the ID for this column to the specified value.
-        """
-        self._name = cname
-   
-    def set_num_values(self, num_values):
-        """
-        Sets the number of values in this column to the specified value.
-        """
-        self._num_values = num_values
-
-    def get_name(self):
-        """
-        Returns the name of this column.
-        """
-        return self._name
-
-    def get_num_values(self):
-        """
-        Returns the number of values in this column.
-        """
-        return self._num_values
-
-    def encode(self, py_value):
-        """
-        Encodes the specified python value as a binary db format and 
-        returns the resulting bytes object. 
-        """
-        ret = None
-        return ret
-
-    def decode(self, db_value):
-        """
-        Decodes the specified bytes object representing a database 
-        value for this column and returns the resulting Python
-        value.
-        """
-        ret = None
-        return ret
-
-
-class IntegerColumn(DBColumn):
-    """
-    Class representing signed integer columns.
-    """
-    storage_format_map = {
-        1: "b",
-        2: "h",
-        4: "i",
-        8: "q"
-    }
-
-    def set_size(self, size):
-        """
-        Sets the size of this integer column to the specified column in 
-        bytes.
-        """ 
-        self._storage_format = self.storage_format_map[size] 
-        
-
-class FloatColumn(DBColumn):
-    """
-    Class representing IEEE floating point columns. 
-    """
-    def __init__(self):
-        self._storage_format = "f"
-
-
-class StringColumn(DBColumn):
-    """
-    Class representing String columns.
-    """
-    def is_fixed_size(self):
-        return False
-
-class DBSchema(object):
-    """
-    Class representing a schema for database records. In this schema 
-    we have a set of columns supporting storage for arrays of 
-    integer, float and string data.
-    """
-    def __init__(self):
-        self.__columns = {} 
-        self.__free_region = 0
-        self.__database = _vcfdb.Table() 
-        self.__database.open()
-        self.__database.record_buffer = bytearray(MAX_RECORD_SIZE)
-        self.__database.record_number = 1 
-    
-    def add_integer_column(self, name, size, num_values, description):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of integer values of the specified size in bytes. 
-        """
-        col = IntegerColumn()
-        col.set_name(name)
-        col.set_size(size)
-        col.set_num_values(num_values)
-        col.set_description(description)
-        self.__columns[name] = col 
-    
-    def add_float_column(self, name, num_values, description):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of float values.
-        """
-        col = FloatColumn()
-        col.set_name(name)
-        col.set_num_values(num_values)
-        col.set_description(description)
-        self.__columns[name] = col 
-
-    def add_string_column(self, name, num_values, description):
-        """
-        Adds a column with the specified name to hold the specified 
-        number of string values.
-        """
-        col = StringColumn()
-        col.set_name(name)
-        col.set_num_values(num_values)
-        col.set_description(description)
-        self.__columns[name] = col 
-
-
-    def add_vcf_column(self, name, vcf_column):
-        """
-        Adds a column corresponding to the specified vcf column to this 
-        schema.
-        """
-        col = vcf_column.get_db_column()
-        col.set_name(name)
-        self.__columns[name] = col 
-
-    def finalise(self):
-        """
-        Finalises this schema, by taking all the columns that have 
-        been added, and calculating and storing their record offsets.
-        """
-        fixed_columns = [col.get_name() for col in self.__columns.values()
-                if col.is_fixed_size()]
-        non_fixed_columns = [col.get_name() for col in self.__columns.values()
-                if not col.is_fixed_size()]
-        # Give them a canonical order.
-        fixed_columns.sort()
-        non_fixed_columns.sort()
-        offset = 0
-        for col_name in fixed_columns:
-            col = self.__columns[col_name]
-            col.set_offset(offset)
-            fmt = col.get_pack_format()
-            #print(col.get_name(), "->", repr(col), ":", col.get_num_values())
-            packed_size = struct.calcsize(fmt)
-            offset += packed_size
-            #print("\tformat = ", fmt, ":", packed_size)
-        #print("end of fixed region = ", offset)
-        for col_name in non_fixed_columns:
-            col = self.__columns[col_name]
-            col.set_offset(offset)
-            # for each non-fixed column we allocate it 2 bytes so it can
-            # record the offset at which it starts
-            fmt = "=HH"
-            packed_size = struct.calcsize(fmt)
-            #print(col_name, "->", repr(col), ":", col.get_num_values())
-            offset += packed_size
-        self.__free_region_start = offset    
-        
-
-    def clear_record(self):
-        """
-        Clears the current record, making it ready for values to 
-        be set.
-        """
-        # Zero out the record - better done in C
-        for j in range(self.__free_region_start):
-            self.__database.record_buffer[j] = 0
-        # TODO: Set default values for fixed values.
-        self.__free_region = self.__free_region_start
-        
-        # TEMP: use self.__current_record for crap code below.
-        self.__current_record = self.__database.record_buffer
-
-        
-
-    def store_record(self):
-        """
-        Pushes the record into the underlying database.
-        """
-        """
-        print("P:", end="")
-        for j in range(self.__free_region):
-            print(self.__current_record[j], sep="", end="")
-        print()
-        """
-        sys.stdout.flush()
-        self.__database.record_length = self.__free_region
-        self.__database.store_record()
-
-        self.__database.record_number += 1
-
-    def close(self):
-        """
-        This shouldn't be here.
-        """
-        self.__database.close()
-
-    def set_value(self, col_name, value):
-        """
-        Sets the value for the specified column to the specified 
-        value.
-        """
-        col = self.__columns[col_name]
-        #col.set_store_record(value, self.__current_record)
-
-        # TODO: delegate these to the Column class
-        if col.is_fixed_size():
-            fmt = col.get_pack_format()
-            offset = col.get_offset()
-            if col.get_num_values() == 1:
-                struct.pack_into(fmt, self.__current_record, offset, value)
-            else:
-                struct.pack_into(fmt, self.__current_record, offset, *value)
-            #v = self.get_value(col_name)
-            #print("\t to offset ", offset, "->", v)
-        else:
-            # This is all a total mess, and needs to be moved up into the 
-            # column classes so we can share functionality and so on.
-            # The Column class should have a store_record function which 
-            # takes the binary buffer as its argument.
-            # The basic ideas here work well enough though.
-            
-            #print("set ", col_name, "->", value)
-            if isinstance(col, StringColumn):
-                # Lists of strings must be encoded - this is a very 
-                # poor implementation. FIXME
-                # This should be done at the encoded level using NULL bytes.
-                if col.get_num_values() == 1:
-                    v = value
-                else:   
-                    v = ""
-                    for s in value:
-                        v += s + ","
-                    #print("mapped", value, "to ", v)
-                fmt = "=HH"
-                offset = col.get_offset()
-                start = self.__free_region
-                end = start + len(v)
-                self.__free_region = end 
-                #print("\trecording", start, end, "at offset ", offset)
-                struct.pack_into(fmt, self.__current_record, offset, start, end)
-                self.__current_record[start:end] = v.encode()
-                #print("\tfree region at", self.__free_region) 
-                #print("\tretrieved:", self.get_value(col_name))
-            else:
-                n = len(value)
-                #print("non string length ", n)
-                fmt = "=HH"
-                offset = col.get_offset()
-                start = self.__free_region
-                end = start + n * struct.calcsize(col.get_pack_format())
-                self.__free_region = end 
-                #print("\tpack format = ", col.get_pack_format())
-                #print("\trecording", start, end, "at offset ", offset)
-                struct.pack_into(fmt, self.__current_record, offset, start, end)
-                fmt = col.get_pack_format()
-                offset = start
-                for j in range(n):
-                    struct.pack_into(fmt, self.__current_record, offset, value[j])
-                    offset +=  struct.calcsize(col.get_pack_format())
-                #print("\tretrieved:", self.get_value(col_name))
-                
-
-
-
-    def get_value(self, col_name):
-        """
-        Returns the value of the specified column in the current record.
-        """
-        col = self.__columns[col_name]
-        ret = None
-        if col.is_fixed_size():
-            fmt = col.get_pack_format()
-            offset = col.get_offset()
-            t = struct.unpack_from(fmt, self.__current_record, offset)
-            assert len(t) == col.get_num_values()
-            ret = t
-            if len(t) == 1:
-                ret = t[0]
-        else:
-            if isinstance(col, StringColumn):
-                fmt = "=HH"
-                offset = col.get_offset()
-                start, end = struct.unpack_from(fmt, self.__current_record, offset)
-                b = self.__current_record[start:end] 
-                ret = b.decode()
-            else:
-                fmt = "=HH"
-                offset = col.get_offset()
-                start, end = struct.unpack_from(fmt, self.__current_record, offset)
-                b = self.__current_record[start:end] 
-                fmt = col.get_pack_format()
-                offset = start
-                ret = []
-                while offset < end:
-                    t = struct.unpack_from(fmt, self.__current_record, offset)
-                    ret.append(t[0])
-                    offset +=  struct.calcsize(col.get_pack_format())
-
-        return ret
 
 
 class VCFDatabase(object):

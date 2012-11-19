@@ -15,34 +15,41 @@
 typedef struct {
     PyObject_HEAD
     PyObject *record_buffer;
+    PyObject *key_buffer;
     int record_length;
-    int record_number;
+    int key_length;
     DB *primary_db;
     DB **secondary_dbs;
     unsigned int num_secondary_dbs;
-} Table;
+} BerkeleyDatabase;
 
 static void
-Table_dealloc(Table* self)
+BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 {
     Py_XDECREF(self->record_buffer);
+    Py_XDECREF(self->key_buffer);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyObject *
-Table_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+BerkeleyDatabase_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    Table *self;
+    BerkeleyDatabase *self;
 
-    self = (Table *)type->tp_alloc(type, 0);
+    self = (BerkeleyDatabase *)type->tp_alloc(type, 0);
     if (self != NULL) {
         self->record_buffer = PyUnicode_FromString("");
         if (self->record_buffer == NULL) {
             Py_DECREF(self);
             return NULL;
         }
+        self->key_buffer = PyUnicode_FromString("");
+        if (self->key_buffer == NULL) {
+            Py_DECREF(self);
+            return NULL;
+        }
         self->record_length = 0;
-        self->record_number = 0;
+        self->key_length = 0;
         
         self->primary_db = NULL;
         self->secondary_dbs = NULL;
@@ -52,23 +59,23 @@ Table_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 static int
-Table_init(Table *self, PyObject *args, PyObject *kwds)
+BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
 {
-    printf("Table contstructor\n");
     return 0;
 }
 
 
-static PyMemberDef Table_members[] = {
-    {"record_buffer", T_OBJECT_EX, offsetof(Table, record_buffer), 0, "first name"},
-    {"record_length", T_INT, offsetof(Table, record_length), 0, "record length"},
-    {"record_number", T_INT, offsetof(Table, record_number), 0, "record number"},
+static PyMemberDef BerkeleyDatabase_members[] = {
+    {"key_buffer", T_OBJECT_EX, offsetof(BerkeleyDatabase, key_buffer), 0, "key"},
+    {"key_length", T_INT, offsetof(BerkeleyDatabase, key_length), 0, "key length"},
+    {"record_buffer", T_OBJECT_EX, offsetof(BerkeleyDatabase, record_buffer), 0, "record"},
+    {"record_length", T_INT, offsetof(BerkeleyDatabase, record_length), 0, "record length"},
     {NULL}  /* Sentinel */
 };
 
 
 static PyObject *
-Table_open(Table* self)
+BerkeleyDatabase_open(BerkeleyDatabase* self)
 {
     int ret;
     u_int32_t flags;
@@ -77,25 +84,33 @@ Table_open(Table* self)
         printf("Error creading DB handle\n");
         /* Error handling goes here */
     }
-    flags = DB_CREATE;
+    ret = self->primary_db->set_cachesize(self->primary_db, 0, 
+            32 * 1024 * 1024, 1);
+    if (ret != 0) {
+        printf("Error setting cache"); 
+    }
+    
+    
+    flags = DB_CREATE|DB_TRUNCATE;
     
     ret = self->primary_db->open(self->primary_db,        /* DB structure pointer */
             NULL,       /* Transaction pointer */
             "tmp/primary.db", /* On-disk file that holds the database. */
             NULL,       /* Optional logical database name */
-            DB_RECNO,   /* Database access method */
+            DB_BTREE,   /* Database access method */
             flags,      /* Open flags */
             0);         /* File mode (using defaults) */
     if (ret != 0) {
         printf("Error opening DB"); 
     }
-    printf("Table open\n");
     
+
+
     return Py_BuildValue("");
 }
 
 static PyObject *
-Table_close(Table* self)
+BerkeleyDatabase_close(BerkeleyDatabase* self)
 {
     int ret;
     if (self->primary_db != NULL) {
@@ -104,50 +119,66 @@ Table_close(Table* self)
             printf("error closing table\n");
         }
     }
-    printf("Table close\n");
     return Py_BuildValue("");
 }
 
 static PyObject *
-Table_store_record(Table* self)
+BerkeleyDatabase_store_record(BerkeleyDatabase* self)
 {
     int ret;
-    Py_buffer buff;
-    
-    u_int32_t flags = DB_APPEND;
-    u_int32_t len = self->record_length;
-    //db_recno_t recno = self->record_number;
+    Py_buffer key_view, data_view;
+    u_int32_t flags = 0;
     DBT key, data;
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
+    
+    if (!PyByteArray_Check(self->key_buffer)) {
+        printf("Not a byte array!\n");
+        goto out;
+    }
+    if (PyObject_GetBuffer(self->key_buffer, &key_view, PyBUF_SIMPLE) != 0) {
+        printf("Cannot get buffer!!\n");
+        goto out;
+    }
+    key.size = (u_int32_t) self->key_length;
+    key.data = key_view.buf;
+    /*
+    printf("storing key:");
+    for (ret = 0; ret < key.size; ret++) {
+        printf("%d ", ((unsigned char *) key.data)[ret]);
+    }
+    printf("\n");
+    */
     if (!PyByteArray_Check(self->record_buffer)) {
         printf("Not a byte array!\n");
         goto out;
     }
-    if (PyObject_GetBuffer(self->record_buffer, &buff, PyBUF_SIMPLE) != 0) {
+    if (PyObject_GetBuffer(self->record_buffer, &data_view, PyBUF_SIMPLE) != 0) {
         printf("Cannot get buffer!!\n");
         goto out;
     }
     /*
     printf("C:");
     for (ret = 0; ret <= len; ret++) {
-        printf("%d", ((unsigned char *) buff.buf)[ret]);
+        printf("%d", ((unsigned char *) view.buf)[ret]);
         
     }
     */
     //printf("\n");
     //fflush(stdout);
-
-    data.size = len;
-    data.data = buff.buf;
+    data.size = (u_int32_t) self->record_length;
+    data.data = data_view.buf;
 
     ret = self->primary_db->put(self->primary_db, NULL, &key, &data, flags);
     if (ret != 0) {
         printf("ERROR!! %d\n", ret);
     }
     
-    //recno = (db_recno_t) key.data;
-    //printf("store record %d with len = %d\n", recno, len);
+    /* what about error conditions?? */
+    PyBuffer_Release(&key_view);
+    PyBuffer_Release(&data_view);
+    
+    //printf("stored record %d with len = %d\n", recno, len);
 out:
 
     return Py_BuildValue("");
@@ -155,20 +186,20 @@ out:
 
 
 
-static PyMethodDef Table_methods[] = {
-    {"open", (PyCFunction) Table_open, METH_NOARGS, "Open the table" },
-    {"store_record", (PyCFunction) Table_store_record, METH_NOARGS, "store a record" },
-    {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
+static PyMethodDef BerkeleyDatabase_methods[] = {
+    {"open", (PyCFunction) BerkeleyDatabase_open, METH_NOARGS, "Open the table" },
+    {"store_record", (PyCFunction) BerkeleyDatabase_store_record, METH_NOARGS, "store a record" },
+    {"close", (PyCFunction) BerkeleyDatabase_close, METH_NOARGS, "Close the table" },
     {NULL}  /* Sentinel */
 };
 
 
-static PyTypeObject TableType = {
+static PyTypeObject BerkeleyDatabaseType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.Table",             /* tp_name */
-    sizeof(Table),             /* tp_basicsize */
+    "_vcfdb.BerkeleyDatabase",             /* tp_name */
+    sizeof(BerkeleyDatabase),             /* tp_basicsize */
     0,                         /* tp_itemsize */
-    (destructor)Table_dealloc, /* tp_dealloc */
+    (destructor)BerkeleyDatabase_dealloc, /* tp_dealloc */
     0,                         /* tp_print */
     0,                         /* tp_getattr */
     0,                         /* tp_setattr */
@@ -185,24 +216,24 @@ static PyTypeObject TableType = {
     0,                         /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT |
         Py_TPFLAGS_BASETYPE,   /* tp_flags */
-    "Table objects",           /* tp_doc */
+    "BerkeleyDatabase objects",           /* tp_doc */
     0,                     /* tp_traverse */
     0,                     /* tp_clear */
     0,                     /* tp_richcompare */
     0,                     /* tp_weaklistoffset */
     0,                     /* tp_iter */
     0,                     /* tp_iternext */
-    Table_methods,             /* tp_methods */
-    Table_members,             /* tp_members */
+    BerkeleyDatabase_methods,             /* tp_methods */
+    BerkeleyDatabase_members,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
     0,                         /* tp_dict */
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)Table_init,      /* tp_init */
+    (initproc)BerkeleyDatabase_init,      /* tp_init */
     0,                         /* tp_alloc */
-    Table_new,                 /* tp_new */
+    BerkeleyDatabase_new,                 /* tp_new */
 };
    
 
@@ -243,11 +274,11 @@ init_vcfdb(void)
     if (module == NULL) {
         INITERROR;
     }
-    if (PyType_Ready(&TableType) < 0) {
+    if (PyType_Ready(&BerkeleyDatabaseType) < 0) {
         INITERROR;
     }
-    Py_INCREF(&TableType);
-    PyModule_AddObject(module, "Table", (PyObject *) &TableType);
+    Py_INCREF(&BerkeleyDatabaseType);
+    PyModule_AddObject(module, "BerkeleyDatabase", (PyObject *) &BerkeleyDatabaseType);
 
 
 #if PY_MAJOR_VERSION >= 3

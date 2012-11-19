@@ -47,9 +47,15 @@ def main():
     #vi.parse(vcf_file)
     # For the moment, let's just parse this.
     
+    def progress_monitor(progress, record_number):
+        if progress % 100 == 0:
+            print("=", end="")
+            sys.stdout.flush()
+    db = vcfdb.Database(name)
+    db.parse_vcf(vcf_file, [], progress_monitor)
+    print()
+
     
-    parser = vcfdb.VCFFileParser(vcf_file)
-    parser.parse()
 
        
 if __name__ == "__main__":
