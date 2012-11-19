@@ -1552,4 +1552,9 @@ def opendb(dbname, dbdir=DEFAULT_DB_DIR):
     finally:
         vi.close()
 
+if __name__ == "__main__":
+    # temp development code.
+    vcf_file = sys.argv[1]
+    db = Database("tmp")
+    db.parse_vcf(vcf_file)
 
