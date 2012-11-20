@@ -141,7 +141,7 @@ class VCFFileParser(object):
     this class is solely responsible for parsing the VCF file and contructing 
     the schema.
     """
-    def __init__(self, vcf_file, database):
+    def __init__(self, vcf_file, db_builder):
         """
         Allocates a new VCFFileParser for the specified file. This can be 
         either plain text, gzipped or bzipped.
@@ -151,14 +151,13 @@ class VCFFileParser(object):
         self._genotypes = []
         self._info_columns = {}
         self._genotype_columns = {}
-        self._database = database
         self._file_size = float(os.stat(vcf_file).st_size)
 
     def get_schema(self):
         """
         After the file headers have been read we can allocate the 
         schema, which defines the method of packing and unpacking 
-        data from database records.
+        data from db_builder records.
         """
         schema = Schema()
         # TODO Get the text of these descriptions from the file format
@@ -237,29 +236,29 @@ class VCFFileParser(object):
         """
         self._genotypes = s.split()[9:]
 
-    def parse_record(self, s):
+    def parse_record(self, s, dbb):
         """
-        Parses the specified vcf record.
+        Parses the specified vcf record calling set_record_value on the specified 
+        DatabaseBuilder for each column.
         """
-        db = self._database
         l = s.split()
         # TODO: a lot of these should actually be lists anyway...
-        db.set_record_value(CHROM, [l[0]])
-        db.set_record_value(POS, [int(l[1])])
-        db.set_record_value(ID, [l[2]])
-        db.set_record_value(REF, [l[3]])
-        db.set_record_value(ALT, [l[4]])
-        db.set_record_value(QUAL, [float(l[5])])
-        db.set_record_value(FILTER, [l[6]])
+        dbb.set_record_value(CHROM, [l[0]])
+        dbb.set_record_value(POS, [int(l[1])])
+        dbb.set_record_value(ID, [l[2]])
+        dbb.set_record_value(REF, [l[3]])
+        dbb.set_record_value(ALT, [l[4]])
+        dbb.set_record_value(QUAL, [float(l[5])])
+        dbb.set_record_value(FILTER, [l[6]])
         for mapping in l[7].split(";"):
             tokens = mapping.split("=")
             col = self._info_columns[tokens[0]]
             db_name = INFO + "_" + col.name 
             if len(tokens) == 2:
-                db.set_record_value(db_name, col.parse(tokens[1]))
+                dbb.set_record_value(db_name, col.parse(tokens[1]))
             else:
                 assert(col.type == VCFFileColumn.TYPE_FLAG)
-                db.set_record_value(db_name, 1)
+                dbb.set_record_value(db_name, 1)
         j = 0
         fmt  = l[8].split(":")
         for genotype_values in l[9:]:
@@ -268,7 +267,7 @@ class VCFFileParser(object):
                 for k in range(len(fmt)):
                     col = self._genotype_columns[fmt[k]]
                     db_name = self._genotypes[j] + "_" + fmt[k]
-                    db.set_record_value(db_name, col.parse(tokens[k]))
+                    dbb.set_record_value(db_name, col.parse(tokens[k]))
             elif len(tokens) > 1:
                 # We can treat a genotype value on its own as missing values.
                 # We can have skipped columns at the end though, which we 
@@ -279,7 +278,7 @@ class VCFFileParser(object):
 
     def read_header(self, f):
         """
-        Reads the header for this VCF file, constructing the database
+        Reads the header for this VCF file, constructing the database 
         schema and getting the parser prepared for processing records.
         """
         # Read the header
@@ -396,7 +395,6 @@ class DBColumn(object):
         """
         #print("setting ", self, " = ", values)
         ret = None
-        buff = record_buffer.storage
         s = self.STORAGE_FORMAT_MAP[self._element_type]
         fmt = self._byte_order + s 
         element_size = struct.calcsize(s)
@@ -404,20 +402,19 @@ class DBColumn(object):
         n  = self._num_elements
         if n < 0:
             n = len(values)
-            start = record_buffer.free_offset
-            record_buffer.free_offset += n * element_size 
-            struct.pack_into(self.VARIABLE_RECORD_OFFSET_FORMAT, buff, 
+            start = record_buffer.current_record_size
+            record_buffer.current_record_size += n * element_size 
+            struct.pack_into(self.VARIABLE_RECORD_OFFSET_FORMAT, record_buffer, 
                     self._offset, start, n)
             offset = start
         for j in range(n):
-            struct.pack_into(fmt, buff, offset + j * element_size, values[j])
+            struct.pack_into(fmt, record_buffer, offset + j * element_size, values[j])
        
     def get_value(self, record_buffer):
         """
         Returns the value of this column in the specifed record buffer.
         """
         ret = None
-        buff = record_buffer.storage
         s = self.STORAGE_FORMAT_MAP[self._element_type]
         fmt = self._byte_order + s 
         element_size = struct.calcsize(s)
@@ -425,10 +422,10 @@ class DBColumn(object):
         n  = self._num_elements
         if n < 0: 
             offset, n = struct.unpack_from(self.VARIABLE_RECORD_OFFSET_FORMAT,
-                    buff, self._offset)
+                    record_buffer, self._offset)
         ret = []
         for j in range(n):
-            t = struct.unpack_from(fmt, buff, offset + j * element_size) 
+            t = struct.unpack_from(fmt, record_buffer, offset + j * element_size) 
             ret.append(t[0])
         return ret
 
@@ -479,8 +476,15 @@ class Schema(object):
     """
     def __init__(self):
         self.__columns = {} 
+        self.__primary_key_format = ">Q"
         self.__fixed_region_size = 0 
-            
+        
+    def get_primary_key_format(self):
+        """
+        Returns the packing format for the primary key.
+        """
+        return self.__primary_key_format
+
     def get_fixed_region_size(self):
         """
         Returns the length of the fixed region of a record from this 
@@ -561,31 +565,17 @@ class Schema(object):
             offset += col.get_fixed_region_size() 
         self.__fixed_region_size = offset
         
-class RecordBuffer(object):
+class DatabaseBuilder(object):
     """
-    Thin wrapper around a bytearray object in which we keep the index of 
-    the next free location.
+    Class that builds a database from an input file. 
     """
-    def __init__(self, storage, free_offset):
-        self.storage = storage
-        self.free_offset = free_offset
-
-class Database(object):
-    """
-    Class representing a database of site information. 
-    """
-    
     def __init__(self, directory):
         self.__directory = directory
         self.__schema = None
-        self.__record_id = 0
-        self.__primary_key_format = ">Q"
         self.__bdb = _vcfdb.BerkeleyDatabase()
-        self.__bdb.record_buffer = bytearray(MAX_RECORD_SIZE)
-        self.__bdb.key_length = struct.calcsize(self.__primary_key_format)
-        self.__bdb.key_buffer = bytearray(self.__bdb.key_length)
-        self.__record_buffer = RecordBuffer(self.__bdb.record_buffer, 0)
-
+        self.__record_buffer = _vcfdb.RecordBuffer()
+        self.__current_record_id = 0
+    
     def set_record_value(self, column, value):
         """
         Sets the value for the specified column to the specified value 
@@ -594,29 +584,27 @@ class Database(object):
         #print("storing ", column, "->", value)
         col = self.__schema.get_column(column)
         col.set_value(value, self.__record_buffer)
-        v = col.get_value(self.__record_buffer)
+        #v = col.get_value(self.__record_buffer)
         #print(col.get_name(), ":", value, "->", v)
+          
 
     def __prepare_record(self):
         """
-        Prepares a new record for storage by setting all columns to their 
-        default values and encoding a new key.
+        Prepares to generate a new record.
         """
-        struct.pack_into(self.__primary_key_format, self.__bdb.key_buffer, 0, 
-                self.__record_id)
-        buff = self.__record_buffer.storage
-        for j in range(self.__record_buffer.free_offset):
-            buff[j] = 0
-        self.__record_buffer.free_offset = self.__schema.get_fixed_region_size() 
-            
+        self.__current_record_id += 1
+        self.__record_buffer.current_record_size = self.__schema.get_fixed_region_size()
+
     def __commit_record(self):
         """
         Commits the current record into the database.
         """
-        self.__bdb.record_buffer[0] = 0
-        self.__bdb.record_length = self.__record_buffer.free_offset
-        self.__bdb.store_record()
-        
+        # build the key
+        fmt = self.__schema.get_primary_key_format()
+        key = struct.pack(fmt, self.__current_record_id) 
+        self.__record_buffer.commit_record(key)
+
+
     def parse_vcf(self, vcf_file, indexed_columns=[], progress_callback=None):
         """
         Parses the specified vcf file, generating a new database in 
@@ -629,18 +617,17 @@ class Database(object):
         with parser.open_file() as f:
             parser.read_header(f)
             self.__schema = parser.get_schema()
-            self.__record_id = 1 
             for line in f:
-                # the parser calls back to set_record value for all values
                 self.__prepare_record()
-                parser.parse_record(line.decode())
+                parser.parse_record(line.decode(), self)
                 self.__commit_record()
-                self.__record_id += 1
+                
                 progress = int(parser.get_progress() * 1000)
                 if progress != last_progress:
                     last_progress = progress 
                     if progress_callback is not None:
                         progress_callback(progress, self.__record_id)
+        # TODO: flush the record buffer.
         self.__bdb.close()
         for col in self.__schema.get_columns():
             print(col)
@@ -1567,6 +1554,6 @@ def opendb(dbname, dbdir=DEFAULT_DB_DIR):
 if __name__ == "__main__":
     # temp development code.
     vcf_file = sys.argv[1]
-    db = Database("tmp")
-    db.parse_vcf(vcf_file)
+    dbb = DatabaseBuilder("tmp")
+    dbb.parse_vcf(vcf_file)
 

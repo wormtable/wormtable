@@ -30,6 +30,7 @@ typedef struct {
     unsigned char *buffer;
     size_t max_record_size;
     size_t buffer_size;
+    int current_record_size;
     size_t current_record_offset;
     int num_views;
 } RecordBuffer;
@@ -60,6 +61,7 @@ RecordBuffer_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
          
         /* TODO Handle memory error */
         self->num_views = 0; 
+        self->current_record_size = 0;
         self->current_record_offset = 0;
         memset(self->buffer, 0, self->buffer_size);
 
@@ -74,6 +76,7 @@ RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
 }
 
 static PyMemberDef RecordBuffer_members[] = {
+    {"current_record_size", T_INT, offsetof(RecordBuffer, current_record_size), 0, "size of current record"},
     {NULL}  /* Sentinel */
 };
 
@@ -81,11 +84,20 @@ static PyObject *
 RecordBuffer_commit_record(RecordBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    unsigned int record_size;
-    unsigned int barrier = self->buffer_size - self->max_record_size;
-    if (!PyArg_ParseTuple(args, "i", &record_size)) { 
+    Py_buffer key_buff;
+    size_t j;
+    size_t record_size = (size_t) self->current_record_size;
+    size_t barrier = self->buffer_size - self->max_record_size;
+    if (!PyArg_ParseTuple(args, "y*", &key_buff)) { 
         goto out; 
     }
+    /* copy the key */
+    for (j = 0; j < key_buff.len; j++) {
+        printf("%d ", ((unsigned char *) key_buff.buf)[j]);
+    }
+    PyBuffer_Release(&key_buff);
+    
+    printf("\t commiting %lu\n", record_size);
     if (record_size > self->max_record_size) {
         PyErr_SetString(PyExc_ValueError, "record size too large");
         goto out;
