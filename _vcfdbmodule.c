@@ -18,17 +18,33 @@
 #define ELEMENT_TYPE_INT_8  4
 #define ELEMENT_TYPE_FLOAT  5
  
+static int element_type_size_map[] = {1, 1, 2, 4, 8, 4};
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for vcfdb"
 
 static PyObject *BerkeleyDatabaseError;
 
+
+typedef struct {
+    u_int32_t offset;
+    u_int32_t type;
+    u_int32_t element_type;
+} db_column_t;
+
+typedef struct {
+    db_column_t *columns;
+    u_int32_t num_columns;
+    DB *secondary_db;
+    char *filename;
+} db_index_t;
+
+
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
-    DB **secondary_dbs;
-    unsigned int num_secondary_dbs;
+    db_index_t *indexes;
+    u_int32_t num_indexes;
 } BerkeleyDatabase;
 
 typedef struct {
@@ -57,6 +73,179 @@ handle_bdb_error(int err)
 {
     PyErr_SetString(BerkeleyDatabaseError, db_strerror(err));
 }
+
+
+static void
+db_index_free(db_index_t *self)
+{
+    if (self->num_columns != 0) {
+        PyMem_Free(self->columns);
+    }
+    if (self->secondary_db != NULL) {
+        self->secondary_db->close(self->secondary_db, 0); 
+    }
+    if (self->filename != NULL) {
+        PyMem_Free(self->filename);
+    }
+}
+
+static int 
+db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
+{   
+    unsigned int j;
+    db_index_t *self = (db_index_t *) secondary->app_private;
+    db_column_t *col;
+    u_int16_t size;
+    unsigned char *source, *dest;
+    /* copy the bytes into result for now */
+    result->flags = DB_DBT_APPMALLOC;
+    result->size = 0;
+    for (j = 0; j < self->num_columns; j++) {
+        col = &self->columns[j];
+        if (col->type == COLUMN_TYPE_FIXED) {
+            result->size += element_type_size_map[col->element_type]; 
+        } else {
+            printf("NOT SUPPORTED!!\n");
+        }
+    }
+    dest = malloc(result->size); 
+    source = (unsigned char *) record->data;
+    result->data = dest;
+    for (j = 0; j < self->num_columns; j++) {
+        col = &self->columns[j];
+        if (col->type == COLUMN_TYPE_FIXED) {
+            size = element_type_size_map[col->element_type]; 
+            memcpy(dest, &source[col->offset], size);
+            dest += size;
+        } else {
+
+        }
+    }
+    printf("callback for index %p: num columns = %d, type = %d element_type = %d\n", 
+            self, self->num_columns, self->columns[0].type, self->columns[0].element_type);
+    for (j = 0; j < key->size; j++) {
+        printf("%d ", ((unsigned char *) key->data)[j]);
+    }
+
+    printf("key %d\trecord %d\t", key->size, record->size);
+    for (j = 0; j < result->size; j++) {
+        printf("%d ", ((unsigned char *) result->data)[j]);
+    }
+    printf(": size = %d\n", result->size);
+    return 0;
+}
+
+static int 
+db_index_compare(DB *secondary, const DBT *dbt1, const DBT *dbt2)
+{
+    //db_index_t *self = (db_index_t *) secondary->app_private;
+    int ret;
+    float v1, v2;
+    memcpy(&v1, dbt1->data, dbt1->size);
+    memcpy(&v2, dbt2->data, dbt2->size);
+    ret = 0;
+    if (v1 < v2) {
+        ret = -1;
+    } else if (v2 < v1) {
+        ret = 1;
+    }
+    printf("compare: %f %f = %d\n", v1, v2, ret);
+    return ret; 
+        
+}
+
+
+
+static void 
+db_index_initialise(db_index_t *self, PyObject *index_description)
+{
+    int db_ret;
+    unsigned int j;
+    PyObject *column_description, *number, *filename;
+    self->num_columns = 0; 
+    self->columns = NULL; 
+    self->secondary_db = NULL;
+    self->filename = NULL;
+    if (!PyList_Check(index_description)) {
+        PyErr_SetString(PyExc_ValueError, "must be a list");
+        goto out;
+    }
+    self->num_columns = PyList_Size(index_description) - 1;
+    filename = PyList_GetItem(index_description, 0);
+    if (!PyBytes_Check(filename)) {
+        PyErr_SetString(PyExc_ValueError, "must be bytes");
+        goto out;
+    }
+    self->filename = PyMem_Malloc(PyBytes_Size(filename) + 1);
+    strcpy(self->filename, PyBytes_AsString(filename));
+    printf("initalising index %p: %s\n", self, self->filename);
+    
+    self->columns = PyMem_Malloc(self->num_columns * sizeof(db_column_t));
+    for (j = 0; j < self->num_columns; j++) {
+        column_description = PyList_GetItem(index_description, j + 1);
+        if (!PyList_Check(column_description)) {
+            PyErr_SetString(PyExc_ValueError, "must be a list");
+            goto out;
+        }
+        if (PyList_Size(column_description) != 3) {
+            PyErr_SetString(PyExc_ValueError, "must be length 2");
+            goto out;
+        }
+        number = PyList_GetItem(column_description, 0);
+        if (!PyLong_Check(number)) {
+            PyErr_SetString(PyExc_ValueError, "values must be numbers");
+            goto out;
+        }
+        self->columns[j].type= (u_int32_t) PyLong_AsLong(number);
+        number = PyList_GetItem(column_description, 1);
+        if (!PyLong_Check(number)) {
+            PyErr_SetString(PyExc_ValueError, "values must be numbers");
+            goto out;
+        }
+        self->columns[j].element_type= (u_int32_t) PyLong_AsLong(number);
+        number = PyList_GetItem(column_description, 2);
+        if (!PyLong_Check(number)) {
+            PyErr_SetString(PyExc_ValueError, "values must be numbers");
+            goto out;
+        }
+        self->columns[j].offset = (u_int32_t) PyLong_AsLong(number);
+        printf("\tallocated column type = %d, element_type = %d offset = %d\n", 
+                self->columns[j].type, self->columns[j].element_type, 
+                self->columns[j].offset);
+    }
+    db_ret = db_create(&self->secondary_db, NULL, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    self->secondary_db->app_private = self;
+    db_ret = self->secondary_db->set_flags(self->secondary_db, DB_DUPSORT);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    
+    db_ret = self->secondary_db->set_bt_compare(self->secondary_db, db_index_compare);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    
+
+
+    db_ret = self->secondary_db->open(self->secondary_db, NULL, self->filename, 
+            NULL, DB_BTREE, DB_CREATE|DB_TRUNCATE, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+
+out:
+    return;
+}
+
+
+
 /*==========================================================
  * BerkeleyDatabase object 
  *==========================================================
@@ -66,11 +255,12 @@ static void
 BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 {
     int j;
-    /* make sure that the DB handles are closed. We can ignore errors here. */
-    for (j = 0; j < self->num_secondary_dbs; j++) {
-        if (self->secondary_dbs[j] != NULL) {
-            self->secondary_dbs[j]->close(self->secondary_dbs[j], 0); 
-        }
+    /* make sure that the DB handles are closed. We can ignore errors here. */ 
+    for (j = 0; j < self->num_indexes; j++) {
+        db_index_free(&self->indexes[j]);        
+    }
+    if (self->num_indexes != 0) { 
+        PyMem_Free(self->indexes);
     }
     if (self->primary_db != NULL) {
         self->primary_db->close(self->primary_db, 0); 
@@ -84,9 +274,8 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
     int ret = 0;
     int db_ret = 0;
     self->primary_db = NULL;
-    self->secondary_dbs = NULL;
-    self->num_secondary_dbs = 0;
-    
+    self->indexes = NULL;
+    self->num_indexes = 0;
     db_ret = db_create(&self->primary_db, NULL, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -103,6 +292,47 @@ out:
 static PyMemberDef BerkeleyDatabase_members[] = {
     {NULL}  /* Sentinel */
 };
+
+
+static PyObject *
+BerkeleyDatabase_add_index(BerkeleyDatabase* self, PyObject *args)
+{
+    int db_ret;
+    unsigned int j;
+    PyObject *ret = NULL;
+    PyObject *index_list = NULL;
+    if (! PyArg_ParseTuple(args, "O!", &PyList_Type, &index_list)) {
+        goto out;
+    }
+    self->num_indexes = PyList_Size(index_list);
+    self->indexes = PyMem_Malloc(self->num_indexes * sizeof(db_index_t));
+    printf("adding %d indexes\n", self->num_indexes);
+    for (j = 0; j < self->num_indexes; j++) {
+        db_index_initialise(&self->indexes[j], PyList_GetItem(index_list, j));
+        /* TODO this is not the corect way to go about this */
+        if (PyErr_Occurred() != NULL) {
+            goto out;
+        }
+    }
+    /* do this here for now */
+    for (j = 0; j < self->num_indexes; j++) {
+        db_ret = self->primary_db->associate(self->primary_db, NULL, 
+                self->indexes[j].secondary_db, 
+                db_index_callback, 0); 
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;
+        }
+    }
+
+
+    
+    ret = Py_BuildValue("");
+out:
+    return ret; 
+}
+
+
 
 
 static PyObject *
@@ -172,6 +402,7 @@ out:
 
 
 static PyMethodDef BerkeleyDatabase_methods[] = {
+    {"add_index", (PyCFunction) BerkeleyDatabase_add_index, METH_VARARGS, "Adds an index" },
     {"open", (PyCFunction) BerkeleyDatabase_open, METH_NOARGS, "Open the table" },
     {"create", (PyCFunction) BerkeleyDatabase_create, METH_NOARGS, "Open the table" },
     {"close", (PyCFunction) BerkeleyDatabase_close, METH_NOARGS, "Close the table" },

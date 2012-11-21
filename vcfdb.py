@@ -297,7 +297,14 @@ class DBColumn(object):
     Class representing a single column in a Schema. 
     """
     # big-endian so we can sort integers lexicographically.
-    BYTE_ORDER = ">"  
+    
+    # TODO we need different byte orders here for simplicity;
+    # ints should be big endian and floats should be native.
+    # This give us the best of both worlds, as we can define 
+    # a native comparison function for floats but still make use 
+    # the key prefix compression for ints.
+    
+    BYTE_ORDER = "="  
     # This is what determines the max record size. We can also have 
     # no more than 256 elements in a list. This is encoded in 
     # native format so we don't have to worry about byte swapping 
@@ -327,7 +334,7 @@ class DBColumn(object):
         col_type = _vcfdb.COLUMN_TYPE_FIXED 
         if self._num_elements == -1:
             col_type = vcfdb.COLUMN_TYPE_VARIABLE
-        return (col_type, self._element_type)
+        return [col_type, self._element_type, self._offset]
 
 
     def set_element_type(self, element_type):
@@ -580,10 +587,8 @@ class DatabaseBuilder(object):
     def __init__(self, directory):
         self.__directory = directory
         self.__schema = None
-        self.__bdb = _vcfdb.BerkeleyDatabase()
-        
-
-        self.__record_buffer = _vcfdb.RecordBuffer(self.__bdb)
+        self.__database = _vcfdb.BerkeleyDatabase()
+        self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
         self.__current_record_id = 0
     
     def set_record_value(self, column, value):
@@ -605,8 +610,11 @@ class DatabaseBuilder(object):
         """
         chromosome = self.__schema.get_column("CHROM")
         position = self.__schema.get_column("POS")
-        l = [chromosome.get_low_level_format(), position.get_low_level_format()] 
-        print(l)
+        quality = self.__schema.get_column("QUAL")
+        i1 = [b"tmp/chrom+pos.db", chromosome.get_low_level_format(), 
+            position.get_low_level_format()]
+        i2 = [b"tmp/qual.db", quality.get_low_level_format()]
+        self.__database.add_index([i2])
 
     def __prepare_record(self):
         """
@@ -633,7 +641,7 @@ class DatabaseBuilder(object):
         function is called periodically if not None.
         """
         parser = VCFFileParser(vcf_file, self)
-        self.__bdb.create()
+        self.__database.create()
         last_progress = 0 
         with parser.open_file() as f:
             parser.read_header(f)
@@ -650,7 +658,7 @@ class DatabaseBuilder(object):
                     if progress_callback is not None:
                         progress_callback(progress, self.__record_id)
         self.__record_buffer.flush()
-        self.__bdb.close()
+        self.__database.close()
         #for col in self.__schema.get_columns():
         #    print(col)
 
