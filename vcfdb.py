@@ -75,11 +75,11 @@ class VCFFileColumn(object):
         if self.type == self.TYPE_INTEGER:
             # We default to 16 bit integers; this should probably be a 
             # configuration option.
-            dbc.set_element_type(DBColumn.ELEMENT_TYPE_INT_2) 
+            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_INT_2) 
         elif self.type == self.TYPE_FLOAT:
-            dbc.set_element_type(DBColumn.ELEMENT_TYPE_FLOAT) 
+            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_FLOAT) 
         elif self.type == self.TYPE_FLAG:
-            dbc.set_element_type(DBColumn.ELEMENT_TYPE_INT_1) 
+            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_INT_1) 
         elif self.type in [self.TYPE_STRING, self.TYPE_CHAR]:
             dbc = DBEnumerationColumn()
             dbc.set_num_elements(self.number)
@@ -296,32 +296,39 @@ class DBColumn(object):
     """
     Class representing a single column in a Schema. 
     """
-    
-    _byte_order = ">" # big-endian for now so we can sort integers.
-    VARIABLE_RECORD_OFFSET_FORMAT = ">HH" 
-    
-    ELEMENT_TYPE_CHAR = 0
-    ELEMENT_TYPE_INT_1 = 1
-    ELEMENT_TYPE_INT_2 = 2
-    ELEMENT_TYPE_INT_4 = 3
-    ELEMENT_TYPE_INT_8 = 4
-    ELEMENT_TYPE_FLOAT = 5
+    # big-endian so we can sort integers lexicographically.
+    BYTE_ORDER = ">"  
+    # This is what determines the max record size. We can also have 
+    # no more than 256 elements in a list. This is encoded in 
+    # native format so we don't have to worry about byte swapping 
+    # in C. This should probably be standardised to big-endian.
+    VARIABLE_RECORD_OFFSET_FORMAT = "=HB" 
     
     STORAGE_FORMAT_MAP = {
-        ELEMENT_TYPE_CHAR : "c",
-        ELEMENT_TYPE_INT_1 : "b",
-        ELEMENT_TYPE_INT_2 : "h",
-        ELEMENT_TYPE_INT_4 : "i",
-        ELEMENT_TYPE_INT_8 : "q",
-        ELEMENT_TYPE_FLOAT : "f"
+        _vcfdb.ELEMENT_TYPE_CHAR : "c",
+        _vcfdb.ELEMENT_TYPE_INT_1 : "b",
+        _vcfdb.ELEMENT_TYPE_INT_2 : "h",
+        _vcfdb.ELEMENT_TYPE_INT_4 : "i",
+        _vcfdb.ELEMENT_TYPE_INT_8 : "q",
+        _vcfdb.ELEMENT_TYPE_FLOAT : "f"
     }
 
     def __init__(self):
         self._description = "" 
         self._name = "" 
         self._num_elements = -1 
-        self._element_type = self.ELEMENT_TYPE_CHAR
+        self._element_type = _vcfdb.ELEMENT_TYPE_CHAR
         self._offset = 0
+
+    def get_low_level_format(self):
+        """
+        Returns the format of this column in the low-level C 
+        """
+        col_type = _vcfdb.COLUMN_TYPE_FIXED 
+        if self._num_elements == -1:
+            col_type = vcfdb.COLUMN_TYPE_VARIABLE
+        return (col_type, self._element_type)
+
 
     def set_element_type(self, element_type):
         """
@@ -350,7 +357,7 @@ class DBColumn(object):
         s = self.VARIABLE_RECORD_OFFSET_FORMAT 
         if self._num_elements > 0:
             fmt = self.STORAGE_FORMAT_MAP[self._element_type]
-            s = self._byte_order + fmt * self._num_elements
+            s = self.BYTE_ORDER + fmt * self._num_elements
         return struct.calcsize(s)
 
     
@@ -396,7 +403,7 @@ class DBColumn(object):
         #print("setting ", self, " = ", values)
         ret = None
         s = self.STORAGE_FORMAT_MAP[self._element_type]
-        fmt = self._byte_order + s 
+        fmt = self.BYTE_ORDER + s 
         element_size = struct.calcsize(s)
         offset = self._offset
         n  = self._num_elements
@@ -416,7 +423,7 @@ class DBColumn(object):
         """
         ret = None
         s = self.STORAGE_FORMAT_MAP[self._element_type]
-        fmt = self._byte_order + s 
+        fmt = self.BYTE_ORDER + s 
         element_size = struct.calcsize(s)
         offset = self._offset
         n  = self._num_elements
@@ -430,13 +437,14 @@ class DBColumn(object):
         return ret
 
 
+# TODO add in an option to declare 16 bit enums also
 class DBEnumerationColumn(DBColumn):
     """
     Class of column in which we have a set of strings mapped 
     to integer values.
     """
     def __init__(self):
-        self._element_type = self.ELEMENT_TYPE_INT_2
+        self._element_type = _vcfdb.ELEMENT_TYPE_INT_1
         self._value_map = {}
         self._key_map = {}
         self._next_key = 0
@@ -510,10 +518,10 @@ class Schema(object):
         number of integer values of the specified size in bytes. 
         """
         size_map = {
-            1: DBColumn.ELEMENT_TYPE_INT_1,
-            2: DBColumn.ELEMENT_TYPE_INT_2,
-            4: DBColumn.ELEMENT_TYPE_INT_4,
-            8: DBColumn.ELEMENT_TYPE_INT_8
+            1: _vcfdb.ELEMENT_TYPE_INT_1,
+            2: _vcfdb.ELEMENT_TYPE_INT_2,
+            4: _vcfdb.ELEMENT_TYPE_INT_4,
+            8: _vcfdb.ELEMENT_TYPE_INT_8
         }
         col = DBColumn()
         col.set_name(name)
@@ -529,7 +537,7 @@ class Schema(object):
         """
         col = DBColumn()
         col.set_name(name)
-        col.set_element_type(DBColumn.ELEMENT_TYPE_FLOAT)
+        col.set_element_type(_vcfdb.ELEMENT_TYPE_FLOAT)
         col.set_num_elements(num_values)
         col.set_description(description)
         self.__columns[name] = col 
@@ -573,7 +581,9 @@ class DatabaseBuilder(object):
         self.__directory = directory
         self.__schema = None
         self.__bdb = _vcfdb.BerkeleyDatabase()
-        self.__record_buffer = _vcfdb.RecordBuffer()
+        
+
+        self.__record_buffer = _vcfdb.RecordBuffer(self.__bdb)
         self.__current_record_id = 0
     
     def set_record_value(self, column, value):
@@ -587,6 +597,16 @@ class DatabaseBuilder(object):
         #v = col.get_value(self.__record_buffer)
         #print(col.get_name(), ":", value, "->", v)
           
+    
+    def __setup_indexes(self):
+        """
+        Sets up the default indexes for the database that is 
+        to be built.
+        """
+        chromosome = self.__schema.get_column("CHROM")
+        position = self.__schema.get_column("POS")
+        l = [chromosome.get_low_level_format(), position.get_low_level_format()] 
+        print(l)
 
     def __prepare_record(self):
         """
@@ -600,6 +620,7 @@ class DatabaseBuilder(object):
         Commits the current record into the database.
         """
         # build the key
+        # TODO: this should really be 48 bit - 64 is ridiculous.
         fmt = self.__schema.get_primary_key_format()
         key = struct.pack(fmt, self.__current_record_id) 
         self.__record_buffer.commit_record(key)
@@ -612,11 +633,12 @@ class DatabaseBuilder(object):
         function is called periodically if not None.
         """
         parser = VCFFileParser(vcf_file, self)
-        self.__bdb.open()
+        self.__bdb.create()
         last_progress = 0 
         with parser.open_file() as f:
             parser.read_header(f)
             self.__schema = parser.get_schema()
+            self.__setup_indexes()
             for line in f:
                 self.__prepare_record()
                 parser.parse_record(line.decode(), self)
@@ -627,10 +649,10 @@ class DatabaseBuilder(object):
                     last_progress = progress 
                     if progress_callback is not None:
                         progress_callback(progress, self.__record_id)
-        # TODO: flush the record buffer.
+        self.__record_buffer.flush()
         self.__bdb.close()
-        for col in self.__schema.get_columns():
-            print(col)
+        #for col in self.__schema.get_columns():
+        #    print(col)
 
 ######################## OLD CODE ############################################
 
