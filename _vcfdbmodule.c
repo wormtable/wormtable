@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
+    DBC *cursor;
     db_index_t *indexes;
     u_int32_t num_indexes;
 } BerkeleyDatabase;
@@ -68,6 +69,7 @@ typedef struct {
     DBT *records; 
     /* Reading management */
     u_int32_t read_records;
+    int reading_done;
     /* Used for Python buffer protocal compliance */
     int num_views; 
 } RecordBuffer;
@@ -93,7 +95,7 @@ db_column_float_compare(db_column_t *self, unsigned char *key1,
     } else if (v2 < v1) {
         ret = 1;
     }
-    printf("compare float: %f %f = %d\n", v1, v2, ret);
+    //printf("compare float: %f %f = %d\n", v1, v2, ret);
     return ret; 
      
 }
@@ -103,7 +105,7 @@ db_column_memory_compare(db_column_t *self, unsigned char *key1,
         unsigned char *key2)
 {
     int ret = memcmp(key1, key2, self->element_size);
-    printf("compare mem: %d bytes = %d\n", self->element_size, ret);
+    //printf("compare mem: %d bytes = %d\n", self->element_size, ret);
     
     return ret; 
      
@@ -158,6 +160,7 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
 
         }
     }
+    /*
     printf("callback for index %p: num columns = %d, type = %d element_type = %d\n", 
             self, self->num_columns, self->columns[0].type, self->columns[0].element_type);
     for (j = 0; j < key->size; j++) {
@@ -169,6 +172,7 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
         printf("%d ", ((unsigned char *) result->data)[j]);
     }
     printf(": size = %d\n", result->size);
+    */
     return 0;
 }
 /*
@@ -191,7 +195,7 @@ db_index_compare(DB *secondary, const DBT *dbt1, const DBT *dbt2)
         key2 += col->element_size;
         j++;
     }
-    printf("compare: %p %p = %d\n", dbt1, dbt2, ret);
+    //printf("compare: %p %p = %d\n", dbt1, dbt2, ret);
     return ret; 
         
 }
@@ -332,7 +336,7 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         ret = -1;
         goto out;    
     }
-
+    self->cursor = NULL;
 out:
 
     return ret;
@@ -394,7 +398,7 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
     char *db_name = "tmp/primary.db";
     
     db_ret = self->primary_db->set_cachesize(self->primary_db, 0, 
-            32 * 1024 * 1024, 1);
+            512 * 1024 * 1024, 1);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
@@ -426,6 +430,16 @@ BerkeleyDatabase_open(BerkeleyDatabase* self)
         goto out;    
     }
 
+
+
+    db_ret = self->primary_db->cursor(self->primary_db, NULL, &self->cursor, DB_CURSOR_BULK);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret); 
+        goto out;
+    }
+     
+
+
     ret = Py_BuildValue("");
 out:
     return ret; 
@@ -439,6 +453,13 @@ BerkeleyDatabase_close(BerkeleyDatabase* self)
 {
     PyObject *ret = NULL;
     int db_ret;
+    if (self->cursor != NULL) {  
+        db_ret = self->cursor->close(self->cursor);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret); 
+            goto out;
+        } 
+    }
     if (self->primary_db != NULL) {
         db_ret = self->primary_db->close(self->primary_db, 0); 
         if (db_ret != 0) {
@@ -532,6 +553,7 @@ RecordBuffer_clear(RecordBuffer *self)
     self->current_record_offset = 0;
     self->num_records = 0;
     self->read_records = 0;
+    self->reading_done = 0;
 
 }
 
@@ -549,14 +571,13 @@ RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
     }
     Py_INCREF(database);
     self->database = database;
-
-        
+       
     /* TODO read params from args and error check */
-    n = 1024;
+    n = 1024 * 1024;
     self->key_size = 8;
     self->max_num_records = n;
     self->max_record_size = 64 * 1024; /* TEMP 64K */
-    self->record_buffer_size = 256 * 1024; /* TEMP 256K*/
+    self->record_buffer_size = 32 * 1024 * 1024; /* TEMP 32 MiB*/
     self->record_buffer = PyMem_Malloc(self->record_buffer_size);
     self->key_buffer = PyMem_Malloc(n * self->key_size);
     self->keys = PyMem_Malloc(n * sizeof(DBT));
@@ -565,6 +586,7 @@ RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
     memset(self->records, 0, n * sizeof(DBT));
     self->num_records = 0;
     self->read_records = 0;
+    self->reading_done = 0;
     self->num_views = 0; 
 
 
@@ -589,7 +611,7 @@ RecordBuffer_flush(RecordBuffer* self)
     
     db = self->database->primary_db;
     /* TODO error check or verify this can't be null */
-    printf("Flushing buffer: %d records\n", self->num_records);
+    printf("Flushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
     for (j = 0; j < self->num_records; j++) {
         db_ret = db->put(db, NULL, &self->keys[j], &self->records[j], flags);
         if (db_ret != 0) {
@@ -597,6 +619,7 @@ RecordBuffer_flush(RecordBuffer* self)
             goto out;
         } 
     }
+    printf("done\n");
     RecordBuffer_clear(self);
     
     ret = Py_BuildValue("");
@@ -654,18 +677,11 @@ RecordBuffer_fill(RecordBuffer* self)
 {
     int db_ret = 0;
     PyObject *ret = NULL;
-    DB *db = self->database->primary_db;
-    DBC *cursor = NULL;
+    DBC *cursor = self->database->cursor; 
     DBT *key, *record;
     u_int32_t barrier = self->record_buffer_size - self->max_record_size;
     RecordBuffer_clear(self);
     
-    db_ret = db->cursor(db, NULL, &cursor, DB_CURSOR_BULK);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret); 
-        goto out;
-    } 
-     
     while (db_ret == 0 && self->current_record_offset <= barrier 
             && self->num_records < self->max_num_records) {
         /* Some of these flags can be set an intialisation time */
@@ -681,7 +697,9 @@ RecordBuffer_fill(RecordBuffer* self)
         if (db_ret == 0) {
             self->num_records++; 
             self->current_record_offset += record->size;
-        } else if (db_ret != DB_NOTFOUND) {
+        } else if (db_ret == DB_NOTFOUND) {
+            self->reading_done = 1;
+        } else {
             handle_bdb_error(db_ret); 
             goto out;
         } 
@@ -690,13 +708,6 @@ RecordBuffer_fill(RecordBuffer* self)
     
     printf("filled buffer to offset %d : %d records\n",self->current_record_offset, self->num_records);
    
-    db_ret = cursor->close(cursor);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret); 
-        goto out;
-    } 
-
-
     ret = Py_BuildValue("");
 out:
     return ret; 
@@ -710,18 +721,27 @@ RecordBuffer_retrieve_record(RecordBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
     unsigned int n = self->read_records;
-    if (n < self->num_records) {
-        /* set the current_record_offset so that it points to the next record.
-         * Using pointer arithmmetic for now.
-         */
-        self->current_record_offset = ((unsigned char *) self->records[n].data)
-                - self->record_buffer;
-        /* build a bytes object for the key */ 
-        ret = Py_BuildValue("y#", self->keys[n].data, self->key_size);
-        self->read_records++;
-
-    } else {
+    /* this is dreadful */
+    if (n == self->num_records && self->reading_done) {
         ret = Py_BuildValue("");
+    } else {
+        if (n == self->num_records) {
+            RecordBuffer_fill(self);
+        }
+        n = self->read_records;
+        if (n < self->num_records) {
+            /* set the current_record_offset so that it points to the next record.
+             * Using pointer arithmmetic for now.
+             */
+            self->current_record_offset = ((unsigned char *) self->records[n].data)
+                    - self->record_buffer;
+            /* build a bytes object for the key */ 
+            ret = Py_BuildValue("y#", self->keys[n].data, self->key_size);
+            self->read_records++;
+        } else {
+            ret = Py_BuildValue("");
+        }
+
     }
 //out:
     return ret; 

@@ -680,7 +680,10 @@ class DatabaseReader(object):
         self.__database.open()
 
     
-    def get_records(self, column_names=[]):
+    def get_records(self, column_names): 
+        """
+        Returns an iterator over records.
+        """
         cols = [self.__schema.get_column(name) for name in column_names] 
         
         Record = collections.namedtuple("Record", ["record_id"] + column_names) 
@@ -703,9 +706,8 @@ class DatabaseReader(object):
         self.__database.close()
 
 
-if __name__ == "__main__":
-    # temp development code.
-    
+
+def main():
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
         dbb = DatabaseBuilder("tmp")
@@ -715,6 +717,12 @@ if __name__ == "__main__":
         records = 0
         for r in dbr.get_records(["POS", "QUAL"]):
             #print(r.record_id, r.POS[0], r.QUAL[0], sep="\t")
-            records += 1
+            if r.QUAL[0] > 100.0:
+                records += 1
         print("read ", records, "records")
         dbr.close()
+
+if __name__ == "__main__":
+    # temp development code.
+    main()
+
