@@ -26,10 +26,12 @@ static int element_type_size_map[] = {1, 1, 2, 4, 8, 4};
 static PyObject *BerkeleyDatabaseError;
 
 
-typedef struct {
+typedef struct db_column_t_t {
     u_int32_t offset;
     u_int32_t type;
     u_int32_t element_type;
+    u_int16_t element_size;
+    int (*compare)(struct db_column_t_t *, unsigned char *, unsigned char *);
 } db_column_t;
 
 typedef struct {
@@ -75,6 +77,38 @@ handle_bdb_error(int err)
 }
 
 
+static int
+db_column_float_compare(db_column_t *self, unsigned char *key1, 
+        unsigned char *key2)
+{
+    int ret;
+    float v1, v2;
+    memcpy(&v1, key1, sizeof(float));
+    memcpy(&v2, key2, sizeof(float));
+    ret = 0;
+    if (v1 < v2) {
+        ret = -1;
+    } else if (v2 < v1) {
+        ret = 1;
+    }
+    printf("compare float: %f %f = %d\n", v1, v2, ret);
+    return ret; 
+     
+}
+
+static int
+db_column_memory_compare(db_column_t *self, unsigned char *key1, 
+        unsigned char *key2)
+{
+    int ret = memcmp(key1, key2, self->element_size);
+    printf("compare mem: %d bytes = %d\n", self->element_size, ret);
+    
+    return ret; 
+     
+}
+
+
+
 static void
 db_index_free(db_index_t *self)
 {
@@ -103,7 +137,8 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
     for (j = 0; j < self->num_columns; j++) {
         col = &self->columns[j];
         if (col->type == COLUMN_TYPE_FIXED) {
-            result->size += element_type_size_map[col->element_type]; 
+            result->size += col->element_size;
+                
         } else {
             printf("NOT SUPPORTED!!\n");
         }
@@ -114,7 +149,7 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
     for (j = 0; j < self->num_columns; j++) {
         col = &self->columns[j];
         if (col->type == COLUMN_TYPE_FIXED) {
-            size = element_type_size_map[col->element_type]; 
+            size = col->element_size; 
             memcpy(dest, &source[col->offset], size);
             dest += size;
         } else {
@@ -134,22 +169,27 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
     printf(": size = %d\n", result->size);
     return 0;
 }
-
+/*
+ * Generic comparison function called from DB. 
+ */
 static int 
 db_index_compare(DB *secondary, const DBT *dbt1, const DBT *dbt2)
 {
-    //db_index_t *self = (db_index_t *) secondary->app_private;
-    int ret;
-    float v1, v2;
-    memcpy(&v1, dbt1->data, dbt1->size);
-    memcpy(&v2, dbt2->data, dbt2->size);
-    ret = 0;
-    if (v1 < v2) {
-        ret = -1;
-    } else if (v2 < v1) {
-        ret = 1;
+    int ret = 0;
+    int j = 0;
+    db_column_t *col;
+    db_index_t *self = (db_index_t *) secondary->app_private;
+    unsigned char *key1 = (unsigned char *) dbt1->data;
+    unsigned char *key2 = (unsigned char *) dbt2->data;
+
+    while (ret == 0 && j < self->num_columns) {
+        col = &self->columns[j];
+        ret = col->compare(col, key1, key2);
+        key1 += col->element_size;
+        key2 += col->element_size;
+        j++;
     }
-    printf("compare: %f %f = %d\n", v1, v2, ret);
+    printf("compare: %p %p = %d\n", dbt1, dbt2, ret);
     return ret; 
         
 }
@@ -212,6 +252,14 @@ db_index_initialise(db_index_t *self, PyObject *index_description)
         printf("\tallocated column type = %d, element_type = %d offset = %d\n", 
                 self->columns[j].type, self->columns[j].element_type, 
                 self->columns[j].offset);
+        
+        self->columns[j].compare = db_column_memory_compare;
+        if (self->columns[j].element_type == ELEMENT_TYPE_FLOAT) {
+            self->columns[j].compare = db_column_float_compare;
+        }
+        self->columns[j].element_size = element_type_size_map[
+                self->columns[j].element_type];
+
     }
     db_ret = db_create(&self->secondary_db, NULL, 0);
     if (db_ret != 0) {
@@ -380,6 +428,8 @@ BerkeleyDatabase_open(BerkeleyDatabase* self)
 out:
     return ret; 
 }
+
+
 
 
 static PyObject *
