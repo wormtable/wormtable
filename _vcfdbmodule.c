@@ -66,6 +66,8 @@ typedef struct {
     u_int32_t max_num_records;
     DBT *keys; 
     DBT *records; 
+    /* Reading management */
+    u_int32_t read_records;
     /* Used for Python buffer protocal compliance */
     int num_views; 
 } RecordBuffer;
@@ -529,6 +531,7 @@ RecordBuffer_clear(RecordBuffer *self)
     self->current_record_size = 0;
     self->current_record_offset = 0;
     self->num_records = 0;
+    self->read_records = 0;
 
 }
 
@@ -560,7 +563,10 @@ RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
     self->records = PyMem_Malloc(n * sizeof(DBT));
     memset(self->keys, 0, n * sizeof(DBT));
     memset(self->records, 0, n * sizeof(DBT));
+    self->num_records = 0;
+    self->read_records = 0;
     self->num_views = 0; 
+
 
 out:
     return ret;
@@ -643,6 +649,88 @@ out:
     return ret; 
 }
 
+static PyObject *
+RecordBuffer_fill(RecordBuffer* self)
+{
+    int db_ret = 0;
+    PyObject *ret = NULL;
+    DB *db = self->database->primary_db;
+    DBC *cursor = NULL;
+    DBT *key, *record;
+    u_int32_t barrier = self->record_buffer_size - self->max_record_size;
+    RecordBuffer_clear(self);
+    
+    db_ret = db->cursor(db, NULL, &cursor, DB_CURSOR_BULK);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret); 
+        goto out;
+    } 
+     
+    while (db_ret == 0 && self->current_record_offset <= barrier 
+            && self->num_records < self->max_num_records) {
+        /* Some of these flags can be set an intialisation time */
+        key = &self->keys[self->num_records];
+        key->ulen = self->key_size;
+        key->data = &self->key_buffer[self->key_size * self->num_records];
+        key->flags = DB_DBT_USERMEM;
+        record = &self->records[self->num_records];
+        record->ulen = self->max_record_size;
+        record->data = &self->record_buffer[self->current_record_offset];
+        record->flags = DB_DBT_USERMEM;
+        db_ret = cursor->get(cursor, key, record, DB_NEXT); 
+        if (db_ret == 0) {
+            self->num_records++; 
+            self->current_record_offset += record->size;
+        } else if (db_ret != DB_NOTFOUND) {
+            handle_bdb_error(db_ret); 
+            goto out;
+        } 
+        
+    }
+    
+    printf("filled buffer to offset %d : %d records\n",self->current_record_offset, self->num_records);
+   
+    db_ret = cursor->close(cursor);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret); 
+        goto out;
+    } 
+
+
+    ret = Py_BuildValue("");
+out:
+    return ret; 
+}
+
+
+
+
+static PyObject *
+RecordBuffer_retrieve_record(RecordBuffer* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    unsigned int n = self->read_records;
+    if (n < self->num_records) {
+        /* set the current_record_offset so that it points to the next record.
+         * Using pointer arithmmetic for now.
+         */
+        self->current_record_offset = ((unsigned char *) self->records[n].data)
+                - self->record_buffer;
+        /* build a bytes object for the key */ 
+        ret = Py_BuildValue("y#", self->keys[n].data, self->key_size);
+        self->read_records++;
+
+    } else {
+        ret = Py_BuildValue("");
+    }
+//out:
+    return ret; 
+}
+
+
+
+
+
 
 /* Implementation of the Buffer Protocol so that we can write values 
  * directly into our record buffer memory from Python. This implementation 
@@ -675,8 +763,10 @@ RecordBuffer_releasebuffer(RecordBuffer *self, Py_buffer *view)
 }
 
 static PyMethodDef RecordBuffer_methods[] = {
+    {"retrieve_record", (PyCFunction) RecordBuffer_retrieve_record, METH_NOARGS, "retrieve record" },
     {"commit_record", (PyCFunction) RecordBuffer_commit_record, METH_VARARGS, "commit record" },
     {"flush", (PyCFunction) RecordBuffer_flush, METH_NOARGS, "flush" },
+    {"fill", (PyCFunction) RecordBuffer_fill, METH_NOARGS, "fill the buffer with records." },
     {NULL}  /* Sentinel */
 };
 

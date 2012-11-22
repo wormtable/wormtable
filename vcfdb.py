@@ -10,9 +10,11 @@ import struct
 import tempfile
 from contextlib import contextmanager
 
+import itertools
+import collections
+
 import _vcfdb
 
-import bsddb3.db as bdb 
 
 __version__ = '0.0.1-dev'
 
@@ -659,21 +661,60 @@ class DatabaseBuilder(object):
                         progress_callback(progress, self.__record_id)
         self.__record_buffer.flush()
         self.__database.close()
+        with open("tmp/schema.pkl", "wb") as f:
+            pickle.dump(self.__schema, f)
+
+
         #for col in self.__schema.get_columns():
         #    print(col)
 
+class DatabaseReader(object):
+    """
+    Class representing a database reader for a particular directory.
+    """
+    def __init__(self):
+        with open("tmp/schema.pkl", "rb") as f:
+            self.__schema = pickle.load(f)
+        self.__database = _vcfdb.BerkeleyDatabase()
+        self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
+        self.__database.open()
+
+    
+    def get_records(self, column_names=[]):
+        cols = [self.__schema.get_column(name) for name in column_names] 
+        
+        Record = collections.namedtuple("Record", ["record_id"] + column_names) 
+        self.__record_buffer.fill()
+        key = self.__record_buffer.retrieve_record()
+        fmt = self.__schema.get_primary_key_format()
+        while key is not None:
+            record_id = struct.unpack(fmt, key)[0]
+            # Does this need to be a  list or can be make an iterator?
+            values = [col.get_value(self.__record_buffer) for col in cols]
+            yield Record._make(itertools.chain([record_id], values)) 
+            key = self.__record_buffer.retrieve_record()
+        #print("got record:", record_id) 
+
+    
+    def close(self):
+        """
+        Closes the backing database.
+        """
+        self.__database.close()
 
 
 if __name__ == "__main__":
     # temp development code.
     
-    if len(sys.argv == 2) {
+    if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
         dbb = DatabaseBuilder("tmp")
         dbb.parse_vcf(vcf_file)
     else:
         dbr = DatabaseReader()
-        for r in dbr.get_records():
-            print(dbr)
-        
-
+        records = 0
+        for r in dbr.get_records(["POS", "QUAL"]):
+            #print(r.record_id, r.POS[0], r.QUAL[0], sep="\t")
+            records += 1
+        print("read ", records, "records")
+        dbr.close()
