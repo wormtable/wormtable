@@ -26,16 +26,20 @@ static int element_type_size_map[] = {1, 1, 2, 4, 8, 4};
 static PyObject *BerkeleyDatabaseError;
 
 
-typedef struct db_column_t_t {
-    u_int32_t offset;
-    u_int32_t type;
-    u_int32_t element_type;
-    u_int16_t element_size;
-    int (*compare)(struct db_column_t_t *, unsigned char *, unsigned char *);
-} db_column_t;
+typedef struct Column_t {
+    PyObject_HEAD
+    PyObject *name;
+    PyObject *description;
+    int offset;
+    int type; //  DEPRECATED
+    int element_type;
+    int element_size;
+    int num_elements;
+    int (*compare)(struct Column_t *, unsigned char *, unsigned char *);
+} Column;
 
 typedef struct {
-    db_column_t *columns;
+    Column *columns;
     u_int32_t num_columns;
     DB *secondary_db;
     char *filename;
@@ -81,8 +85,33 @@ handle_bdb_error(int err)
 }
 
 
+/* 
+ * Packs the least significant num_bytes of integer value 
+ * into buff in big-endian order.
+ */
+static void
+pack_integer(u_int64_t value, int num_bytes, unsigned char *buff)
+{
+    unsigned char *bytes = (unsigned char *) &value;
+    int j = 0;
+    for (j = 0; j < num_bytes; j++) {
+        printf("%03d ", bytes[j]); 
+        buff[j] = bytes[8 - j]; 
+    }
+    printf("\nTHIS IS RUBBISH!\n");   
+    printf("packing %d bytes of %lu into %p\n", num_bytes, value, buff);
+    
+    for (j = 0; j < num_bytes; j++) {
+        printf("%03d ", buff[j]); 
+    }
+    printf("\n");
+
+}
+
+
+
 static int
-db_column_float_compare(db_column_t *self, unsigned char *key1, 
+db_column_float_compare(Column *self, unsigned char *key1, 
         unsigned char *key2)
 {
     int ret;
@@ -101,7 +130,7 @@ db_column_float_compare(db_column_t *self, unsigned char *key1,
 }
 
 static int
-db_column_memory_compare(db_column_t *self, unsigned char *key1, 
+db_column_memory_compare(Column *self, unsigned char *key1, 
         unsigned char *key2)
 {
     int ret = memcmp(key1, key2, self->element_size);
@@ -132,7 +161,7 @@ db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
 {   
     unsigned int j;
     db_index_t *self = (db_index_t *) secondary->app_private;
-    db_column_t *col;
+    Column *col;
     u_int16_t size;
     unsigned char *source, *dest;
     /* copy the bytes into result for now */
@@ -183,7 +212,7 @@ db_index_compare(DB *secondary, const DBT *dbt1, const DBT *dbt2)
 {
     int ret = 0;
     int j = 0;
-    db_column_t *col;
+    Column *col;
     db_index_t *self = (db_index_t *) secondary->app_private;
     unsigned char *key1 = (unsigned char *) dbt1->data;
     unsigned char *key2 = (unsigned char *) dbt2->data;
@@ -226,7 +255,7 @@ db_index_initialise(db_index_t *self, PyObject *index_description)
     strcpy(self->filename, PyBytes_AsString(filename));
     printf("initalising index %p: %s\n", self, self->filename);
     
-    self->columns = PyMem_Malloc(self->num_columns * sizeof(db_column_t));
+    self->columns = PyMem_Malloc(self->num_columns * sizeof(Column));
     for (j = 0; j < self->num_columns; j++) {
         column_description = PyList_GetItem(index_description, j + 1);
         if (!PyList_Check(column_description)) {
@@ -298,6 +327,123 @@ out:
     return;
 }
 
+/*==========================================================
+ * Column object 
+ *==========================================================
+ */
+static void
+Column_dealloc(Column* self)
+{
+    Py_XDECREF(self->name); 
+    Py_XDECREF(self->description); 
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+
+static int
+Column_init(Column *self, PyObject *args, PyObject *kwds)
+{
+    int ret = -1;
+    static char *kwlist[] = {"name", "description", "offset", 
+        "element_type", "element_size", "num_elements", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiiii", kwlist, 
+            &self->name, &self->description, 
+            &self->offset, &self->element_type, &self->element_size, 
+            &self->num_elements)) {  
+        goto out;
+    }
+    Py_INCREF(self->name);
+    Py_INCREF(self->description);
+    /*TODO Check the values for sanity*/
+    
+    ret = 0;
+out:
+    return ret;
+}
+
+static PyMemberDef Column_members[] = {
+    {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
+    {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
+    {"offset", T_INT, offsetof(Column, offset), READONLY, "offset"},
+    {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
+    {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
+    {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
+    {NULL}  /* Sentinel */
+};
+
+
+static PyObject *
+Column_set_record_value(Column* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    PyObject *values = NULL;
+    unsigned char buff[64];
+    if (! PyArg_ParseTuple(args, "O", &values)) {
+        goto out;
+    }
+    if (self->num_elements == 1) {
+        if (!PyLong_Check(values)) {
+            PyErr_SetString(PyExc_ValueError, "Long expected");
+            goto out;
+        }
+        pack_integer(PyLong_AsLong(values), self->element_size, buff);
+    }
+    
+ 
+    ret = Py_BuildValue("");
+out:
+    return ret; 
+}
+
+
+
+
+static PyMethodDef Column_methods[] = {
+    {"set_record_value", (PyCFunction) Column_set_record_value, METH_VARARGS, 
+            "Sets the value of the column in a record" },
+    {NULL}  /* Sentinel */
+};
+
+static PyTypeObject ColumnType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_vcfdb.Column",             /* tp_name */
+    sizeof(Column),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)Column_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT |
+        Py_TPFLAGS_BASETYPE,   /* tp_flags */
+    "Column objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    0,                     /* tp_iter */
+    0,                     /* tp_iternext */
+    Column_methods,             /* tp_methods */
+    Column_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)Column_init,      /* tp_init */
+};
+   
 
 
 /*==========================================================
@@ -873,6 +1019,7 @@ init_vcfdb(void)
     if (module == NULL) {
         INITERROR;
     }
+    /* BerkeleyDatabase */
     BerkeleyDatabaseType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&BerkeleyDatabaseType) < 0) {
         INITERROR;
@@ -880,6 +1027,15 @@ init_vcfdb(void)
     Py_INCREF(&BerkeleyDatabaseType);
     PyModule_AddObject(module, "BerkeleyDatabase", 
             (PyObject *) &BerkeleyDatabaseType);
+    /* Column */
+    ColumnType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&ColumnType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&ColumnType);
+    PyModule_AddObject(module, "Column", (PyObject *) &ColumnType);
+    
+    /* RecordBuffer */
     RecordBufferType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&RecordBufferType) < 0) {
         INITERROR;

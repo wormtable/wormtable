@@ -538,7 +538,14 @@ class Schema(object):
         col.set_num_elements(num_values)
         col.set_description(description)
         self.__columns[name] = col 
-    
+   
+        print("adding column:")
+        c = _vcfdb.Column(name, description, offset=0, element_type=0, 
+            element_size=5, num_elements=1)
+        print("adding column:", c.name, c.element_size)
+
+        c.set_record_value(1)
+
     def add_float_column(self, name, num_values, description):
         """
         Adds a column with the specified name to hold the specified 
@@ -717,8 +724,7 @@ def main():
         records = 0
         for r in dbr.get_records(["POS", "QUAL"]):
             #print(r.record_id, r.POS[0], r.QUAL[0], sep="\t")
-            if r.QUAL[0] > 100.0:
-                records += 1
+            records += 1
         print("read ", records, "records")
         dbr.close()
 
