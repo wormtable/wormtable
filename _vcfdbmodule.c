@@ -86,23 +86,22 @@ handle_bdb_error(int err)
 
 
 /* 
- * Packs the least significant num_bytes of integer value 
- * into buff in big-endian order.
+ * Copies n bytes of source into destination, swapping the order of the 
+ * bytes.
  */
 static void
-pack_integer(u_int64_t value, int num_bytes, unsigned char *buff)
+byte_swap(unsigned char *source, unsigned char *destination, size_t n)
 {
-    unsigned char *bytes = (unsigned char *) &value;
-    int j = 0;
-    for (j = 0; j < num_bytes; j++) {
-        printf("%03d ", bytes[j]); 
-        buff[j] = bytes[8 - j]; 
+    size_t j = 0;
+    for (j = 0; j < n; j++) {
+        printf("%03d ", source[j]); 
     }
-    printf("\nTHIS IS RUBBISH!\n");   
-    printf("packing %d bytes of %lu into %p\n", num_bytes, value, buff);
-    
-    for (j = 0; j < num_bytes; j++) {
-        printf("%03d ", buff[j]); 
+    for (j = 0; j < n; j++) {
+        destination[j] = source[n - j - 1];
+    }
+    printf("\t -> \t"); 
+    for (j = 0; j < n; j++) {
+        printf("%03d ", destination[j]); 
     }
     printf("\n");
 
@@ -313,8 +312,14 @@ db_index_initialise(db_index_t *self, PyObject *index_description)
         handle_bdb_error(db_ret);
         goto out;    
     }
+    /* This may be useful - check it out */
+    db_ret = self->secondary_db->set_bt_compress(self->secondary_db, NULL, NULL); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
     
-
+    
 
     db_ret = self->secondary_db->open(self->secondary_db, NULL, self->filename, 
             NULL, DB_BTREE, DB_CREATE|DB_TRUNCATE, 0);
@@ -377,6 +382,8 @@ Column_set_record_value(Column* self, PyObject *args)
 {
     PyObject *ret = NULL;
     PyObject *values = NULL;
+    long v;
+    float tmp;
     unsigned char buff[64];
     if (! PyArg_ParseTuple(args, "O", &values)) {
         goto out;
@@ -386,7 +393,14 @@ Column_set_record_value(Column* self, PyObject *args)
             PyErr_SetString(PyExc_ValueError, "Long expected");
             goto out;
         }
-        pack_integer(PyLong_AsLong(values), self->element_size, buff);
+        v = PyLong_AsLong(values);
+        byte_swap((unsigned char *) &v, buff, self->element_size);
+        byte_swap(buff, (unsigned char *) &v, self->element_size);
+        printf("v = %ld\n", v); 
+        
+        for (tmp = 1.0; tmp < 10.0; tmp += 0.1) {
+            byte_swap((unsigned char *) &tmp, buff, sizeof(float));
+        }
     }
     
  
@@ -475,6 +489,7 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
     int db_ret = 0;
     self->primary_db = NULL;
     self->indexes = NULL;
+    self->cursor = NULL;
     self->num_indexes = 0;
     db_ret = db_create(&self->primary_db, NULL, 0);
     if (db_ret != 0) {
@@ -482,7 +497,20 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         ret = -1;
         goto out;    
     }
-    self->cursor = NULL;
+    /* 
+     * Initial examination indicates that it's good for secondary indexes
+     * but not for the main DB. This should be tested with the real 
+     * key sizes and a proper dataset though.
+
+    db_ret = self->primary_db->set_bt_compress(self->primary_db, NULL, NULL);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        ret = -1;
+        goto out;    
+    }
+     */
+    
+
 out:
 
     return ret;

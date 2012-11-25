@@ -544,7 +544,7 @@ class Schema(object):
             element_size=5, num_elements=1)
         print("adding column:", c.name, c.element_size)
 
-        c.set_record_value(1)
+        c.set_record_value(123512)
 
     def add_float_column(self, name, num_values, description):
         """
