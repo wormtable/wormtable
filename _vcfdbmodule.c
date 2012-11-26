@@ -569,7 +569,7 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
     PyObject *ret = NULL;
     int db_ret;
     u_int32_t flags;
-    char *db_name = "tmp/primary.db";
+    char *db_name = "db_NOBACKUP_/primary.db";
     
     db_ret = self->primary_db->set_cachesize(self->primary_db, 0, 
             512 * 1024 * 1024, 1);
@@ -596,7 +596,7 @@ BerkeleyDatabase_open(BerkeleyDatabase* self)
     int db_ret;
     PyObject *ret = NULL;
     u_int32_t flags = DB_RDONLY;
-    char *db_name = "tmp/primary.db";
+    char *db_name = "db_NOBACKUP_/primary.db";
     db_ret = self->primary_db->open(self->primary_db, NULL, db_name, NULL, 
             DB_UNKNOWN,  flags,  0);         
     if (db_ret != 0) {
@@ -785,7 +785,7 @@ RecordBuffer_flush(RecordBuffer* self)
     
     db = self->database->primary_db;
     /* TODO error check or verify this can't be null */
-    printf("Flushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
+    printf("\nFlushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
     for (j = 0; j < self->num_records; j++) {
         db_ret = db->put(db, NULL, &self->keys[j], &self->records[j], flags);
         if (db_ret != 0) {

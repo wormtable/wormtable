@@ -539,12 +539,12 @@ class Schema(object):
         col.set_description(description)
         self.__columns[name] = col 
    
-        print("adding column:")
-        c = _vcfdb.Column(name, description, offset=0, element_type=0, 
-            element_size=5, num_elements=1)
-        print("adding column:", c.name, c.element_size)
+        #print("adding column:")
+        #c = _vcfdb.Column(name, description, offset=0, element_type=0, 
+        #    element_size=5, num_elements=1)
+        #print("adding column:", c.name, c.element_size)
 
-        c.set_record_value(123512)
+        #c.set_record_value(123512)
 
     def add_float_column(self, name, num_values, description):
         """
@@ -620,9 +620,9 @@ class DatabaseBuilder(object):
         chromosome = self.__schema.get_column("CHROM")
         position = self.__schema.get_column("POS")
         quality = self.__schema.get_column("QUAL")
-        i1 = [b"tmp/chrom+pos.db", chromosome.get_low_level_format(), 
+        i1 = [b"db_NOBACKUP_/chrom+pos.db", chromosome.get_low_level_format(), 
             position.get_low_level_format()]
-        i2 = [b"tmp/qual.db", quality.get_low_level_format()]
+        i2 = [b"db_NOBACKUP_/qual.db", quality.get_low_level_format()]
         self.__database.add_index([i1, i2])
 
     def __prepare_record(self):
@@ -665,10 +665,10 @@ class DatabaseBuilder(object):
                 if progress != last_progress:
                     last_progress = progress 
                     if progress_callback is not None:
-                        progress_callback(progress, self.__record_id)
+                        progress_callback(progress, self.__current_record_id)
         self.__record_buffer.flush()
         self.__database.close()
-        with open("tmp/schema.pkl", "wb") as f:
+        with open("db_NOBACKUP_/schema.pkl", "wb") as f:
             pickle.dump(self.__schema, f)
 
 
@@ -715,10 +715,15 @@ class DatabaseReader(object):
 
 
 def main():
+    
+    def progress_monitor(progress, record_number):
+        print("=", end="")
+        sys.stdout.flush()
+
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
-        dbb = DatabaseBuilder("tmp")
-        dbb.parse_vcf(vcf_file)
+        dbb = DatabaseBuilder("db_NOBACKUP_")
+        dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
     else:
         dbr = DatabaseReader()
         records = 0
