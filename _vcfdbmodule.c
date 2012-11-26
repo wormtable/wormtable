@@ -306,7 +306,15 @@ db_index_initialise(db_index_t *self, PyObject *index_description)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    
+    /* 128 MiB cache for secondary DBs */ 
+    db_ret = self->secondary_db->set_cachesize(self->secondary_db, 0, 
+            128 * 1024 * 1024, 1);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+
+
     db_ret = self->secondary_db->set_bt_compare(self->secondary_db, db_index_compare);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -571,8 +579,7 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
     u_int32_t flags;
     char *db_name = "db_NOBACKUP_/primary.db";
     
-    db_ret = self->primary_db->set_cachesize(self->primary_db, 0, 
-            512 * 1024 * 1024, 1);
+    db_ret = self->primary_db->set_cachesize(self->primary_db, 8, 0, 1); 
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
@@ -785,7 +792,7 @@ RecordBuffer_flush(RecordBuffer* self)
     
     db = self->database->primary_db;
     /* TODO error check or verify this can't be null */
-    printf("\nFlushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
+    //printf("\nFlushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
     for (j = 0; j < self->num_records; j++) {
         db_ret = db->put(db, NULL, &self->keys[j], &self->records[j], flags);
         if (db_ret != 0) {
@@ -793,7 +800,7 @@ RecordBuffer_flush(RecordBuffer* self)
             goto out;
         } 
     }
-    printf("done\n");
+    //printf("done\n");
     RecordBuffer_clear(self);
     
     ret = Py_BuildValue("");

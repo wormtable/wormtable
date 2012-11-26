@@ -277,7 +277,7 @@ class VCFFileParser(object):
                 # here and fix later.
                 print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
             j += 1
-
+    
     def read_header(self, f):
         """
         Reads the header for this VCF file, constructing the database 
@@ -608,6 +608,7 @@ class DatabaseBuilder(object):
         #print("storing ", column, "->", value)
         col = self.__schema.get_column(column)
         col.set_value(value, self.__record_buffer)
+        
         #v = col.get_value(self.__record_buffer)
         #print(col.get_name(), ":", value, "->", v)
           
@@ -623,7 +624,8 @@ class DatabaseBuilder(object):
         i1 = [b"db_NOBACKUP_/chrom+pos.db", chromosome.get_low_level_format(), 
             position.get_low_level_format()]
         i2 = [b"db_NOBACKUP_/qual.db", quality.get_low_level_format()]
-        self.__database.add_index([i1, i2])
+        # Disable indexes for now.
+        #self.__database.add_index([i1, i2])
 
     def __prepare_record(self):
         """
@@ -661,9 +663,15 @@ class DatabaseBuilder(object):
                 parser.parse_record(line.decode(), self)
                 self.__commit_record()
                 
+                if self.__current_record_id % 10000 == 0:
+                    sys.exit(0)
+
                 progress = int(parser.get_progress() * 1000)
                 if progress != last_progress:
                     last_progress = progress 
+
+
+
                     if progress_callback is not None:
                         progress_callback(progress, self.__current_record_id)
         self.__record_buffer.flush()
@@ -715,10 +723,17 @@ class DatabaseReader(object):
 
 
 def main():
-    
+    import time 
+
+    global last 
+    last = time.time()
     def progress_monitor(progress, record_number):
-        print("=", end="")
-        sys.stdout.flush()
+        #print("=", end="")
+        #sys.stdout.flush()
+        global last
+        now = time.time()
+        print(progress, "\t", record_number, now - last)
+        last = now
 
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
