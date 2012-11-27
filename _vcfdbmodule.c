@@ -31,11 +31,11 @@ typedef struct Column_t {
     PyObject *name;
     PyObject *description;
     int offset;
-    int type; //  DEPRECATED
     int element_type;
     int element_size;
     int num_elements;
     int (*compare)(struct Column_t *, unsigned char *, unsigned char *);
+    int type; //  DEPRECATED
 } Column;
 
 typedef struct {
@@ -74,6 +74,9 @@ typedef struct {
     /* Reading management */
     u_int32_t read_records;
     int reading_done;
+    int num_selected_columns;
+    Column **selected_columns;
+    
     /* Used for Python buffer protocal compliance */
     int num_views; 
 } RecordBuffer;
@@ -93,18 +96,21 @@ static void
 byte_swap(unsigned char *source, unsigned char *destination, size_t n)
 {
     size_t j = 0;
+    /*
     for (j = 0; j < n; j++) {
         printf("%03d ", source[j]); 
     }
+    */
     for (j = 0; j < n; j++) {
         destination[j] = source[n - j - 1];
     }
+    /*
     printf("\t -> \t"); 
     for (j = 0; j < n; j++) {
         printf("%03d ", destination[j]); 
     }
     printf("\n");
-
+    */
 }
 
 
@@ -894,15 +900,48 @@ out:
     return ret; 
 }
 
-
-
+static PyObject *
+RecordBuffer_set_selected_columns(RecordBuffer* self, PyObject *args)
+{
+    int j;
+    PyObject *ret = NULL;
+    PyObject *py_columns = NULL; 
+    PyObject *py_col = NULL; 
+    if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &py_columns)) { 
+        goto out; 
+    }
+    self->num_selected_columns = PyList_Size(py_columns);
+    /* FIXME!! */
+    /* This is a horrible memory leak - the REcordBuffer should allocate 
+       the maximum number of columns by looking at the database */
+    self->selected_columns = PyMem_Malloc(self->num_selected_columns * sizeof(void *));
+    for (j = 0; j < self->num_selected_columns; j++) {
+        py_col = PyList_GetItem(py_columns, j);
+        Py_INCREF(py_col); /* Is this necessary?? */
+        if (! PyObject_TypeCheck(py_col, &ColumnType)) {
+            PyErr_SetString(PyExc_TypeError, "argument not Column");
+            goto out;
+        }
+        self->selected_columns[j] = (Column *) py_col; 
+    }
+    
+    ret = Py_BuildValue("");
+out:
+    return ret; 
+}
 
 static PyObject *
 RecordBuffer_retrieve_record(RecordBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
+    Column *col;
     unsigned int n = self->read_records;
+    unsigned long record_id;
+    float float_val;
+    long long_val = 0;
+    int j;
     /* this is dreadful */
+    ret = PyTuple_New(self->num_selected_columns + 1);
     if (n == self->num_records && self->reading_done) {
         ret = Py_BuildValue("");
     } else {
@@ -913,11 +952,29 @@ RecordBuffer_retrieve_record(RecordBuffer* self, PyObject *args)
         if (n < self->num_records) {
             /* set the current_record_offset so that it points to the next record.
              * Using pointer arithmmetic for now.
-             */
             self->current_record_offset = ((unsigned char *) self->records[n].data)
                     - self->record_buffer;
-            /* build a bytes object for the key */ 
-            ret = Py_BuildValue("y#", self->keys[n].data, self->key_size);
+             // buffer interface is no longer used.
+             
+             */
+            byte_swap(self->keys[n].data, (unsigned char *) &record_id, self->key_size);
+            PyTuple_SetItem(ret, 0, PyLong_FromUnsignedLong(record_id));  
+            for (j = 0; j < self->num_selected_columns; j++) {
+                col = self->selected_columns[j];
+                if (col->element_type == ELEMENT_TYPE_INT_8) {
+                    //byte_swap(self->records[n].data + col->offset, (unsigned char *) &long_val, 8); 
+                    memcpy(&long_val, self->records[n].data + col->offset, 8); 
+                    PyTuple_SetItem(ret, j + 1, PyLong_FromUnsignedLong(long_val));  
+                } else if (col->element_type == ELEMENT_TYPE_FLOAT) {
+                    //byte_swap(self->records[n].data + col->offset, (unsigned char *) &float_val, 4); 
+                    memcpy(&float_val, self->records[n].data + col->offset, 4); 
+                    PyTuple_SetItem(ret, j + 1, PyFloat_FromDouble((double) float_val));  
+                } else {
+                    printf("ERROR!!!\n");
+                }
+                
+            }
+            
             self->read_records++;
         } else {
             ret = Py_BuildValue("");
@@ -964,6 +1021,8 @@ RecordBuffer_releasebuffer(RecordBuffer *self, Py_buffer *view)
 }
 
 static PyMethodDef RecordBuffer_methods[] = {
+    {"set_selected_columns", (PyCFunction) RecordBuffer_set_selected_columns, 
+            METH_VARARGS, "set_selected_columns record" },
     {"retrieve_record", (PyCFunction) RecordBuffer_retrieve_record, METH_NOARGS, "retrieve record" },
     {"commit_record", (PyCFunction) RecordBuffer_commit_record, METH_VARARGS, "commit record" },
     {"flush", (PyCFunction) RecordBuffer_flush, METH_NOARGS, "flush" },

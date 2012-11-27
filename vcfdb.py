@@ -10,11 +10,7 @@ import struct
 import tempfile
 from contextlib import contextmanager
 
-import itertools
-import collections
-
 import _vcfdb
-
 
 __version__ = '0.0.1-dev'
 
@@ -404,6 +400,17 @@ class DBColumn(object):
         """
         return self._num_elements
 
+    def get_new_style_column(self):
+        s = self.STORAGE_FORMAT_MAP[self._element_type]
+        fmt = self.BYTE_ORDER + s 
+        element_size = struct.calcsize(s)
+        new_col = _vcfdb.Column(self._name, self._description, 
+                offset=self._offset, 
+                element_type=self._element_type, 
+                element_size=element_size, 
+                num_elements=self._num_elements)
+        return new_col
+
     def set_value(self, values, record_buffer):
         """
         Encodes the specified Python value into its raw binary equivalent 
@@ -688,7 +695,7 @@ class DatabaseReader(object):
     Class representing a database reader for a particular directory.
     """
     def __init__(self):
-        with open("tmp/schema.pkl", "rb") as f:
+        with open("db_NOBACKUP_/schema.pkl", "rb") as f:
             self.__schema = pickle.load(f)
         self.__database = _vcfdb.BerkeleyDatabase()
         self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
@@ -699,20 +706,18 @@ class DatabaseReader(object):
         """
         Returns an iterator over records.
         """
-        cols = [self.__schema.get_column(name) for name in column_names] 
-        
-        Record = collections.namedtuple("Record", ["record_id"] + column_names) 
+        cols = []
+        for name in column_names:
+            old_col = self.__schema.get_column(name) 
+            cols.append(old_col.get_new_style_column())
+        print(cols) 
+        self.__record_buffer.set_selected_columns(cols) 
         self.__record_buffer.fill()
-        key = self.__record_buffer.retrieve_record()
-        fmt = self.__schema.get_primary_key_format()
-        while key is not None:
-            record_id = struct.unpack(fmt, key)[0]
-            # Does this need to be a  list or can be make an iterator?
-            values = [col.get_value(self.__record_buffer) for col in cols]
-            yield Record._make(itertools.chain([record_id], values)) 
-            key = self.__record_buffer.retrieve_record()
+        record = self.__record_buffer.retrieve_record()
+        while record is not None:
+            yield record 
+            record = self.__record_buffer.retrieve_record()
         #print("got record:", record_id) 
-
     
     def close(self):
         """
@@ -743,6 +748,7 @@ def main():
         dbr = DatabaseReader()
         records = 0
         for r in dbr.get_records(["POS", "QUAL"]):
+            print(r)
             #print(r.record_id, r.POS[0], r.QUAL[0], sep="\t")
             records += 1
         print("read ", records, "records")
