@@ -10,6 +10,9 @@ import struct
 import tempfile
 from contextlib import contextmanager
 
+from xml.etree import ElementTree
+from xml.dom import minidom
+
 import _vcfdb
 
 __version__ = '0.0.1-dev'
@@ -367,7 +370,7 @@ class DBColumn(object):
 
     
     def __str__(self):
-        return "{0}\t{1}\t{2}\t{3}".format(self._name, self._num_elements, 
+        return "{0}\t\t\t{1}\t{2}\t{3}".format(self._name, self._num_elements, 
                 self._offset, self._element_type)
     
     def set_description(self, description):
@@ -466,7 +469,7 @@ class DBEnumerationColumn(DBColumn):
         self._next_key = 0
     
     def __str__(self):
-        return "{0}\t{1}\t{2}\t{3}\t{4}".format(self._name, self._num_elements, 
+        return "{0}\t\t\t{1}\t{2}\t{3}\t{4}".format(self._name, self._num_elements, 
                 self._offset, self._element_type, self._key_map)
 
     def set_value(self, values, record_buffer):
@@ -595,7 +598,54 @@ class Schema(object):
             col.set_offset(offset)
             offset += col.get_fixed_region_size() 
         self.__fixed_region_size = offset
-        
+       
+
+    def write_xml(self):
+        d = {"version":"1.0"}
+        root = ElementTree.Element("schema", d)
+        # doesn't work.
+        comment = ElementTree.Comment("Generated VCF schema")
+        root.append(comment)
+        columns = ElementTree.Element("columns")
+        root.append(columns)
+        sorted_cols = sorted(self.__columns.values(), key=lambda col: col.get_offset())
+        for old_col in sorted_cols:
+            c = old_col.get_new_style_column()
+            element_type = "tmp"
+            d = {
+                "name":c.name, 
+                "description":c.description,
+                "offset":str(c.offset), 
+                "element_size":str(c.element_size),
+                "num_elements":str(c.num_elements),
+                "element_type":element_type
+            }
+            element = ElementTree.Element("column", d)
+            columns.append(element)
+        tree = ElementTree.ElementTree(root)
+        raw_xml = ElementTree.tostring(root, 'utf-8')
+        reparsed = minidom.parseString(raw_xml)
+        pretty = reparsed.toprettyxml(indent="  ")
+        with open("db_NOBACKUP_/schema.xml", "w") as f:
+            f.write(pretty)
+
+    def read_xml(self):
+        tree = ElementTree.parse("db_NOBACKUP_/schema.xml")
+        root = tree.getroot()
+        if root.tag != "schema":
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        # check version
+        columns = root.find("columns")
+        for xmlcol in columns.getchildren():
+            if xmlcol.tag != "column":
+                raise ValueError("invalid xml")
+            name = xmlcol.get("name")
+            offset = int(xmlcol.get("offset"))
+            #print(name, offset)
+
+
+
 class DatabaseBuilder(object):
     """
     Class that builds a database from an input file. 
@@ -670,8 +720,6 @@ class DatabaseBuilder(object):
                 parser.parse_record(line.decode(), self)
                 self.__commit_record()
                 
-                if self.__current_record_id % 10000 == 0:
-                    sys.exit(0)
 
                 progress = int(parser.get_progress() * 1000)
                 if progress != last_progress:
@@ -686,9 +734,8 @@ class DatabaseBuilder(object):
         with open("db_NOBACKUP_/schema.pkl", "wb") as f:
             pickle.dump(self.__schema, f)
 
-
-        #for col in self.__schema.get_columns():
-        #    print(col)
+        for col in self.__schema.get_columns():
+            print(col)
 
 class DatabaseReader(object):
     """
@@ -697,6 +744,10 @@ class DatabaseReader(object):
     def __init__(self):
         with open("db_NOBACKUP_/schema.pkl", "rb") as f:
             self.__schema = pickle.load(f)
+        
+        self.__schema.write_xml()
+        self.__schema.read_xml()
+
         self.__database = _vcfdb.BerkeleyDatabase()
         self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
         self.__database.open()
@@ -737,7 +788,7 @@ def main():
         #sys.stdout.flush()
         global last
         now = time.time()
-        print(progress, "\t", record_number, now - last)
+        #print(progress, "\t", record_number, now - last)
         last = now
 
     if len(sys.argv) == 2: 
@@ -746,12 +797,14 @@ def main():
         dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
     else:
         dbr = DatabaseReader()
+        """
         records = 0
         for r in dbr.get_records(["POS", "QUAL"]):
             print(r)
             #print(r.record_id, r.POS[0], r.QUAL[0], sep="\t")
             records += 1
         print("read ", records, "records")
+        """
         dbr.close()
 
 if __name__ == "__main__":
