@@ -737,6 +737,109 @@ class DatabaseBuilder(object):
         for col in self.__schema.get_columns():
             print(col)
 
+
+class DatabaseWriter(object):
+    """
+    Class responsible for generating databases.
+    """
+    def __init__(self):
+        self._database_dir = None 
+        self._schema = []
+        self._database = None # Database()
+        self._record_buffer = None # WriteBuffer()
+        self._current_record_id = 0
+        # filenames, indexes, ?? 
+
+class VCFDatabaseWriter(DatabaseWriter):
+    """
+    Class responsible for parsing a VCF file and creating a database. 
+    """
+    def __init__(self, vcf_file, database_dir):
+        self._directory = database_dir
+        self._vcf_file = vcf_file
+        self._backing_file = None
+        self._source_file = self._open_file()  
+        self._vcf_version = -1.0
+        self._source_file_size = float(os.stat(vcf_file).st_size)
+        # Not sure about these
+        self._genotypes = []
+        self._info_columns = {}
+        self._genotype_columns = {}
+
+    def _open_file(self):
+        """
+        Opens the source file so that it can be read by the parsing code. 
+        Throws an error if it is not one of the supported formats:
+        .vcf or .vcf.gz 
+        """
+        path = self._vcf_file
+        if path.endswith(".vcf.gz"):
+            f = gzip.open(path, 'rb') 
+            self._backing_file = f.fileobj
+        elif path.endswith(".vcf"):
+            f = open(path, 'rb') 
+            self._backing_file = f
+        else:
+            raise ValueError("Unsupported file format")
+        return f
+   
+    def _parse_version(self, s):
+        """
+        Parse the VCF version number from the specified string.
+        """
+        self._version = -1.0
+        tokens = s.split("v")
+        if len(tokens) == 2:
+            self._version = float(tokens[1])
+
+    def _parse_meta_information(self, line):
+        """
+        Processes the specified meta information line to obtain the values 
+        of the various columns and their types.
+        """
+        if line.startswith("##INFO"):
+            col = vcf_file_column_factory(line)
+            self._info_columns[col.name] = col
+        elif line.startswith("##FORMAT"):
+            col = vcf_file_column_factory(line)
+            self._genotype_columns[col.name] = col
+        else:
+            #print("NOT PARSED:", line)
+            pass
+            # TODO insert another case here to deal with the FILTER column
+            # and add enumeration values to it.
+
+    def _parse_header_line(self, s):
+        """
+        Processes the specified header string to get the genotype labels.
+        """
+        self._genotypes = s.split()[9:]
+
+    def read_header(self, f):
+        """
+        Reads the header for this VCF file, constructing the database 
+        schema and getting the parser prepared for processing records.
+        """
+        # Read the header
+        s = (f.readline()).decode()
+        self._parse_version(s)
+        if self._version < 4.0:
+            raise ValueError("VCF versions < 4.0 not supported")
+        while s.startswith("##"):
+            self._parse_meta_information(s)
+            s = (f.readline()).decode()
+        self._parse_header_line(s)
+    
+     
+    def get_progress(self):
+        """
+        Returns the progress through the file as a fraction.
+        """
+        return self._backing_file.tell() / self._source_file_size
+
+   
+
+
 class DatabaseReader(object):
     """
     Class representing a database reader for a particular directory.
@@ -793,8 +896,15 @@ def main():
 
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
-        dbb = DatabaseBuilder("db_NOBACKUP_")
-        dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
+        #dbb = DatabaseBuilder("db_NOBACKUP_")
+        #dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
+        dbdir = "db_NOBACKUP_"
+        dbw = VCFDatabaseWriter(dbdir, vcf_file)
+        dbw.process_header()
+        dbw.process_records(progress_monitor)
+        ib = IndexBuilder(dbdir, ["chrom", "pos"])
+        ib.build(progress_monitor)
+
     else:
         dbr = DatabaseReader()
         """
