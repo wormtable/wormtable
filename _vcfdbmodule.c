@@ -8,16 +8,27 @@
 #define IS_PY3K
 #endif
 
+#define ELEMENT_TYPE_CHAR 0
+#define ELEMENT_TYPE_INT 1 
+#define ELEMENT_TYPE_FLOAT 2
+#define ELEMENT_TYPE_ENUM 3
+
+/* DEPRECATED */
 #define COLUMN_TYPE_FIXED 0
 #define COLUMN_TYPE_VARIABLE 1 
-    
+
+#define ELEMENT_TYPE_INT_8  4
+
+/*
 #define ELEMENT_TYPE_CHAR  0
 #define ELEMENT_TYPE_INT_1  1
 #define ELEMENT_TYPE_INT_2  2
 #define ELEMENT_TYPE_INT_4  3
-#define ELEMENT_TYPE_INT_8  4
 #define ELEMENT_TYPE_FLOAT  5
- 
+
+
+*/
+
 static int element_type_size_map[] = {1, 1, 2, 4, 8, 4};
 
 #define MODULE_DOC \
@@ -30,6 +41,7 @@ typedef struct Column_t {
     PyObject_HEAD
     PyObject *name;
     PyObject *description;
+    PyObject *enum_values;
     int offset;
     int element_type;
     int element_size;
@@ -355,6 +367,7 @@ Column_dealloc(Column* self)
 {
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
+    Py_XDECREF(self->enum_values); 
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -363,14 +376,19 @@ static int
 Column_init(Column *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    static char *kwlist[] = {"name", "description", "offset", 
-        "element_type", "element_size", "num_elements", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiiii", kwlist, 
+    static char *kwlist[] = {"name", "description",  "element_type", 
+        "element_size", "num_elements", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
             &self->name, &self->description, 
-            &self->offset, &self->element_type, &self->element_size, 
+            &self->element_type, &self->element_size, 
             &self->num_elements)) {  
         goto out;
     }
+    self->enum_values = PyDict_New();
+    if (self->enum_values == NULL) {
+        goto out;
+    }
+    Py_INCREF(self->enum_values);
     Py_INCREF(self->name);
     Py_INCREF(self->description);
     /*TODO Check the values for sanity*/
@@ -383,7 +401,7 @@ out:
 static PyMemberDef Column_members[] = {
     {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
     {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
-    {"offset", T_INT, offsetof(Column, offset), READONLY, "offset"},
+    {"enum_values", T_OBJECT_EX, offsetof(Column, description), READONLY, "enum_values"},
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
@@ -1141,16 +1159,11 @@ init_vcfdb(void)
             NULL, NULL);
     Py_INCREF(BerkeleyDatabaseError);
     PyModule_AddObject(module, "BerkeleyDatabaseError", BerkeleyDatabaseError);
-
-    PyModule_AddIntConstant(module, "COLUMN_TYPE_FIXED", COLUMN_TYPE_FIXED);
-    PyModule_AddIntConstant(module, "COLUMN_TYPE_VARIABLE", COLUMN_TYPE_VARIABLE);
     
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_CHAR", ELEMENT_TYPE_CHAR);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT_1", ELEMENT_TYPE_INT_1);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT_2", ELEMENT_TYPE_INT_2);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT_4", ELEMENT_TYPE_INT_4);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT_8", ELEMENT_TYPE_INT_8);
+    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);
+    PyModule_AddIntConstant(module, "ELEMENT_TYPE_ENUM", ELEMENT_TYPE_ENUM);
 
 #if PY_MAJOR_VERSION >= 3
     return module;

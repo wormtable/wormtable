@@ -34,7 +34,7 @@ class VCFFileColumn(object):
     """
     Class representing a column in a VCF file.
     """
-    NUMBER_ANY = -1
+    NUMBER_ANY = 0 
     TYPE_INTEGER = 0
     TYPE_FLOAT = 1
     TYPE_FLAG = 2
@@ -67,24 +67,28 @@ class VCFFileColumn(object):
             assert(len(v) == self.number)
         return v 
     
-    def get_db_column(self):
+    def get_db_column(self, prefix):
         """
-        Returns a DBColumn instance suitable to represent this VCFFileColumn.
+        Returns a Column instance suitable to represent this VCFFileColumn.
         """ 
-        dbc = DBColumn()
-        dbc.set_num_elements(self.number)
+        name = prefix + "_" + self.name
+        element_type = _vcfdb.ELEMENT_TYPE_INT
+        element_size = 2
+        num_elements = self.number 
         if self.type == self.TYPE_INTEGER:
-            # We default to 16 bit integers; this should probably be a 
-            # configuration option.
-            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_INT_2) 
+            element_type = _vcfdb.ELEMENT_TYPE_INT
+            element_size = 2
         elif self.type == self.TYPE_FLOAT:
-            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_FLOAT) 
+            element_type = _vcfdb.ELEMENT_TYPE_FLOAT
+            element_size = 4
         elif self.type == self.TYPE_FLAG:
-            dbc.set_element_type(_vcfdb.ELEMENT_TYPE_INT_1) 
+            element_type = _vcfdb.ELEMENT_TYPE_INT
+            element_size = 1 
         elif self.type in [self.TYPE_STRING, self.TYPE_CHAR]:
-            dbc = DBEnumerationColumn()
-            dbc.set_num_elements(self.number)
-        dbc.set_description(self.description)
+            element_type = _vcfdb.ELEMENT_TYPE_ENUM
+            element_size = 1
+        dbc = _vcfdb.Column(name, self.description, element_type, 
+            element_size, num_elements)
         return dbc 
 
     def __str__(self):
@@ -294,6 +298,7 @@ class VCFFileParser(object):
     
         
 class DBColumn(object):
+    # DEPRECATED
     """
     Class representing a single column in a Schema. 
     """
@@ -311,7 +316,7 @@ class DBColumn(object):
     # native format so we don't have to worry about byte swapping 
     # in C. This should probably be standardised to big-endian.
     VARIABLE_RECORD_OFFSET_FORMAT = "=HB" 
-    
+    """
     STORAGE_FORMAT_MAP = {
         _vcfdb.ELEMENT_TYPE_CHAR : "c",
         _vcfdb.ELEMENT_TYPE_INT_1 : "b",
@@ -320,7 +325,7 @@ class DBColumn(object):
         _vcfdb.ELEMENT_TYPE_INT_8 : "q",
         _vcfdb.ELEMENT_TYPE_FLOAT : "f"
     }
-
+    """
     def __init__(self):
         self._description = "" 
         self._name = "" 
@@ -495,7 +500,7 @@ class DBEnumerationColumn(DBColumn):
         return [self._key_map[k] for k in keys]
 
 
-class Schema(object):
+class OldSchema(object):
     """
     Class representing a schema for database records. In this schema 
     we have a set of columns supporting storage for arrays of 
@@ -600,22 +605,55 @@ class Schema(object):
         self.__fixed_region_size = offset
        
 
-    def write_xml(self):
+
+class Schema(object):
+    """
+    Class representing a database schema, consisting of a list of 
+    Column objects.
+    """
+    ELEMENT_TYPE_STRING_MAP = {
+        _vcfdb.ELEMENT_TYPE_INT: "int",
+        _vcfdb.ELEMENT_TYPE_CHAR: "char",
+        _vcfdb.ELEMENT_TYPE_FLOAT: "float",
+        _vcfdb.ELEMENT_TYPE_ENUM: "enum"
+    }
+
+    def __init__(self, columns):
+        self.__columns = columns 
+    
+    def get_column(self):
+        """
+        Returns the list of columns in this schema.
+        """
+        return self.__columns
+
+    def show(self):
+        """
+        Writes out the schema to the console in human readable format.
+        """
+        # print("name\telement_type\telement_size\tnum_elements")
+        max_width = max(len(c.name) for c in self.__columns)
+        s = "{0:<25}{1:<12}{2:<12}{3:<12}"
+        print(65 * "=")
+        print(s.format("name", "type", "size", "num_elements"))
+        print(65 * "=")
+        for c in self.__columns:
+            t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
+            print(s.format(c.name, t, c.element_size, c.num_elements))
+
+    def write_xml(self, directory, filename="schema.xml"):
+        """
+        Writes out this schema to the specified file.
+        """ 
         d = {"version":"1.0"}
         root = ElementTree.Element("schema", d)
-        # doesn't work.
-        comment = ElementTree.Comment("Generated VCF schema")
-        root.append(comment)
         columns = ElementTree.Element("columns")
         root.append(columns)
-        sorted_cols = sorted(self.__columns.values(), key=lambda col: col.get_offset())
-        for old_col in sorted_cols:
-            c = old_col.get_new_style_column()
-            element_type = "tmp"
+        for c in self.__columns:
+            element_type = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             d = {
                 "name":c.name, 
                 "description":c.description,
-                "offset":str(c.offset), 
                 "element_size":str(c.element_size),
                 "num_elements":str(c.num_elements),
                 "element_type":element_type
@@ -626,16 +664,21 @@ class Schema(object):
         raw_xml = ElementTree.tostring(root, 'utf-8')
         reparsed = minidom.parseString(raw_xml)
         pretty = reparsed.toprettyxml(indent="  ")
-        with open("db_NOBACKUP_/schema.xml", "w") as f:
+        name = os.path.join(directory, filename)
+        with open(name, "w") as f:
             f.write(pretty)
 
-    def read_xml(self):
-        tree = ElementTree.parse("db_NOBACKUP_/schema.xml")
+    def read_xml(directory, filename="schema.xml"):
+        """
+        Returns a new schema object read from the specified file.
+        """
+        name = os.path.join(directory, filename)
+        tree = ElementTree.parse(name)
         root = tree.getroot()
         if root.tag != "schema":
             # Should have a custom error for this.
             raise ValueError("invalid xml")
-        # check version
+        # TODO check version
         columns = root.find("columns")
         for xmlcol in columns.getchildren():
             if xmlcol.tag != "column":
@@ -643,6 +686,91 @@ class Schema(object):
             name = xmlcol.get("name")
             offset = int(xmlcol.get("offset"))
             #print(name, offset)
+
+
+
+class VCFSchemaFactory(object):
+    """
+    Class that generates a database schema for a VCF file by parsing 
+    the header.
+    """
+    def __init__(self, vcf_file):
+        self._file = vcf_file
+        self._info_columns = {}
+        self._genotype_columns = {}
+    
+    def _parse_version(self, s):
+        """
+        Parse the VCF version number from the specified string.
+        """
+        self._version = -1.0
+        tokens = s.split("v")
+        if len(tokens) == 2:
+            self._version = float(tokens[1])
+
+    def _parse_meta_information(self, line):
+        """
+        Processes the specified meta information line to obtain the values 
+        of the various columns and their types.
+        """
+        if line.startswith("##INFO"):
+            col = vcf_file_column_factory(line)
+            self._info_columns[col.name] = col
+        elif line.startswith("##FORMAT"):
+            col = vcf_file_column_factory(line)
+            self._genotype_columns[col.name] = col
+        else:
+            #print("NOT PARSED:", line)
+            pass
+            # TODO insert another case here to deal with the FILTER column
+            # and add enumeration values to it.
+
+    def _parse_header_line(self, s):
+        """
+        Processes the specified header string to get the genotype labels.
+        """
+        self._genotypes = s.split()[9:]
+
+    def generate_schema(self):
+        """
+        Reads the header for this VCF file, constructing the database 
+        schema and returning it. 
+        """
+        f = self._file 
+        #s = (f.readline()).decode()
+        s = f.readline()
+        self._parse_version(s)
+        if self._version < 4.0:
+            raise ValueError("VCF versions < 4.0 not supported")
+        while s.startswith("##"):
+            self._parse_meta_information(s)
+            s = f.readline()
+            #s = (f.readline()).decode()
+        self._parse_header_line(s)
+        int_type = _vcfdb.ELEMENT_TYPE_INT
+        char_type = _vcfdb.ELEMENT_TYPE_CHAR
+        float_type = _vcfdb.ELEMENT_TYPE_FLOAT
+        enum_type = _vcfdb.ELEMENT_TYPE_ENUM
+        # Get the fixed columns
+        columns = [
+            _vcfdb.Column("POS", "position", int_type, 6, 1),
+            _vcfdb.Column("CHROM", "Chromosome", enum_type, 2, 1),
+            _vcfdb.Column("ID", "ID", char_type, 1, 0),
+            _vcfdb.Column("REF", "Reference allele", enum_type, 1, 1),
+            _vcfdb.Column("ALT", "Alternatve allele", enum_type, 1, 0),
+            _vcfdb.Column("QUAL", "Quality", float_type, 4, 1),
+            _vcfdb.Column("FILTER", "Filter", enum_type, 1, 0),
+        ]
+        for name, col in self._info_columns.items():
+            columns.append(col.get_db_column("INFO"))
+        for genotype in self._genotypes:
+            for name, col in self._genotype_columns.items():
+                columns.append(col.get_db_column(genotype))
+        schema = Schema(columns)
+        schema.show()
+        return schema
+
+
 
 
 
@@ -736,7 +864,6 @@ class DatabaseBuilder(object):
 
         for col in self.__schema.get_columns():
             print(col)
-
 
 class DatabaseWriter(object):
     """
@@ -899,11 +1026,18 @@ def main():
         #dbb = DatabaseBuilder("db_NOBACKUP_")
         #dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
         dbdir = "db_NOBACKUP_"
-        dbw = VCFDatabaseWriter(dbdir, vcf_file)
-        dbw.process_header()
-        dbw.process_records(progress_monitor)
-        ib = IndexBuilder(dbdir, ["chrom", "pos"])
-        ib.build(progress_monitor)
+        
+        # TODO: put back in open_vcf_file
+        with open(vcf_file, "r") as f:
+            sg = VCFSchemaFactory(f)
+            schema = sg.generate_schema()
+            schema.write_xml(dbdir)
+       
+        #dbw = VCFDatabaseWriter(dbdir, vcf_file)
+        #dbw.process_header()
+        #dbw.process_records(progress_monitor)
+        #ib = IndexBuilder(dbdir, ["chrom", "pos"])
+        #ib.build(progress_monitor)
 
     else:
         dbr = DatabaseReader()
