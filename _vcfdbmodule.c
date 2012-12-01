@@ -401,7 +401,7 @@ out:
 static PyMemberDef Column_members[] = {
     {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
     {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
-    {"enum_values", T_OBJECT_EX, offsetof(Column, description), READONLY, "enum_values"},
+    {"enum_values", T_OBJECT_EX, offsetof(Column, enum_values), READONLY, "enum_values"},
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},

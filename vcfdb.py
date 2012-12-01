@@ -1,6 +1,9 @@
 """
 Prototype implementation of the Berkeley DB VCF record store.
 """
+from __future__ import print_function
+from __future__ import division 
+
 import os
 import sys
 import gzip
@@ -17,22 +20,13 @@ import _vcfdb
 
 __version__ = '0.0.1-dev'
 
-RECORD_ID = "RECORD_ID"
-CHROM = "CHROM"
-POS = "POS"
-ID = "ID"
-REF = "REF"
-ALT = "ALT"
-QUAL = "QUAL"
-FILTER = "FILTER"
-INFO = "INFO"
-
-DEFAULT_DB_DIR="/var/lib/vcfdb"
-MAX_RECORD_SIZE = 65536 # 64KiB 
 
 class VCFFileColumn(object):
     """
     Class representing a column in a VCF file.
+    
+    TODO This class should be deprecated - it does very little except 
+    provde the column factory method. This should be done directly
     """
     NUMBER_ANY = 0 
     TYPE_INTEGER = 0
@@ -136,168 +130,6 @@ def vcf_file_column_factory(line):
     return col 
     
 
-
-class VCFFileParser(object):
-    """
-    Class responsible for parsing a VCF file. First we contruct the database
-    schema by parsing the header and ...
-    
-    TODO: finish docs once the process is sorted. The basic idea is that 
-    this class is solely responsible for parsing the VCF file and contructing 
-    the schema.
-    """
-    def __init__(self, vcf_file, db_builder):
-        """
-        Allocates a new VCFFileParser for the specified file. This can be 
-        either plain text, gzipped or bzipped.
-        """
-        self._file_path = vcf_file
-        self._version = -1.0
-        self._genotypes = []
-        self._info_columns = {}
-        self._genotype_columns = {}
-        self._file_size = float(os.stat(vcf_file).st_size)
-
-    def get_schema(self):
-        """
-        After the file headers have been read we can allocate the 
-        schema, which defines the method of packing and unpacking 
-        data from db_builder records.
-        """
-        schema = Schema()
-        # TODO Get the text of these descriptions from the file format
-        # definition and put them in here as constants.
-        schema.add_integer_column(POS, 8, 1, "Chromosome position")
-        schema.add_string_column(CHROM, 1, "Chromosome") #enum
-        # TODO: this is a list 
-        schema.add_string_column(ID, 1, "Identifiers")
-        schema.add_string_column(REF, 1, "Reference allele")
-        # TODO: this is a list 
-        schema.add_string_column(ALT, 1, "Alternative allele")
-        schema.add_float_column(QUAL, 1, "Quality")
-        # TODO: this is a list 
-        schema.add_string_column(FILTER, 1, "Filter") #enum
-        for name, col in self._info_columns.items():
-            schema.add_vcf_column(INFO + "_" + name, col)
-        for genotype in self._genotypes:
-            for name, col in self._genotype_columns.items():
-                schema.add_vcf_column(genotype + "_" + name, col)
-        schema.finalise()
-        return schema 
-
-    def open_file(self):
-        """
-        Opens the source file so that it can be read by the parsing code. 
-        Throws an error if it is not one of the supported formats:
-        .vcf or .vcf.gz 
-        """
-        path = self._file_path
-        if path.endswith(".vcf.gz"):
-            f = gzip.open(path, 'rb') 
-            self._backing_file = f.fileobj
-        elif path.endswith(".vcf"):
-            f = open(path, 'rb') 
-            self._backing_file = f
-        else:
-            raise ValueError("Unsupported file format")
-        return f
-   
-    def get_progress(self):
-        """
-        Returns the progress through the file as a fraction.
-        """
-        return self._backing_file.tell() / self._file_size
-
-    def _parse_version(self, s):
-        """
-        Parse the VCF version number from the specified string.
-        """
-        self._version = -1.0
-        tokens = s.split("v")
-        if len(tokens) == 2:
-            self._version = float(tokens[1])
-   
-
-    def _parse_meta_information(self, line):
-        """
-        Processes the specified meta information line to obtain the values 
-        of the various columns and their types.
-        """
-        if line.startswith("##INFO"):
-            col = vcf_file_column_factory(line)
-            self._info_columns[col.name] = col
-        elif line.startswith("##FORMAT"):
-            col = vcf_file_column_factory(line)
-            self._genotype_columns[col.name] = col
-        else:
-            #print("NOT PARSED:", line)
-            pass
-            # TODO insert another case here to deal with the FILTER column
-            # and add enumeration values to it.
-
-    def _parse_header_line(self, s):
-        """
-        Processes the specified header string to get the genotype labels.
-        """
-        self._genotypes = s.split()[9:]
-
-    def parse_record(self, s, dbb):
-        """
-        Parses the specified vcf record calling set_record_value on the specified 
-        DatabaseBuilder for each column.
-        """
-        l = s.split()
-        # TODO: a lot of these should actually be lists anyway...
-        dbb.set_record_value(CHROM, [l[0]])
-        dbb.set_record_value(POS, [int(l[1])])
-        dbb.set_record_value(ID, [l[2]])
-        dbb.set_record_value(REF, [l[3]])
-        dbb.set_record_value(ALT, [l[4]])
-        dbb.set_record_value(QUAL, [float(l[5])])
-        dbb.set_record_value(FILTER, [l[6]])
-        for mapping in l[7].split(";"):
-            tokens = mapping.split("=")
-            col = self._info_columns[tokens[0]]
-            db_name = INFO + "_" + col.name 
-            if len(tokens) == 2:
-                dbb.set_record_value(db_name, col.parse(tokens[1]))
-            else:
-                assert(col.type == VCFFileColumn.TYPE_FLAG)
-                dbb.set_record_value(db_name, 1)
-        j = 0
-        fmt  = l[8].split(":")
-        for genotype_values in l[9:]:
-            tokens = genotype_values.split(":")
-            if len(tokens) == len(fmt):
-                for k in range(len(fmt)):
-                    col = self._genotype_columns[fmt[k]]
-                    db_name = self._genotypes[j] + "_" + fmt[k]
-                    dbb.set_record_value(db_name, col.parse(tokens[k]))
-            elif len(tokens) > 1:
-                # We can treat a genotype value on its own as missing values.
-                # We can have skipped columns at the end though, which we 
-                # should deal with properly. So, put in a loud complaint 
-                # here and fix later.
-                print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
-            j += 1
-    
-    def read_header(self, f):
-        """
-        Reads the header for this VCF file, constructing the database 
-        schema and getting the parser prepared for processing records.
-        """
-        # Read the header
-        s = (f.readline()).decode()
-        self._parse_version(s)
-        if self._version < 4.0:
-            raise ValueError("VCF versions < 4.0 not supported")
-        while s.startswith("##"):
-            self._parse_meta_information(s)
-            s = (f.readline()).decode()
-        self._parse_header_line(s)
-    
-
-
 class Schema(object):
     """
     Class representing a database schema, consisting of a list of 
@@ -313,7 +145,7 @@ class Schema(object):
     def __init__(self, columns):
         self.__columns = columns 
     
-    def get_column(self):
+    def get_columns(self):
         """
         Returns the list of columns in this schema.
         """
@@ -323,8 +155,6 @@ class Schema(object):
         """
         Writes out the schema to the console in human readable format.
         """
-        # print("name\telement_type\telement_size\tnum_elements")
-        max_width = max(len(c.name) for c in self.__columns)
         s = "{0:<25}{1:<12}{2:<12}{3:<12}"
         print(65 * "=")
         print(s.format("name", "type", "size", "num_elements"))
@@ -332,6 +162,10 @@ class Schema(object):
         for c in self.__columns:
             t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             print(s.format(c.name, t, c.element_size, c.num_elements))
+            print("enum_values = ", c.enum_values)
+            #if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+                #for k, v in c.enum_values.items():
+                #    print(k, "\t", v)
 
     def write_xml(self, directory, filename="schema.xml"):
         """
@@ -359,26 +193,38 @@ class Schema(object):
         name = os.path.join(directory, filename)
         with open(name, "w") as f:
             f.write(pretty)
-
-    def read_xml(directory, filename="schema.xml"):
+    
+    @classmethod 
+    def read_xml(theclass, directory, filename="schema.xml"):
         """
         Returns a new schema object read from the specified file.
         """
-        name = os.path.join(directory, filename)
-        tree = ElementTree.parse(name)
+        reverse = {}
+        for k, v in theclass.ELEMENT_TYPE_STRING_MAP.items():
+            reverse[v] = k
+        columns = []
+        tree = ElementTree.parse(os.path.join(directory, filename))
         root = tree.getroot()
         if root.tag != "schema":
             # Should have a custom error for this.
             raise ValueError("invalid xml")
         # TODO check version
-        columns = root.find("columns")
-        for xmlcol in columns.getchildren():
+        xml_columns = root.find("columns")
+        for xmlcol in xml_columns.getchildren():
             if xmlcol.tag != "column":
                 raise ValueError("invalid xml")
             name = xmlcol.get("name")
-            offset = int(xmlcol.get("offset"))
-            #print(name, offset)
-
+            description = xmlcol.get("description")
+            # TODO some error checking here.
+            element_size = int(xmlcol.get("element_size"))
+            num_elements = int(xmlcol.get("num_elements"))
+            element_type = reverse[xmlcol.get("element_type")]
+            col = _vcfdb.Column(name, description, element_type, element_size,
+                    num_elements)
+            # TODO read in enum values
+            columns.append(col)
+        schema = theclass(columns)
+        return schema
 
 
 class VCFSchemaFactory(object):
@@ -449,7 +295,7 @@ class VCFSchemaFactory(object):
             _vcfdb.Column("REF", "Reference allele", enum_type, 1, 1),
             _vcfdb.Column("ALT", "Alternatve allele", enum_type, 1, 0),
             _vcfdb.Column("QUAL", "Quality", float_type, 4, 1),
-            _vcfdb.Column("FILTER", "Filter", enum_type, 1, 0),
+            _vcfdb.Column("FILTER", "Filter", char_type, 1, 0),
         ]
         for name, col in self._info_columns.items():
             columns.append(col.get_db_column("INFO"))
@@ -457,205 +303,141 @@ class VCFSchemaFactory(object):
             for name, col in self._genotype_columns.items():
                 columns.append(col.get_db_column(genotype))
         schema = Schema(columns)
-        schema.show()
         return schema
 
-
-
-
-
-class DatabaseBuilder(object):
+class WriteBufferTmp(object):
     """
-    Class that builds a database from an input file. 
-    """
-    def __init__(self, directory):
-        self.__directory = directory
-        self.__schema = None
-        self.__database = _vcfdb.BerkeleyDatabase()
-        self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
-        self.__current_record_id = 0
-    
-    def set_record_value(self, column, value):
-        """
-        Sets the value for the specified column to the specified value 
-        in the current database record.
-        """
-        #print("storing ", column, "->", value)
-        col = self.__schema.get_column(column)
-        col.set_value(value, self.__record_buffer)
+    Temporary shim class to present the WriteBuffer interface.
+    """ 
         
-        #v = col.get_value(self.__record_buffer)
-        #print(col.get_name(), ":", value, "->", v)
-          
-    
-    def __setup_indexes(self):
-        """
-        Sets up the default indexes for the database that is 
-        to be built.
-        """
-        chromosome = self.__schema.get_column("CHROM")
-        position = self.__schema.get_column("POS")
-        quality = self.__schema.get_column("QUAL")
-        i1 = [b"db_NOBACKUP_/chrom+pos.db", chromosome.get_low_level_format(), 
-            position.get_low_level_format()]
-        i2 = [b"db_NOBACKUP_/qual.db", quality.get_low_level_format()]
-        # Disable indexes for now.
-        #self.__database.add_index([i1, i2])
-
-    def __prepare_record(self):
-        """
-        Prepares to generate a new record.
-        """
-        self.__current_record_id += 1
-        self.__record_buffer.current_record_size = self.__schema.get_fixed_region_size()
-
-    def __commit_record(self):
-        """
-        Commits the current record into the database.
-        """
-        # build the key
-        # TODO: this should really be 48 bit - 64 is ridiculous.
-        fmt = self.__schema.get_primary_key_format()
-        key = struct.pack(fmt, self.__current_record_id) 
-        self.__record_buffer.commit_record(key)
+    def set_record_value(self, column, value):
+        print("setting ", column.name, "(", column, ") t = ", column.element_type, " n=",
+                column.num_elements, " to ", value)
 
 
-    def parse_vcf(self, vcf_file, indexed_columns=[], progress_callback=None):
-        """
-        Parses the specified vcf file, generating a new database in 
-        with the specified indexed columns. The specified callback 
-        function is called periodically if not None.
-        """
-        parser = VCFFileParser(vcf_file, self)
-        self.__database.create()
-        last_progress = 0 
-        with parser.open_file() as f:
-            parser.read_header(f)
-            self.__schema = parser.get_schema()
-            self.__setup_indexes()
-            for line in f:
-                self.__prepare_record()
-                parser.parse_record(line.decode(), self)
-                self.__commit_record()
-                
-
-                progress = int(parser.get_progress() * 1000)
-                if progress != last_progress:
-                    last_progress = progress 
-
-
-
-                    if progress_callback is not None:
-                        progress_callback(progress, self.__current_record_id)
-        self.__record_buffer.flush()
-        self.__database.close()
-        with open("db_NOBACKUP_/schema.pkl", "wb") as f:
-            pickle.dump(self.__schema, f)
-
-        for col in self.__schema.get_columns():
-            print(col)
-
+    def commit_record(self):
+        print("Commiting")
 class DatabaseWriter(object):
     """
     Class responsible for generating databases.
     """
-    def __init__(self):
-        self._database_dir = None 
-        self._schema = []
-        self._database = None # Database()
-        self._record_buffer = None # WriteBuffer()
+    def __init__(self, schema, database_dir):
+        self._database_dir = database_dir 
+        self._build_db_name = os.path.join(database_dir, 
+                "__building_primary.db")
+        self._final_db_name = os.path.join(database_dir, "primary.db")
+        self._schema = schema 
+        self._database = None 
+        self._record_buffer = WriteBufferTmp() 
         self._current_record_id = 0
-        # filenames, indexes, ?? 
+
+    def open_database(self):
+        """
+        Opens the database and gets ready for writing records.
+        """
+        cols = self._schema.get_columns()
+        # More parameters here for cachesize and so on.
+        #self._database = _vcfdb.Database(self._build_db_name, cols)
+        #self._database.open()
+        #self._record_buffer = _vcfdb.WriteBuffer(self._database)
+
+
+    def close_database(self):
+        """
+        Closes the underlying database and moves the db file to its
+        permenent name. 
+        """
+        #self._record_buffer.flush()
+        #self._database.close()
+
+    def finalise(self):
+        """
+        Moves the database file to its permenent filename and updates
+        the schema to contain enum values.
+        """
+        # TODO implement
 
 class VCFDatabaseWriter(DatabaseWriter):
     """
     Class responsible for parsing a VCF file and creating a database. 
     """
-    def __init__(self, vcf_file, database_dir):
-        self._directory = database_dir
-        self._vcf_file = vcf_file
-        self._backing_file = None
-        self._source_file = self._open_file()  
-        self._vcf_version = -1.0
-        self._source_file_size = float(os.stat(vcf_file).st_size)
-        # Not sure about these
-        self._genotypes = []
-        self._info_columns = {}
-        self._genotype_columns = {}
-
-    def _open_file(self):
+    def _prepare(self, f):
         """
-        Opens the source file so that it can be read by the parsing code. 
-        Throws an error if it is not one of the supported formats:
-        .vcf or .vcf.gz 
+        Prepares for parsing records by getting the database columns 
+        ready and skipping the file header.
         """
-        path = self._vcf_file
-        if path.endswith(".vcf.gz"):
-            f = gzip.open(path, 'rb') 
-            self._backing_file = f.fileobj
-        elif path.endswith(".vcf"):
-            f = open(path, 'rb') 
-            self._backing_file = f
-        else:
-            raise ValueError("Unsupported file format")
-        return f
-   
-    def _parse_version(self, s):
-        """
-        Parse the VCF version number from the specified string.
-        """
-        self._version = -1.0
-        tokens = s.split("v")
-        if len(tokens) == 2:
-            self._version = float(tokens[1])
-
-    def _parse_meta_information(self, line):
-        """
-        Processes the specified meta information line to obtain the values 
-        of the various columns and their types.
-        """
-        if line.startswith("##INFO"):
-            col = vcf_file_column_factory(line)
-            self._info_columns[col.name] = col
-        elif line.startswith("##FORMAT"):
-            col = vcf_file_column_factory(line)
-            self._genotype_columns[col.name] = col
-        else:
-            #print("NOT PARSED:", line)
-            pass
-            # TODO insert another case here to deal with the FILTER column
-            # and add enumeration values to it.
-
-    def _parse_header_line(self, s):
-        """
-        Processes the specified header string to get the genotype labels.
-        """
-        self._genotypes = s.split()[9:]
-
-    def read_header(self, f):
-        """
-        Reads the header for this VCF file, constructing the database 
-        schema and getting the parser prepared for processing records.
-        """
-        # Read the header
-        s = (f.readline()).decode()
-        self._parse_version(s)
-        if self._version < 4.0:
-            raise ValueError("VCF versions < 4.0 not supported")
+        # Skip the header
+        s = f.readline()
         while s.startswith("##"):
-            self._parse_meta_information(s)
-            s = (f.readline()).decode()
-        self._parse_header_line(s)
-    
-     
-    def get_progress(self):
-        """
-        Returns the progress through the file as a fraction.
-        """
-        return self._backing_file.tell() / self._source_file_size
+            s = f.readline()
+        # Get the genotypes from the header
+        genotypes = s.split()[9:] 
+        # TODO make this more elegant...
+        all_columns = {c.name: c for c in self._schema.get_columns()}
+        all_fixed_columns = [("CHROM", 0), ("POS", 1),  ("ID", 2),
+            ("REF", 3), ("ALT", 4), ("QUAL", 5), ("FILTER", 6)
+        ]
+        self._fixed_columns = [(all_columns[name], index) 
+                for name, index in all_fixed_columns if name in all_columns]
+        self._info_columns = {}
+        self._genotype_columns = [{} for g in genotypes]
+        for c in self._schema.get_columns():
+            if "_" in c.name:
+                split = c.name.split("_")
+                if split[0] == "INFO":
+                    name= c.name.split("_")[1]
+                    self._info_columns[name] = c
+                else:
+                    index = genotypes.index(split[0])
+                    self._genotype_columns[index][split[1]] = c
+ 
 
-   
-
+    def build(self, f):
+        """
+        Builds the database in opened file.
+        """
+        self._prepare(f)
+        fixed_columns = self._fixed_columns
+        info_columns = self._info_columns
+        genotype_columns = self._genotype_columns
+        rb = self._record_buffer
+        # TODO: this doesn't handle missing values properly. We should 
+        # test each value to see if it is "." before adding.
+        for s in f:
+            l = s.split()
+            # Read in the fixed columns
+            for col, index in fixed_columns:
+                rb.set_record_value(col, l[index])
+            # Now process the info columns.
+            for mapping in l[7].split(";"):
+                tokens = mapping.split("=")
+                name = tokens[0]
+                if name in info_columns:
+                    col = info_columns[name]
+                    if len(tokens) == 2:
+                        rb.set_record_value(col, tokens[1])
+                    else:
+                        # This is a Flag column.
+                        rb.set_record_value(col, "1")
+            # Process the genotype columns. 
+            j = 0
+            fmt = l[8].split(":")
+            for genotype_values in l[9:]:
+                tokens = genotype_values.split(":")
+                if len(tokens) == len(fmt):
+                    for k in range(len(fmt)):
+                        col = genotype_columns[j][fmt[k]]
+                        rb.set_record_value(col, tokens[k])
+                elif len(tokens) > 1:
+                    # We can treat a genotype value on its own as missing values.
+                    # We can have skipped columns at the end though, which we 
+                    # should deal with properly. So, put in a loud complaint 
+                    # here and fix later.
+                    print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
+                j += 1
+            # Finally, commit the record.
+            rb.commit_record()
+            
 
 class DatabaseReader(object):
     """
@@ -665,8 +447,6 @@ class DatabaseReader(object):
         with open("db_NOBACKUP_/schema.pkl", "rb") as f:
             self.__schema = pickle.load(f)
         
-        self.__schema.write_xml()
-        self.__schema.read_xml()
 
         self.__database = _vcfdb.BerkeleyDatabase()
         self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
@@ -713,16 +493,25 @@ def main():
 
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
-        #dbb = DatabaseBuilder("db_NOBACKUP_")
-        #dbb.parse_vcf(vcf_file, progress_callback=progress_monitor)
         dbdir = "db_NOBACKUP_"
-        
         # TODO: put back in open_vcf_file
         with open(vcf_file, "r") as f:
             sg = VCFSchemaFactory(f)
             schema = sg.generate_schema()
             schema.write_xml(dbdir)
-       
+        
+        # Start again - read the schema back
+        schema = Schema.read_xml(dbdir)
+        #schema.show()
+        
+        dbw = VCFDatabaseWriter(schema, dbdir)
+        dbw.open_database()
+        with open(vcf_file, "r") as f:
+            dbw.build(f)
+        dbw.close_database()
+        dbw.finalise() 
+        
+
         #dbw = VCFDatabaseWriter(dbdir, vcf_file)
         #dbw.process_header()
         #dbw.process_records(progress_monitor)
