@@ -162,7 +162,7 @@ class Schema(object):
         for c in self.__columns:
             t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             print(s.format(c.name, t, c.element_size, c.num_elements))
-            print("enum_values = ", c.enum_values)
+            #print("enum_values = ", c.enum_values)
             #if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
                 #for k, v in c.enum_values.items():
                 #    print(k, "\t", v)
@@ -289,14 +289,15 @@ class VCFSchemaFactory(object):
         enum_type = _vcfdb.ELEMENT_TYPE_ENUM
         # Get the fixed columns
         columns = [
-            _vcfdb.Column("POS", "position", int_type, 5, 1),
             _vcfdb.Column("CHROM", "Chromosome", enum_type, 2, 1),
+            _vcfdb.Column("POS", "position", int_type, 5, 1),
             _vcfdb.Column("ID", "ID", char_type, 1, 0),
             _vcfdb.Column("REF", "Reference allele", enum_type, 1, 1),
             _vcfdb.Column("ALT", "Alternatve allele", enum_type, 1, 0),
             _vcfdb.Column("QUAL", "Quality", float_type, 4, 1),
             _vcfdb.Column("FILTER", "Filter", char_type, 1, 0),
         ]
+
         for name, col in self._info_columns.items():
             columns.append(col.get_db_column("INFO"))
         for genotype in self._genotypes:
@@ -304,20 +305,6 @@ class VCFSchemaFactory(object):
                 columns.append(col.get_db_column(genotype))
         schema = Schema(columns)
         return schema
-
-class WriteBufferTmp(object):
-    """
-    Temporary shim class to present the WriteBuffer interface.
-    """ 
-        
-    def set_record_value(self, column, value):
-        pass
-        #print("setting ", column.name, "(", column, ") t = ", column.element_type, " n=",
-        #  column.num_elements, " to ", value)
-
-    def commit_record(self, record_id):
-        pass
-        print("Commiting", record_id)
 
         
 class DatabaseWriter(object):
@@ -336,12 +323,12 @@ class DatabaseWriter(object):
         """
         Opens the database and gets ready for writing records.
         """
-        cols = self._schema.get_columns()
-        # More parameters here for cachesize and so on.
-        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name, cols)
+        c = 1024 * 1024 * 1024
+        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), c)
         self._database.create()
-        #self._record_buffer = _vcfdb.WriteBuffer(self._database)
-        self._record_buffer = WriteBufferTmp() 
+        self._record_buffer = _vcfdb.WriteBuffer(self._database)
+        #print(self._database.filename)
+        #print(self._database.cache_size)
 
 
     def close_database(self):
@@ -349,8 +336,8 @@ class DatabaseWriter(object):
         Closes the underlying database and moves the db file to its
         permenent name. 
         """
-        #self._record_buffer.flush()
-        #self._database.close()
+        self._record_buffer.flush()
+        self._database.close()
 
     def finalise(self):
         """
@@ -369,6 +356,7 @@ class VCFDatabaseWriter(DatabaseWriter):
         ready and skipping the file header.
         """
         # Skip the header
+        # TODO: set this up to work in binary mode.
         s = f.readline()
         while s.startswith("##"):
             s = f.readline()
@@ -391,7 +379,9 @@ class VCFDatabaseWriter(DatabaseWriter):
                     self._info_columns[name] = c
                 else:
                     index = genotypes.index(split[0])
-                    self._genotype_columns[index][split[1]] = c
+                    # TEMP - we should be dealing with all of these as 
+                    # bytes literals.
+                    self._genotype_columns[index][split[1].encode()] = c
  
 
     def build(self, f):
@@ -407,13 +397,13 @@ class VCFDatabaseWriter(DatabaseWriter):
         # TODO: this doesn't handle missing values properly. We should 
         # test each value to see if it is "." before adding.
         for s in f:
-            l = s.split()
+            l = s.encode().split()
             # Read in the fixed columns
             for col, index in fixed_columns:
                 rb.set_record_value(col, l[index])
             # Now process the info columns.
-            for mapping in l[7].split(";"):
-                tokens = mapping.split("=")
+            for mapping in l[7].split(b";"):
+                tokens = mapping.split(b"=")
                 name = tokens[0]
                 if name in info_columns:
                     col = info_columns[name]
@@ -421,12 +411,12 @@ class VCFDatabaseWriter(DatabaseWriter):
                         rb.set_record_value(col, tokens[1])
                     else:
                         # This is a Flag column.
-                        rb.set_record_value(col, "1")
+                        rb.set_record_value(col, b"1")
             # Process the genotype columns. 
             j = 0
-            fmt = l[8].split(":")
+            fmt = l[8].split(b":")
             for genotype_values in l[9:]:
-                tokens = genotype_values.split(":")
+                tokens = genotype_values.split(b":")
                 if len(tokens) == len(fmt):
                     for k in range(len(fmt)):
                         col = genotype_columns[j][fmt[k]]

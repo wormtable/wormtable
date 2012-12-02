@@ -35,6 +35,8 @@ typedef struct Column_t {
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
+    PyObject *filename;
+    Py_ssize_t cache_size;
 } BerkeleyDatabase;
 
 typedef struct {
@@ -101,7 +103,7 @@ Column_dealloc(Column* self)
 {
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
-    Py_XDECREF(self->enum_values); 
+    //Py_XDECREF(self->enum_values); 
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -118,13 +120,15 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             &self->num_elements)) {  
         goto out;
     }
+    Py_INCREF(self->name);
+    Py_INCREF(self->description);
+    /*
     self->enum_values = PyDict_New();
     if (self->enum_values == NULL) {
         goto out;
     }
     Py_INCREF(self->enum_values);
-    Py_INCREF(self->name);
-    Py_INCREF(self->description);
+    */
     /*TODO Check the values for sanity*/
     
     ret = 0;
@@ -197,6 +201,7 @@ static PyTypeObject ColumnType = {
 static void
 BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 {
+    Py_XDECREF(self->filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->primary_db != NULL) {
         self->primary_db->close(self->primary_db, 0); 
@@ -207,16 +212,32 @@ BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 static int
 BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
 {
-    int ret = 0;
+    DB *db;
+    int ret = -1;
     int db_ret = 0;
+    u_int32_t gigs, bytes;
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    static char *kwlist[] = {"filename", "cache_size", NULL}; 
     self->primary_db = NULL;
-    db_ret = db_create(&self->primary_db, NULL, 0);
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "On", kwlist, 
+            &self->filename, &self->cache_size)) {
+        goto out;
+    }
+    Py_INCREF(self->filename);
+    db_ret = db_create(&db, NULL, 0);
+    self->primary_db = db;
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
-        ret = -1;
         goto out;    
     }
-
+    gigs = (u_int32_t) (self->cache_size / gigabyte);
+    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    db_ret = db->set_cachesize(db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = 0;
 out:
 
     return ret;
@@ -224,6 +245,8 @@ out:
 
 
 static PyMemberDef BerkeleyDatabase_members[] = {
+    {"filename", T_OBJECT_EX, offsetof(BerkeleyDatabase, filename), READONLY, "filename"},
+    {"cache_size", T_PYSSIZET, offsetof(BerkeleyDatabase, cache_size), READONLY, "cache_size"},
     {NULL}  /* Sentinel */
 };
 
@@ -234,15 +257,13 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
 {
     PyObject *ret = NULL;
     int db_ret;
-    u_int32_t flags;
-    char *db_name = "db_NOBACKUP_/primary.db";
-    
-    db_ret = self->primary_db->set_cachesize(self->primary_db, 8, 0, 1); 
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
+    char *db_name = NULL;
+    if (!PyBytes_Check(self->filename)) {
+        PyErr_SetString(PyExc_ValueError, "filename must be bytes");
+        goto out;
     }
-    flags = DB_CREATE|DB_TRUNCATE;
+    db_name = PyBytes_AsString(self->filename);
     db_ret = self->primary_db->open(self->primary_db, NULL, db_name, NULL, 
             DB_BTREE,  flags,  0);         
     if (db_ret != 0) {
@@ -254,9 +275,6 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
 out:
     return ret; 
 }
-
-
-
 
 static PyObject *
 BerkeleyDatabase_close(BerkeleyDatabase* self)
@@ -343,19 +361,6 @@ WriteBuffer_dealloc(WriteBuffer* self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-/* 
- * Resets this buffer so that it is ready to receive more records.
- */
-static void
-WriteBuffer_clear(WriteBuffer *self)
-{
-    memset(self->record_buffer, 0, self->current_record_offset);
-    self->current_record_size = 0;
-    self->current_record_offset = 0;
-    self->num_records = 0;
-
-}
-
 static int
 WriteBuffer_init(WriteBuffer *self, PyObject *args, PyObject *kwds)
 {
@@ -391,15 +396,16 @@ out:
 
 static PyMemberDef WriteBuffer_members[] = {
     {"database", T_OBJECT_EX, offsetof(WriteBuffer, database), READONLY, "database"},
-    {"current_record_size", T_INT, offsetof(WriteBuffer, current_record_size), 0, "size of current record"},
     {NULL}  /* Sentinel */
 };
 
 static PyObject *
 WriteBuffer_flush(WriteBuffer* self)
 {
-    int db_ret = 0;
     PyObject *ret = NULL;
+    
+#if 0
+    int db_ret = 0;
     u_int32_t flags = 0;
     u_int32_t j;
     DB *db;
@@ -416,17 +422,44 @@ WriteBuffer_flush(WriteBuffer* self)
     }
     //printf("done\n");
     WriteBuffer_clear(self);
-    
+#endif
+
     ret = Py_BuildValue("");
-out:
+//out:
     return ret; 
 }
+
+static PyObject *
+WriteBuffer_set_record_value(WriteBuffer* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Column *column = NULL;
+    PyBytesObject *value = NULL;
+    if (! PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
+            &value)) {
+        goto out;
+    }
+    Py_INCREF(column);
+    Py_INCREF(value);
+     
+    
+    printf("set_record_value %s \n", PyBytes_AsString((PyObject *) value));
+
+    ret = Py_BuildValue("");
+out:
+    Py_XDECREF(column);
+    Py_XDECREF(value);
+    return ret; 
+}
+
 
 
 static PyObject *
 WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
+    printf("Commit\n");
+#if 0
     Py_buffer key_buff;
     unsigned char *key = &self->key_buffer[self->key_size * self->num_records];
     unsigned char *record = &self->record_buffer[self->current_record_offset];
@@ -462,8 +495,9 @@ WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
         }
     }
 
+#endif
     ret = Py_BuildValue("");
-out:
+//out:
     return ret; 
 }
 
@@ -471,6 +505,7 @@ out:
 
 
 static PyMethodDef WriteBuffer_methods[] = {
+    {"set_record_value", (PyCFunction) WriteBuffer_set_record_value, METH_VARARGS, "set value" },
     {"commit_record", (PyCFunction) WriteBuffer_commit_record, METH_VARARGS, "commit record" },
     {"flush", (PyCFunction) WriteBuffer_flush, METH_NOARGS, "flush" },
     {NULL}  /* Sentinel */
