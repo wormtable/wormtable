@@ -289,7 +289,7 @@ class VCFSchemaFactory(object):
         enum_type = _vcfdb.ELEMENT_TYPE_ENUM
         # Get the fixed columns
         columns = [
-            _vcfdb.Column("POS", "position", int_type, 6, 1),
+            _vcfdb.Column("POS", "position", int_type, 5, 1),
             _vcfdb.Column("CHROM", "Chromosome", enum_type, 2, 1),
             _vcfdb.Column("ID", "ID", char_type, 1, 0),
             _vcfdb.Column("REF", "Reference allele", enum_type, 1, 1),
@@ -311,25 +311,26 @@ class WriteBufferTmp(object):
     """ 
         
     def set_record_value(self, column, value):
-        print("setting ", column.name, "(", column, ") t = ", column.element_type, " n=",
-                column.num_elements, " to ", value)
+        pass
+        #print("setting ", column.name, "(", column, ") t = ", column.element_type, " n=",
+        #  column.num_elements, " to ", value)
 
+    def commit_record(self, record_id):
+        pass
+        print("Commiting", record_id)
 
-    def commit_record(self):
-        print("Commiting")
+        
 class DatabaseWriter(object):
     """
     Class responsible for generating databases.
     """
     def __init__(self, schema, database_dir):
         self._database_dir = database_dir 
-        self._build_db_name = os.path.join(database_dir, 
-                "__building_primary.db")
+        self._build_db_name = os.path.join(database_dir, "__build_primary.db")
         self._final_db_name = os.path.join(database_dir, "primary.db")
         self._schema = schema 
         self._database = None 
-        self._record_buffer = WriteBufferTmp() 
-        self._current_record_id = 0
+        self._record_buffer = None 
 
     def open_database(self):
         """
@@ -337,9 +338,10 @@ class DatabaseWriter(object):
         """
         cols = self._schema.get_columns()
         # More parameters here for cachesize and so on.
-        #self._database = _vcfdb.Database(self._build_db_name, cols)
-        #self._database.open()
+        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name, cols)
+        self._database.create()
         #self._record_buffer = _vcfdb.WriteBuffer(self._database)
+        self._record_buffer = WriteBufferTmp() 
 
 
     def close_database(self):
@@ -401,6 +403,7 @@ class VCFDatabaseWriter(DatabaseWriter):
         info_columns = self._info_columns
         genotype_columns = self._genotype_columns
         rb = self._record_buffer
+        record_id = 1
         # TODO: this doesn't handle missing values properly. We should 
         # test each value to see if it is "." before adding.
         for s in f:
@@ -436,7 +439,8 @@ class VCFDatabaseWriter(DatabaseWriter):
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
             # Finally, commit the record.
-            rb.commit_record()
+            rb.commit_record(record_id)
+            record_id += 1
             
 
 class DatabaseReader(object):

@@ -13,23 +13,6 @@
 #define ELEMENT_TYPE_FLOAT 2
 #define ELEMENT_TYPE_ENUM 3
 
-/* DEPRECATED */
-#define COLUMN_TYPE_FIXED 0
-#define COLUMN_TYPE_VARIABLE 1 
-
-#define ELEMENT_TYPE_INT_8  4
-
-/*
-#define ELEMENT_TYPE_CHAR  0
-#define ELEMENT_TYPE_INT_1  1
-#define ELEMENT_TYPE_INT_2  2
-#define ELEMENT_TYPE_INT_4  3
-#define ELEMENT_TYPE_FLOAT  5
-
-
-*/
-
-static int element_type_size_map[] = {1, 1, 2, 4, 8, 4};
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for vcfdb"
@@ -46,24 +29,12 @@ typedef struct Column_t {
     int element_type;
     int element_size;
     int num_elements;
-    int (*compare)(struct Column_t *, unsigned char *, unsigned char *);
-    int type; //  DEPRECATED
 } Column;
-
-typedef struct {
-    Column *columns;
-    u_int32_t num_columns;
-    DB *secondary_db;
-    char *filename;
-} db_index_t;
 
 
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
-    DBC *cursor;
-    db_index_t *indexes;
-    u_int32_t num_indexes;
 } BerkeleyDatabase;
 
 typedef struct {
@@ -83,15 +54,7 @@ typedef struct {
     u_int32_t max_num_records;
     DBT *keys; 
     DBT *records; 
-    /* Reading management */
-    u_int32_t read_records;
-    int reading_done;
-    int num_selected_columns;
-    Column **selected_columns;
-    
-    /* Used for Python buffer protocal compliance */
-    int num_views; 
-} RecordBuffer;
+} WriteBuffer;
 
 static void 
 handle_bdb_error(int err)
@@ -99,7 +62,7 @@ handle_bdb_error(int err)
     PyErr_SetString(BerkeleyDatabaseError, db_strerror(err));
 }
 
-
+#if 0
 /* 
  * Copies n bytes of source into destination, swapping the order of the 
  * bytes.
@@ -124,239 +87,10 @@ byte_swap(unsigned char *source, unsigned char *destination, size_t n)
     printf("\n");
     */
 }
+#endif
 
 
 
-static int
-db_column_float_compare(Column *self, unsigned char *key1, 
-        unsigned char *key2)
-{
-    int ret;
-    float v1, v2;
-    memcpy(&v1, key1, sizeof(float));
-    memcpy(&v2, key2, sizeof(float));
-    ret = 0;
-    if (v1 < v2) {
-        ret = -1;
-    } else if (v2 < v1) {
-        ret = 1;
-    }
-    //printf("compare float: %f %f = %d\n", v1, v2, ret);
-    return ret; 
-     
-}
-
-static int
-db_column_memory_compare(Column *self, unsigned char *key1, 
-        unsigned char *key2)
-{
-    int ret = memcmp(key1, key2, self->element_size);
-    //printf("compare mem: %d bytes = %d\n", self->element_size, ret);
-    
-    return ret; 
-     
-}
-
-
-
-static void
-db_index_free(db_index_t *self)
-{
-    if (self->num_columns != 0) {
-        PyMem_Free(self->columns);
-    }
-    if (self->secondary_db != NULL) {
-        self->secondary_db->close(self->secondary_db, 0); 
-    }
-    if (self->filename != NULL) {
-        PyMem_Free(self->filename);
-    }
-}
-
-static int 
-db_index_callback(DB* secondary, const DBT *key, const DBT *record, DBT *result)
-{   
-    unsigned int j;
-    db_index_t *self = (db_index_t *) secondary->app_private;
-    Column *col;
-    u_int16_t size;
-    unsigned char *source, *dest;
-    /* copy the bytes into result for now */
-    result->flags = DB_DBT_APPMALLOC;
-    result->size = 0;
-    for (j = 0; j < self->num_columns; j++) {
-        col = &self->columns[j];
-        if (col->type == COLUMN_TYPE_FIXED) {
-            result->size += col->element_size;
-                
-        } else {
-            printf("NOT SUPPORTED!!\n");
-        }
-    }
-    dest = malloc(result->size); 
-    source = (unsigned char *) record->data;
-    result->data = dest;
-    for (j = 0; j < self->num_columns; j++) {
-        col = &self->columns[j];
-        if (col->type == COLUMN_TYPE_FIXED) {
-            size = col->element_size; 
-            memcpy(dest, &source[col->offset], size);
-            dest += size;
-        } else {
-
-        }
-    }
-    /*
-    printf("callback for index %p: num columns = %d, type = %d element_type = %d\n", 
-            self, self->num_columns, self->columns[0].type, self->columns[0].element_type);
-    for (j = 0; j < key->size; j++) {
-        printf("%d ", ((unsigned char *) key->data)[j]);
-    }
-
-    printf("key %d\trecord %d\t", key->size, record->size);
-    for (j = 0; j < result->size; j++) {
-        printf("%d ", ((unsigned char *) result->data)[j]);
-    }
-    printf(": size = %d\n", result->size);
-    */
-    return 0;
-}
-/*
- * Generic comparison function called from DB. 
- */
-static int 
-db_index_compare(DB *secondary, const DBT *dbt1, const DBT *dbt2)
-{
-    int ret = 0;
-    int j = 0;
-    Column *col;
-    db_index_t *self = (db_index_t *) secondary->app_private;
-    unsigned char *key1 = (unsigned char *) dbt1->data;
-    unsigned char *key2 = (unsigned char *) dbt2->data;
-
-    while (ret == 0 && j < self->num_columns) {
-        col = &self->columns[j];
-        ret = col->compare(col, key1, key2);
-        key1 += col->element_size;
-        key2 += col->element_size;
-        j++;
-    }
-    //printf("compare: %p %p = %d\n", dbt1, dbt2, ret);
-    return ret; 
-        
-}
-
-
-
-static void 
-db_index_initialise(db_index_t *self, PyObject *index_description)
-{
-    int db_ret;
-    unsigned int j;
-    PyObject *column_description, *number, *filename;
-    self->num_columns = 0; 
-    self->columns = NULL; 
-    self->secondary_db = NULL;
-    self->filename = NULL;
-    if (!PyList_Check(index_description)) {
-        PyErr_SetString(PyExc_ValueError, "must be a list");
-        goto out;
-    }
-    self->num_columns = PyList_Size(index_description) - 1;
-    filename = PyList_GetItem(index_description, 0);
-    if (!PyBytes_Check(filename)) {
-        PyErr_SetString(PyExc_ValueError, "must be bytes");
-        goto out;
-    }
-    self->filename = PyMem_Malloc(PyBytes_Size(filename) + 1);
-    strcpy(self->filename, PyBytes_AsString(filename));
-    printf("initalising index %p: %s\n", self, self->filename);
-    
-    self->columns = PyMem_Malloc(self->num_columns * sizeof(Column));
-    for (j = 0; j < self->num_columns; j++) {
-        column_description = PyList_GetItem(index_description, j + 1);
-        if (!PyList_Check(column_description)) {
-            PyErr_SetString(PyExc_ValueError, "must be a list");
-            goto out;
-        }
-        if (PyList_Size(column_description) != 3) {
-            PyErr_SetString(PyExc_ValueError, "must be length 2");
-            goto out;
-        }
-        number = PyList_GetItem(column_description, 0);
-        if (!PyLong_Check(number)) {
-            PyErr_SetString(PyExc_ValueError, "values must be numbers");
-            goto out;
-        }
-        self->columns[j].type= (u_int32_t) PyLong_AsLong(number);
-        number = PyList_GetItem(column_description, 1);
-        if (!PyLong_Check(number)) {
-            PyErr_SetString(PyExc_ValueError, "values must be numbers");
-            goto out;
-        }
-        self->columns[j].element_type= (u_int32_t) PyLong_AsLong(number);
-        number = PyList_GetItem(column_description, 2);
-        if (!PyLong_Check(number)) {
-            PyErr_SetString(PyExc_ValueError, "values must be numbers");
-            goto out;
-        }
-        self->columns[j].offset = (u_int32_t) PyLong_AsLong(number);
-        printf("\tallocated column type = %d, element_type = %d offset = %d\n", 
-                self->columns[j].type, self->columns[j].element_type, 
-                self->columns[j].offset);
-        
-        self->columns[j].compare = db_column_memory_compare;
-        if (self->columns[j].element_type == ELEMENT_TYPE_FLOAT) {
-            self->columns[j].compare = db_column_float_compare;
-        }
-        self->columns[j].element_size = element_type_size_map[
-                self->columns[j].element_type];
-
-    }
-    db_ret = db_create(&self->secondary_db, NULL, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    self->secondary_db->app_private = self;
-    db_ret = self->secondary_db->set_flags(self->secondary_db, DB_DUPSORT);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    /* 128 MiB cache for secondary DBs */ 
-    db_ret = self->secondary_db->set_cachesize(self->secondary_db, 0, 
-            128 * 1024 * 1024, 1);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-
-
-    db_ret = self->secondary_db->set_bt_compare(self->secondary_db, db_index_compare);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    /* This may be useful - check it out */
-    db_ret = self->secondary_db->set_bt_compress(self->secondary_db, NULL, NULL); 
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    
-    
-
-    db_ret = self->secondary_db->open(self->secondary_db, NULL, self->filename, 
-            NULL, DB_BTREE, DB_CREATE|DB_TRUNCATE, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-
-out:
-    return;
-}
 
 /*==========================================================
  * Column object 
@@ -409,44 +143,7 @@ static PyMemberDef Column_members[] = {
 };
 
 
-static PyObject *
-Column_set_record_value(Column* self, PyObject *args)
-{
-    PyObject *ret = NULL;
-    PyObject *values = NULL;
-    long v;
-    float tmp;
-    unsigned char buff[64];
-    if (! PyArg_ParseTuple(args, "O", &values)) {
-        goto out;
-    }
-    if (self->num_elements == 1) {
-        if (!PyLong_Check(values)) {
-            PyErr_SetString(PyExc_ValueError, "Long expected");
-            goto out;
-        }
-        v = PyLong_AsLong(values);
-        byte_swap((unsigned char *) &v, buff, self->element_size);
-        byte_swap(buff, (unsigned char *) &v, self->element_size);
-        printf("v = %ld\n", v); 
-        
-        for (tmp = 1.0; tmp < 10.0; tmp += 0.1) {
-            byte_swap((unsigned char *) &tmp, buff, sizeof(float));
-        }
-    }
-    
- 
-    ret = Py_BuildValue("");
-out:
-    return ret; 
-}
-
-
-
-
 static PyMethodDef Column_methods[] = {
-    {"set_record_value", (PyCFunction) Column_set_record_value, METH_VARARGS, 
-            "Sets the value of the column in a record" },
     {NULL}  /* Sentinel */
 };
 
@@ -500,14 +197,7 @@ static PyTypeObject ColumnType = {
 static void
 BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 {
-    int j;
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
-    for (j = 0; j < self->num_indexes; j++) {
-        db_index_free(&self->indexes[j]);        
-    }
-    if (self->num_indexes != 0) { 
-        PyMem_Free(self->indexes);
-    }
     if (self->primary_db != NULL) {
         self->primary_db->close(self->primary_db, 0); 
     }
@@ -520,28 +210,12 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
     int ret = 0;
     int db_ret = 0;
     self->primary_db = NULL;
-    self->indexes = NULL;
-    self->cursor = NULL;
-    self->num_indexes = 0;
     db_ret = db_create(&self->primary_db, NULL, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         ret = -1;
         goto out;    
     }
-    /* 
-     * Initial examination indicates that it's good for secondary indexes
-     * but not for the main DB. This should be tested with the real 
-     * key sizes and a proper dataset though.
-
-    db_ret = self->primary_db->set_bt_compress(self->primary_db, NULL, NULL);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        ret = -1;
-        goto out;    
-    }
-     */
-    
 
 out:
 
@@ -552,46 +226,6 @@ out:
 static PyMemberDef BerkeleyDatabase_members[] = {
     {NULL}  /* Sentinel */
 };
-
-
-static PyObject *
-BerkeleyDatabase_add_index(BerkeleyDatabase* self, PyObject *args)
-{
-    int db_ret;
-    unsigned int j;
-    PyObject *ret = NULL;
-    PyObject *index_list = NULL;
-    if (! PyArg_ParseTuple(args, "O!", &PyList_Type, &index_list)) {
-        goto out;
-    }
-    self->num_indexes = PyList_Size(index_list);
-    self->indexes = PyMem_Malloc(self->num_indexes * sizeof(db_index_t));
-    printf("adding %d indexes\n", self->num_indexes);
-    for (j = 0; j < self->num_indexes; j++) {
-        db_index_initialise(&self->indexes[j], PyList_GetItem(index_list, j));
-        /* TODO this is not the corect way to go about this */
-        if (PyErr_Occurred() != NULL) {
-            goto out;
-        }
-    }
-    /* do this here for now */
-    for (j = 0; j < self->num_indexes; j++) {
-        db_ret = self->primary_db->associate(self->primary_db, NULL, 
-                self->indexes[j].secondary_db, 
-                db_index_callback, 0); 
-        if (db_ret != 0) {
-            handle_bdb_error(db_ret);
-            goto out;
-        }
-    }
-
-
-    
-    ret = Py_BuildValue("");
-out:
-    return ret; 
-}
-
 
 
 
@@ -621,35 +255,6 @@ out:
     return ret; 
 }
 
-static PyObject *
-BerkeleyDatabase_open(BerkeleyDatabase* self)
-{
-    int db_ret;
-    PyObject *ret = NULL;
-    u_int32_t flags = DB_RDONLY;
-    char *db_name = "db_NOBACKUP_/primary.db";
-    db_ret = self->primary_db->open(self->primary_db, NULL, db_name, NULL, 
-            DB_UNKNOWN,  flags,  0);         
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-
-
-
-    db_ret = self->primary_db->cursor(self->primary_db, NULL, &self->cursor, DB_CURSOR_BULK);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret); 
-        goto out;
-    }
-     
-
-
-    ret = Py_BuildValue("");
-out:
-    return ret; 
-}
-
 
 
 
@@ -658,13 +263,6 @@ BerkeleyDatabase_close(BerkeleyDatabase* self)
 {
     PyObject *ret = NULL;
     int db_ret;
-    if (self->cursor != NULL) {  
-        db_ret = self->cursor->close(self->cursor);
-        if (db_ret != 0) {
-            handle_bdb_error(db_ret); 
-            goto out;
-        } 
-    }
     if (self->primary_db != NULL) {
         db_ret = self->primary_db->close(self->primary_db, 0); 
         if (db_ret != 0) {
@@ -680,10 +278,8 @@ out:
 
 
 static PyMethodDef BerkeleyDatabase_methods[] = {
-    {"add_index", (PyCFunction) BerkeleyDatabase_add_index, METH_VARARGS, "Adds an index" },
-    {"open", (PyCFunction) BerkeleyDatabase_open, METH_NOARGS, "Open the table" },
-    {"create", (PyCFunction) BerkeleyDatabase_create, METH_NOARGS, "Open the table" },
-    {"close", (PyCFunction) BerkeleyDatabase_close, METH_NOARGS, "Close the table" },
+    {"create", (PyCFunction) BerkeleyDatabase_create, METH_NOARGS, "Create the database" },
+    {"close", (PyCFunction) BerkeleyDatabase_close, METH_NOARGS, "Close the database" },
     {NULL}  /* Sentinel */
 };
 
@@ -731,12 +327,12 @@ static PyTypeObject BerkeleyDatabaseType = {
 
 
 /*==========================================================
- * RecordBuffer object 
+ * WriteBuffer object 
  *==========================================================
  */
 
 static void
-RecordBuffer_dealloc(RecordBuffer* self)
+WriteBuffer_dealloc(WriteBuffer* self)
 {
     /* Is this safe?? */
     PyMem_Free(self->record_buffer);
@@ -751,19 +347,17 @@ RecordBuffer_dealloc(RecordBuffer* self)
  * Resets this buffer so that it is ready to receive more records.
  */
 static void
-RecordBuffer_clear(RecordBuffer *self)
+WriteBuffer_clear(WriteBuffer *self)
 {
     memset(self->record_buffer, 0, self->current_record_offset);
     self->current_record_size = 0;
     self->current_record_offset = 0;
     self->num_records = 0;
-    self->read_records = 0;
-    self->reading_done = 0;
 
 }
 
 static int
-RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
+WriteBuffer_init(WriteBuffer *self, PyObject *args, PyObject *kwds)
 {
     int ret = 0; 
     static char *kwlist[] = {"database", NULL};
@@ -790,23 +384,19 @@ RecordBuffer_init(RecordBuffer *self, PyObject *args, PyObject *kwds)
     memset(self->keys, 0, n * sizeof(DBT));
     memset(self->records, 0, n * sizeof(DBT));
     self->num_records = 0;
-    self->read_records = 0;
-    self->reading_done = 0;
-    self->num_views = 0; 
-
 
 out:
     return ret;
 }
 
-static PyMemberDef RecordBuffer_members[] = {
-    {"database", T_OBJECT_EX, offsetof(RecordBuffer, database), READONLY, "database"},
-    {"current_record_size", T_INT, offsetof(RecordBuffer, current_record_size), 0, "size of current record"},
+static PyMemberDef WriteBuffer_members[] = {
+    {"database", T_OBJECT_EX, offsetof(WriteBuffer, database), READONLY, "database"},
+    {"current_record_size", T_INT, offsetof(WriteBuffer, current_record_size), 0, "size of current record"},
     {NULL}  /* Sentinel */
 };
 
 static PyObject *
-RecordBuffer_flush(RecordBuffer* self)
+WriteBuffer_flush(WriteBuffer* self)
 {
     int db_ret = 0;
     PyObject *ret = NULL;
@@ -825,7 +415,7 @@ RecordBuffer_flush(RecordBuffer* self)
         } 
     }
     //printf("done\n");
-    RecordBuffer_clear(self);
+    WriteBuffer_clear(self);
     
     ret = Py_BuildValue("");
 out:
@@ -834,7 +424,7 @@ out:
 
 
 static PyObject *
-RecordBuffer_commit_record(RecordBuffer* self, PyObject *args)
+WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
     Py_buffer key_buff;
@@ -866,7 +456,7 @@ RecordBuffer_commit_record(RecordBuffer* self, PyObject *args)
     self->num_records++;
     if (self->current_record_offset >= barrier 
             || self->num_records == self->max_num_records) {
-        ret = RecordBuffer_flush(self);
+        ret = WriteBuffer_flush(self);
         if (ret == NULL) {
             goto out;
         }
@@ -877,189 +467,22 @@ out:
     return ret; 
 }
 
-static PyObject *
-RecordBuffer_fill(RecordBuffer* self)
-{
-    int db_ret = 0;
-    PyObject *ret = NULL;
-    DBC *cursor = self->database->cursor; 
-    DBT *key, *record;
-    u_int32_t barrier = self->record_buffer_size - self->max_record_size;
-    RecordBuffer_clear(self);
-    
-    while (db_ret == 0 && self->current_record_offset <= barrier 
-            && self->num_records < self->max_num_records) {
-        /* Some of these flags can be set an intialisation time */
-        key = &self->keys[self->num_records];
-        key->ulen = self->key_size;
-        key->data = &self->key_buffer[self->key_size * self->num_records];
-        key->flags = DB_DBT_USERMEM;
-        record = &self->records[self->num_records];
-        record->ulen = self->max_record_size;
-        record->data = &self->record_buffer[self->current_record_offset];
-        record->flags = DB_DBT_USERMEM;
-        db_ret = cursor->get(cursor, key, record, DB_NEXT); 
-        if (db_ret == 0) {
-            self->num_records++; 
-            self->current_record_offset += record->size;
-        } else if (db_ret == DB_NOTFOUND) {
-            self->reading_done = 1;
-        } else {
-            handle_bdb_error(db_ret); 
-            goto out;
-        } 
-        
-    }
-    
-    printf("filled buffer to offset %d : %d records\n",self->current_record_offset, self->num_records);
-   
-    ret = Py_BuildValue("");
-out:
-    return ret; 
-}
-
-static PyObject *
-RecordBuffer_set_selected_columns(RecordBuffer* self, PyObject *args)
-{
-    int j;
-    PyObject *ret = NULL;
-    PyObject *py_columns = NULL; 
-    PyObject *py_col = NULL; 
-    if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &py_columns)) { 
-        goto out; 
-    }
-    self->num_selected_columns = PyList_Size(py_columns);
-    /* FIXME!! */
-    /* This is a horrible memory leak - the REcordBuffer should allocate 
-       the maximum number of columns by looking at the database */
-    self->selected_columns = PyMem_Malloc(self->num_selected_columns * sizeof(void *));
-    for (j = 0; j < self->num_selected_columns; j++) {
-        py_col = PyList_GetItem(py_columns, j);
-        Py_INCREF(py_col); /* Is this necessary?? */
-        if (! PyObject_TypeCheck(py_col, &ColumnType)) {
-            PyErr_SetString(PyExc_TypeError, "argument not Column");
-            goto out;
-        }
-        self->selected_columns[j] = (Column *) py_col; 
-    }
-    
-    ret = Py_BuildValue("");
-out:
-    return ret; 
-}
-
-static PyObject *
-RecordBuffer_retrieve_record(RecordBuffer* self, PyObject *args)
-{
-    PyObject *ret = NULL;
-    Column *col;
-    unsigned int n = self->read_records;
-    unsigned long record_id;
-    float float_val;
-    long long_val = 0;
-    int j;
-    /* this is dreadful */
-    ret = PyTuple_New(self->num_selected_columns + 1);
-    if (n == self->num_records && self->reading_done) {
-        ret = Py_BuildValue("");
-    } else {
-        if (n == self->num_records) {
-            RecordBuffer_fill(self);
-        }
-        n = self->read_records;
-        if (n < self->num_records) {
-            /* set the current_record_offset so that it points to the next record.
-             * Using pointer arithmmetic for now.
-            self->current_record_offset = ((unsigned char *) self->records[n].data)
-                    - self->record_buffer;
-             // buffer interface is no longer used.
-             
-             */
-            byte_swap(self->keys[n].data, (unsigned char *) &record_id, self->key_size);
-            PyTuple_SetItem(ret, 0, PyLong_FromUnsignedLong(record_id));  
-            for (j = 0; j < self->num_selected_columns; j++) {
-                col = self->selected_columns[j];
-                if (col->element_type == ELEMENT_TYPE_INT_8) {
-                    //byte_swap(self->records[n].data + col->offset, (unsigned char *) &long_val, 8); 
-                    memcpy(&long_val, self->records[n].data + col->offset, 8); 
-                    PyTuple_SetItem(ret, j + 1, PyLong_FromUnsignedLong(long_val));  
-                } else if (col->element_type == ELEMENT_TYPE_FLOAT) {
-                    //byte_swap(self->records[n].data + col->offset, (unsigned char *) &float_val, 4); 
-                    memcpy(&float_val, self->records[n].data + col->offset, 4); 
-                    PyTuple_SetItem(ret, j + 1, PyFloat_FromDouble((double) float_val));  
-                } else {
-                    printf("ERROR!!!\n");
-                }
-                
-            }
-            
-            self->read_records++;
-        } else {
-            ret = Py_BuildValue("");
-        }
-
-    }
-//out:
-    return ret; 
-}
 
 
 
-
-
-
-/* Implementation of the Buffer Protocol so that we can write values 
- * directly into our record buffer memory from Python. This implementation 
- * copies the bytearray (Objects/bytearrayobject.c), and doesn't
- * strictly need to have the self->num_views, as the memory is always
- * valid until the object is freed.
- */
-static int
-RecordBuffer_getbuffer(RecordBuffer *self, Py_buffer *view, int flags)
-{
-    int ret = 0;
-    void *ptr;
-    if (view == NULL) {
-        self->num_views++;
-        goto out; 
-    }
-    ptr = &self->record_buffer[self->current_record_offset];
-    ret = PyBuffer_FillInfo(view, (PyObject*) self, ptr, self->max_record_size,
-            0, flags);
-    if (ret >= 0) {
-        self->num_views++;
-    }
-out:
-    return ret;
-}
-static void
-RecordBuffer_releasebuffer(RecordBuffer *self, Py_buffer *view)
-{
-    self->num_views--;
-}
-
-static PyMethodDef RecordBuffer_methods[] = {
-    {"set_selected_columns", (PyCFunction) RecordBuffer_set_selected_columns, 
-            METH_VARARGS, "set_selected_columns record" },
-    {"retrieve_record", (PyCFunction) RecordBuffer_retrieve_record, METH_NOARGS, "retrieve record" },
-    {"commit_record", (PyCFunction) RecordBuffer_commit_record, METH_VARARGS, "commit record" },
-    {"flush", (PyCFunction) RecordBuffer_flush, METH_NOARGS, "flush" },
-    {"fill", (PyCFunction) RecordBuffer_fill, METH_NOARGS, "fill the buffer with records." },
+static PyMethodDef WriteBuffer_methods[] = {
+    {"commit_record", (PyCFunction) WriteBuffer_commit_record, METH_VARARGS, "commit record" },
+    {"flush", (PyCFunction) WriteBuffer_flush, METH_NOARGS, "flush" },
     {NULL}  /* Sentinel */
 };
 
-static PyBufferProcs RecordBuffer_as_buffer = {
-    (getbufferproc)RecordBuffer_getbuffer,
-    (releasebufferproc)RecordBuffer_releasebuffer,
-};
 
-
-static PyTypeObject RecordBufferType = {
+static PyTypeObject WriteBufferType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.RecordBuffer",             /* tp_name */
-    sizeof(RecordBuffer),             /* tp_basicsize */
+    "_vcfdb.WriteBuffer",             /* tp_name */
+    sizeof(WriteBuffer),             /* tp_basicsize */
     0,                         /* tp_itemsize */
-    (destructor)RecordBuffer_dealloc, /* tp_dealloc */
+    (destructor)WriteBuffer_dealloc, /* tp_dealloc */
     0,                         /* tp_print */
     0,                         /* tp_getattr */
     0,                         /* tp_setattr */
@@ -1073,24 +496,24 @@ static PyTypeObject RecordBufferType = {
     0,                         /* tp_str */
     0,                         /* tp_getattro */
     0,                         /* tp_setattro */
-    &RecordBuffer_as_buffer,   /* tp_as_buffer */
+    0,                         /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "RecordBuffer objects",           /* tp_doc */
+    "WriteBuffer objects",           /* tp_doc */
     0,                     /* tp_traverse */
     0,                     /* tp_clear */
     0,                     /* tp_richcompare */
     0,                     /* tp_weaklistoffset */
     0,                     /* tp_iter */
     0,                     /* tp_iternext */
-    RecordBuffer_methods,             /* tp_methods */
-    RecordBuffer_members,             /* tp_members */
+    WriteBuffer_methods,             /* tp_methods */
+    WriteBuffer_members,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
     0,                         /* tp_dict */
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)RecordBuffer_init,      /* tp_init */
+    (initproc)WriteBuffer_init,      /* tp_init */
 };
  
 
@@ -1147,13 +570,13 @@ init_vcfdb(void)
     Py_INCREF(&ColumnType);
     PyModule_AddObject(module, "Column", (PyObject *) &ColumnType);
     
-    /* RecordBuffer */
-    RecordBufferType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&RecordBufferType) < 0) {
+    /* WriteBuffer */
+    WriteBufferType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&WriteBufferType) < 0) {
         INITERROR;
     }
-    Py_INCREF(&RecordBufferType);
-    PyModule_AddObject(module, "RecordBuffer", (PyObject *) &RecordBufferType);
+    Py_INCREF(&WriteBufferType);
+    PyModule_AddObject(module, "WriteBuffer", (PyObject *) &WriteBufferType);
     
     BerkeleyDatabaseError = PyErr_NewException("_vcfdb.BerkeleyDatabaseError", 
             NULL, NULL);
