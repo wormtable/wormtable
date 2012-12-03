@@ -13,7 +13,7 @@
 #define ELEMENT_TYPE_FLOAT 2
 #define ELEMENT_TYPE_ENUM 3
 
-#define NUM_ELEMENTS_ANY 0 
+#define NUM_ELEMENTS_VARIABLE 0 
 #define MAX_ELEMENTS 256
 #define MAX_RECORD_SIZE 65536
 
@@ -22,16 +22,15 @@
 
 static PyObject *BerkeleyDatabaseError;
 
-
 typedef struct Column_t {
     PyObject_HEAD
     PyObject *name;
     PyObject *description;
     PyObject *enum_values;
-    int offset;
     int element_type;
     int element_size;
     int num_elements;
+    int fixed_region_offset;
     /* possibly better names for this... */
     int (*convert_string)(struct Column_t*, char *, void *);
 } Column;
@@ -40,27 +39,41 @@ typedef struct Column_t {
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
-    PyObject *filename;
+    PyBytesObject *filename;
+    PyListObject *columns;
     Py_ssize_t cache_size;
+    int fixed_region_size;
+    int key_size;
 } BerkeleyDatabase;
 
 typedef struct {
     PyObject_HEAD
     BerkeleyDatabase *database;
-    /* Record storage */
-    u_int32_t max_record_size;
-    unsigned char *record_buffer;
+    /* arrays for double buffering */
+    void *key_buffer;
+    void *data_buffer;
+    int num_records;
+    int current_data_offset;
+    int current_key_offset;
+    int current_record_size;
+    DBT *key_dbts; 
+    DBT *data_dbts; 
+    /* end of arrays */
+    int max_num_records;
+    int data_buffer_size;
+    int key_buffer_size;
+    
+    /*
     u_int32_t record_buffer_size;
     int current_record_size;
     u_int32_t current_record_offset;
-    /* Key storage */
     unsigned char *key_buffer;
     u_int32_t key_size;
-    /* DBT management */
     u_int32_t num_records;
     u_int32_t max_num_records;
     DBT *keys; 
     DBT *records; 
+    */
 } WriteBuffer;
 
 static void 
@@ -150,14 +163,14 @@ Column_convert_string_int(Column *self, char *string, void *destination)
             v = tail;
         }
     }
-    if (self->num_elements != NUM_ELEMENTS_ANY) {
+    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
         if (num_elements != self->num_elements) {
             PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
             goto out;
         }
     }
         
-    ret = 0;
+    ret = num_elements;
 out:
     
     return ret;
@@ -200,14 +213,13 @@ Column_convert_string_float(Column *self, char *string, void *destination)
             v = tail;
         }
     }
-    if (self->num_elements != NUM_ELEMENTS_ANY) {
+    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
         if (num_elements != self->num_elements) {
             PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
             goto out;
         }
     }
-        
-    ret = 0;
+    ret = num_elements;
 out:
     
     return ret;
@@ -219,7 +231,7 @@ Column_convert_string_char(Column *self, char *string, void *destination)
     //printf("Convert char %d:%s\n", self->num_elements, string);    
     size_t n = strlen(string);
     memcpy(destination, string, n); 
-    return 0;
+    return n;
 }
 
 static int 
@@ -228,7 +240,22 @@ Column_convert_string_enum(Column *self, char *string, void *destination)
     //printf("Convert enum %d:%s\n", self->num_elements, string);    
     return 0;
 }
- 
+
+/* 
+ * Returns the number of bytes that this column occupies in the 
+ * fixed region of records.
+ */  
+static int 
+Column_get_fixed_region_size(Column *self) 
+{
+    int ret = self->element_size * self->num_elements;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        /* two byte offset + one byte count */
+        ret = 3;
+    }
+    return ret;
+}
+
 
 static void
 Column_dealloc(Column* self)
@@ -246,12 +273,16 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     int ret = -1;
     static char *kwlist[] = {"name", "description",  "element_type", 
         "element_size", "num_elements", NULL};
+    PyObject *name = NULL;
+    PyObject *description = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
-            &self->name, &self->description, 
+            &name, &description, 
             &self->element_type, &self->element_size, 
             &self->num_elements)) {  
         goto out;
     }
+    self->name = name;
+    self->description = description;
     Py_INCREF(self->name);
     Py_INCREF(self->description);
     if (self->element_type == ELEMENT_TYPE_INT) {
@@ -304,6 +335,8 @@ static PyMemberDef Column_members[] = {
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
+    {"fixed_region_offset", T_INT, offsetof(Column, fixed_region_offset), 
+        READONLY, "fixed_region_offset"},
     {NULL}  /* Sentinel */
 };
 
@@ -363,6 +396,7 @@ static void
 BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 {
     Py_XDECREF(self->filename);
+    Py_XDECREF(self->columns);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->primary_db != NULL) {
         self->primary_db->close(self->primary_db, 0); 
@@ -374,16 +408,25 @@ static int
 BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
 {
     DB *db;
+    int j;
+    Column *col;
     int ret = -1;
     int db_ret = 0;
     u_int32_t gigs, bytes;
     Py_ssize_t gigabyte = 1024 * 1024 * 1024;
-    static char *kwlist[] = {"filename", "cache_size", NULL}; 
+    static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
+    PyBytesObject *filename = NULL;
+    PyListObject *columns = NULL;
     self->primary_db = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "On", kwlist, 
-            &self->filename, &self->cache_size)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
+            &PyBytes_Type, &filename, 
+            &PyList_Type,  &columns, 
+            &self->cache_size)) {
         goto out;
     }
+    self->filename = filename;
+    self->columns = columns;
+    Py_INCREF(self->columns);
     Py_INCREF(self->filename);
     db_ret = db_create(&db, NULL, 0);
     self->primary_db = db;
@@ -398,6 +441,21 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         handle_bdb_error(db_ret);
         goto out;    
     }
+    self->key_size = 5; /* TODO make this part of kwargs */
+    /* calculate the variable region offset by summing up the fixed 
+     * region size from each column
+     */
+    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
+        col->fixed_region_offset = self->fixed_region_size;
+        self->fixed_region_size += Column_get_fixed_region_size(col);
+    }
+    
+
     ret = 0;
 out:
 
@@ -407,7 +465,9 @@ out:
 
 static PyMemberDef BerkeleyDatabase_members[] = {
     {"filename", T_OBJECT_EX, offsetof(BerkeleyDatabase, filename), READONLY, "filename"},
+    {"columns", T_OBJECT_EX, offsetof(BerkeleyDatabase, columns), READONLY, "columns"},
     {"cache_size", T_PYSSIZET, offsetof(BerkeleyDatabase, cache_size), READONLY, "cache_size"},
+    {"fixed_region_size", T_INT, offsetof(BerkeleyDatabase, fixed_region_size), READONLY, "fixed_region_size"},
     {NULL}  /* Sentinel */
 };
 
@@ -420,18 +480,13 @@ BerkeleyDatabase_create(BerkeleyDatabase* self)
     int db_ret;
     u_int32_t flags = DB_CREATE|DB_TRUNCATE;
     char *db_name = NULL;
-    if (!PyBytes_Check(self->filename)) {
-        PyErr_SetString(PyExc_ValueError, "filename must be bytes");
-        goto out;
-    }
-    db_name = PyBytes_AsString(self->filename);
+    db_name = PyBytes_AsString((PyObject *) self->filename);
     db_ret = self->primary_db->open(self->primary_db, NULL, db_name, NULL, 
             DB_BTREE,  flags,  0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-
     ret = Py_BuildValue("");
 out:
     return ret; 
@@ -511,13 +566,22 @@ static PyTypeObject BerkeleyDatabaseType = {
  */
 
 static void
+WriteBuffer_clear_buffers(WriteBuffer* self)
+{
+    memset(self->data_buffer, 0, self->data_buffer_size);
+    memset(self->key_buffer, 0, self->key_buffer_size);
+    self->num_records = 0;
+    self->current_data_offset = 0;
+    self->current_key_offset = 0;
+    self->current_record_size = self->database->fixed_region_size;
+}
+static void
 WriteBuffer_dealloc(WriteBuffer* self)
 {
-    /* Is this safe?? */
-    PyMem_Free(self->record_buffer);
+    PyMem_Free(self->data_buffer);
     PyMem_Free(self->key_buffer);
-    PyMem_Free(self->keys);
-    PyMem_Free(self->records);
+    PyMem_Free(self->data_dbts);
+    PyMem_Free(self->key_dbts);
     Py_XDECREF(self->database);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -525,38 +589,68 @@ WriteBuffer_dealloc(WriteBuffer* self)
 static int
 WriteBuffer_init(WriteBuffer *self, PyObject *args, PyObject *kwds)
 {
-    int ret = 0; 
-    static char *kwlist[] = {"database", NULL};
+    int ret = -1; 
+    static char *kwlist[] = {"database", "data_buffer_size", 
+        "max_num_records", NULL};
     BerkeleyDatabase *database = NULL;
-    u_int32_t n; 
-    if (! PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
-            &BerkeleyDatabaseType, &database)) {
-        ret = -1;
+    self->database = NULL;
+    self->key_buffer = NULL; 
+    self->data_buffer = NULL; 
+    self->key_dbts = NULL; 
+    self->data_dbts = NULL; 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!ii", kwlist, 
+            &BerkeleyDatabaseType, &database, &self->data_buffer_size,
+            &self->max_num_records)) {
         goto out;
     }
-    Py_INCREF(database);
     self->database = database;
-       
-    /* TODO read params from args and error check */
-    n = 1024 * 1024;
-    self->key_size = 8;
-    self->max_num_records = n;
-    self->max_record_size = 64 * 1024; /* TEMP 64K */
-    self->record_buffer_size = 32 * 1024 * 1024; /* TEMP 32 MiB*/
-    self->record_buffer = PyMem_Malloc(self->record_buffer_size);
-    self->key_buffer = PyMem_Malloc(n * self->key_size);
-    self->keys = PyMem_Malloc(n * sizeof(DBT));
-    self->records = PyMem_Malloc(n * sizeof(DBT));
-    memset(self->keys, 0, n * sizeof(DBT));
-    memset(self->records, 0, n * sizeof(DBT));
-    self->num_records = 0;
+    Py_INCREF(self->database);
+    if (self->data_buffer_size < MAX_RECORD_SIZE) {
+        PyErr_SetString(PyExc_ValueError, "data buffer size too small");
+        goto out;
+    }
+    if (self->max_num_records < 1) {
+        PyErr_SetString(PyExc_ValueError, "must have >= 1 records in buffer.");
+        goto out;
+    }
+    self->key_buffer_size = self->max_num_records * self->database->key_size;
+    /* Alloc some memory */
+    self->key_buffer = PyMem_Malloc(self->key_buffer_size);
+    if (self->key_buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    self->data_buffer = PyMem_Malloc(self->data_buffer_size);
+    if (self->data_buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    self->key_dbts = PyMem_Malloc(self->max_num_records * sizeof(DBT));
+    if (self->key_dbts == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    self->data_dbts = PyMem_Malloc(self->max_num_records * sizeof(DBT));
+    if (self->data_dbts == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    /* zero the DBTs before use */
+    memset(self->key_dbts, 0, self->max_num_records * sizeof(DBT));
+    memset(self->data_dbts, 0, self->max_num_records * sizeof(DBT));
 
+    WriteBuffer_clear_buffers(self);
+    
+    ret = 0;
 out:
     return ret;
 }
 
 static PyMemberDef WriteBuffer_members[] = {
     {"database", T_OBJECT_EX, offsetof(WriteBuffer, database), READONLY, "database"},
+    {"max_num_records", T_INT, offsetof(WriteBuffer, max_num_records), READONLY, "max_num_records"},
+    {"data_buffer_size", T_INT, offsetof(WriteBuffer, data_buffer_size), READONLY, "data_buffer_size"},
+    {"key_buffer_size", T_INT, offsetof(WriteBuffer, key_buffer_size), READONLY, "key_buffer_size"},
     {NULL}  /* Sentinel */
 };
 
@@ -564,29 +658,27 @@ static PyObject *
 WriteBuffer_flush(WriteBuffer* self)
 {
     PyObject *ret = NULL;
-    
-#if 0
     int db_ret = 0;
-    u_int32_t flags = 0;
     u_int32_t j;
     DB *db;
-    
+    DBT *key, *data;
     db = self->database->primary_db;
-    /* TODO error check or verify this can't be null */
-    //printf("\nFlushing buffer: %d records in %dKiB\n", self->num_records, self->current_record_offset / 1024);
+    //printf("Flushing buffer: %d records in %dKiB\n", self->num_records, 
+    //        self->current_data_offset / 1024);
     for (j = 0; j < self->num_records; j++) {
-        db_ret = db->put(db, NULL, &self->keys[j], &self->records[j], flags);
+        key = &self->key_dbts[j];
+        data = &self->data_dbts[j];
+        db_ret = db->put(db, NULL, key, data, 0);
         if (db_ret != 0) {
             handle_bdb_error(db_ret); 
             goto out;
         } 
     }
     //printf("done\n");
-    WriteBuffer_clear(self);
-#endif
+    WriteBuffer_clear_buffers(self);
 
     ret = Py_BuildValue("");
-//out:
+out:
     return ret; 
 }
 
@@ -596,78 +688,33 @@ WriteBuffer_set_record_value(WriteBuffer* self, PyObject *args)
     PyObject *ret = NULL;
     Column *column = NULL;
     PyBytesObject *value = NULL;
-    Py_ssize_t v_len;
-    char temp[1024];
+    unsigned int num_elements, offset;
+    void *dest = NULL; 
     char *v;
-    if (! PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
+    if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
             &value)) {
         goto out;
     }
     Py_INCREF(column);
     Py_INCREF(value);
-    if (PyBytes_AsStringAndSize((PyObject *) value, &v, &v_len) < 0){
+    v = PyBytes_AsString((PyObject *) value);
+    offset = column->fixed_region_offset;
+    if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
+        offset = self->current_record_size;
+    }
+    dest = self->data_buffer + self->current_data_offset + offset;
+    num_elements = column->convert_string(column, v, dest);
+    if (num_elements < 0) {
         goto out;
     }
-    
-    
-    if (column->convert_string(column, v, temp) < 0) {
-        goto out;
+    if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
+        offset = column->fixed_region_offset;
+        dest = self->data_buffer + self->current_data_offset + offset;
+        bigendian_copy(dest, &offset, 2); // FIXME
+        dest += 2;
+        bigendian_copy(dest, &num_elements, 1); // FIXME
+        self->current_record_size += num_elements * column->element_size;
     }
-
-#if 0
-    if (column->num_elements == 1) {
-        num_elements = 1;
-        elements[0] = v; 
-    } else {
-        char *string = v;
-        num_elements = 0;
-        while (1) {
-            char *tail;
-            double next;
-
-            /* Skip whitespace by hand, to detect the end.  */
-            if (ispunct(*string)) {
-                string++;
-                num_elements++;
-            }
-            if (*string == NULL) {
-                break;
-            }
-            errno = 0;
-            /* Parse it.  */
-            next = strtod(string, &tail);
-            /* Add it in, if not overflow.  */
-            if (errno)
-                printf ("Overflow\n");
-            else
-                printf("next = %f\n", next);
-            if (string == tail) {
-                printf("PARSE ERROR!!\n");
-                break;
-            }
-            
-            /* Advance past it.  */
-            printf("string = %s, tail = %s\n", string, tail);
-            string = tail;
-        }
-
-        
-        /*
-        printf("%s\n", v);
-        for (j = 0; j < v_len; j++) {
-            if (v[j] == ',') {
-                printf("\tbreak at %d\n", j);
-            }
-        }
-        */
-            
-    }
-    /*
-    for (j = 0; j < num_elements; j++) {
-        printf("element %d: %s\n", j, elements[j]); 
-    }
-    */
-#endif
     ret = Py_BuildValue("");
 out:
     Py_XDECREF(column);
@@ -680,37 +727,36 @@ out:
 static PyObject *
 WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
 {
+    DBT *key, *data;
     PyObject *ret = NULL;
-    printf("Commit\n");
-#if 0
-    Py_buffer key_buff;
-    unsigned char *key = &self->key_buffer[self->key_size * self->num_records];
-    unsigned char *record = &self->record_buffer[self->current_record_offset];
-    u_int32_t record_size = (u_int32_t) self->current_record_size;
-    u_int32_t barrier = self->record_buffer_size - self->max_record_size;
-    if (!PyArg_ParseTuple(args, "y*", &key_buff)) { 
-        goto out; 
-    }
-    if (key_buff.len != self->key_size) {
-        PyErr_SetString(PyExc_ValueError, "bad key size");
-        PyBuffer_Release(&key_buff);
+    void *dest;
+    int barrier = self->data_buffer_size - MAX_RECORD_SIZE;
+    unsigned PY_LONG_LONG key_val = 0;
+    if (!PyArg_ParseTuple(args, "K", &key_val)) { 
         goto out;
+    }        
+    dest = self->key_buffer + self->current_key_offset;
+    bigendian_copy(dest, &key_val, self->database->key_size);
+    /*
+    int j;
+    printf("Commit:%llu %d \n", key_val, self->current_record_size);
+    for (j = 0; j < 1024; j++) {
+        printf("%03d ", ((unsigned char *) self->data_buffer)[j]);
     }
-    /* copy the key */
-    memcpy(key, key_buff.buf, self->key_size);
-    PyBuffer_Release(&key_buff);
-    if (record_size > self->max_record_size) {
-        PyErr_SetString(PyExc_ValueError, "record size too large");
-        goto out;
-    }
-    self->keys[self->num_records].size = self->key_size;
-    self->keys[self->num_records].data = key;
-    self->records[self->num_records].size = record_size; 
-    self->records[self->num_records].data = record;
-    /* We are done setting up the record, so we can increment counters */ 
-    self->current_record_offset += record_size;
+    printf("\n");
+    */
+    key = &self->key_dbts[self->num_records];
+    data = &self->data_dbts[self->num_records];
+    key->size = self->database->key_size;
+    key->data = self->key_buffer + self->current_key_offset;
+    data->size = self->current_record_size;
+    data->data = self->data_buffer + self->current_data_offset; 
+    /* We are done with this record, so increment the counters */ 
+    self->current_record_size = self->database->fixed_region_size;
+    self->current_key_offset += self->database->key_size;
+    self->current_data_offset += self->current_record_size;
     self->num_records++;
-    if (self->current_record_offset >= barrier 
+    if (self->current_data_offset >= barrier 
             || self->num_records == self->max_num_records) {
         ret = WriteBuffer_flush(self);
         if (ret == NULL) {
@@ -718,9 +764,8 @@ WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
         }
     }
 
-#endif
     ret = Py_BuildValue("");
-//out:
+out:
     return ret; 
 }
 
@@ -841,6 +886,8 @@ init_vcfdb(void)
     Py_INCREF(BerkeleyDatabaseError);
     PyModule_AddObject(module, "BerkeleyDatabaseError", BerkeleyDatabaseError);
     
+    PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE", 
+            NUM_ELEMENTS_VARIABLE);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_CHAR", ELEMENT_TYPE_CHAR);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);

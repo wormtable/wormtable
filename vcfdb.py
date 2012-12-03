@@ -1,8 +1,8 @@
 """
 Prototype implementation of the Berkeley DB VCF record store.
 """
-from __future__ import print_function
 from __future__ import division 
+from __future__ import print_function
 
 import os
 import sys
@@ -323,13 +323,23 @@ class DatabaseWriter(object):
         """
         Opens the database and gets ready for writing records.
         """
-        c = 1024 * 1024 * 1024
-        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), c)
+        cache = 1024 * 1024 * 1024
+        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), 
+            self._schema.get_columns(), cache)
         self._database.create()
-        self._record_buffer = _vcfdb.WriteBuffer(self._database)
+        buffersize = 128 * 1024 #32 * 1024 * 1024
+        #buffersize = 64 * 1024 * 1024 * 1024
+        # Assume a record size of around 512 bytes
+        max_records = buffersize // 512
+        self._record_buffer = _vcfdb.WriteBuffer(self._database, buffersize, 
+                max_records)
+        #print(self._record_buffer.key_buffer_size)
+        #print(self._record_buffer.data_buffer_size)
+        #print(self._record_buffer.max_num_records)
+
+        #print(self._database.variable_region_offset)
         #print(self._database.filename)
         #print(self._database.cache_size)
-
 
     def close_database(self):
         """
