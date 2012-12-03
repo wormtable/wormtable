@@ -13,6 +13,9 @@
 #define ELEMENT_TYPE_FLOAT 2
 #define ELEMENT_TYPE_ENUM 3
 
+#define NUM_ELEMENTS_ANY 0 
+#define MAX_ELEMENTS 256
+#define MAX_RECORD_SIZE 65536
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for vcfdb"
@@ -29,6 +32,8 @@ typedef struct Column_t {
     int element_type;
     int element_size;
     int num_elements;
+    /* possibly better names for this... */
+    int (*convert_string)(struct Column_t*, char *, void *);
 } Column;
 
 
@@ -64,32 +69,33 @@ handle_bdb_error(int err)
     PyErr_SetString(BerkeleyDatabaseError, db_strerror(err));
 }
 
-#if 0
 /* 
  * Copies n bytes of source into destination, swapping the order of the 
- * bytes.
+ * bytes if necessary.
+ *
+ * TODO We need to put in #defs to detect endianness and adapt accordingly.
+ * Currently this is little-endian only.
  */
 static void
-byte_swap(unsigned char *source, unsigned char *destination, size_t n)
+bigendian_copy(void* dest, void *source, size_t n)
 {
     size_t j = 0;
-    /*
+    unsigned char *dest_c = (unsigned char *) dest;
+    unsigned char *source_c = (unsigned char *) source;
     for (j = 0; j < n; j++) {
-        printf("%03d ", source[j]); 
-    }
-    */
-    for (j = 0; j < n; j++) {
-        destination[j] = source[n - j - 1];
+        dest_c[j] = source_c[n - j - 1];
     }
     /*
+    for (j = 0; j < n; j++) {
+        printf("%03d ", source_c[j]); 
+    }
     printf("\t -> \t"); 
     for (j = 0; j < n; j++) {
-        printf("%03d ", destination[j]); 
+        printf("%03d ", dest_c[j]); 
     }
     printf("\n");
     */
 }
-#endif
 
 
 
@@ -98,6 +104,132 @@ byte_swap(unsigned char *source, unsigned char *destination, size_t n)
  * Column object 
  *==========================================================
  */
+
+
+static int 
+Column_convert_string_int(Column *self, char *string, void *destination)
+{
+    int ret = -1;
+    char *v = string;
+    char *tail;
+    long long element;
+    int num_elements = 1;
+    int not_done = 1; 
+    void *dest = destination;
+    /* TODO check this - probably not totally right */
+    long long max_element_value = (1l << (8 * self->element_size - 1)) - 1;
+    while (not_done) {
+        if (*v == ',') {
+            v++;
+            num_elements++;
+            if (num_elements >= MAX_ELEMENTS) {
+                PyErr_SetString(PyExc_ValueError, "Too many elements");
+                goto out;
+            }
+        }
+        if (*v == 0) {
+            not_done = 0; 
+        } else {
+            errno = 0;
+            element = strtoll(v, &tail, 0);
+            if (errno) {
+                PyErr_SetString(PyExc_ValueError, "Element overflow");
+                goto out;
+            }
+            if (abs(element) >= max_element_value) {
+                PyErr_SetString(PyExc_ValueError, "Value too large");
+                goto out;
+            }
+            
+            bigendian_copy(dest, &element, self->element_size);
+            dest += self->element_size;
+            if (v == tail) {
+                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                goto out;
+            }
+            v = tail;
+        }
+    }
+    if (self->num_elements != NUM_ELEMENTS_ANY) {
+        if (num_elements != self->num_elements) {
+            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+            goto out;
+        }
+    }
+        
+    ret = 0;
+out:
+    
+    return ret;
+}
+
+static int 
+Column_convert_string_float(Column *self, char *string, void *destination)
+{
+    int ret = -1;
+    char *v = string;
+    char *tail;
+    float element;
+    int num_elements = 1;
+    int not_done = 1; 
+    void *dest = destination;
+    while (not_done) {
+        if (*v == ',') {
+            v++;
+            num_elements++;
+            if (num_elements >= MAX_ELEMENTS) {
+                PyErr_SetString(PyExc_ValueError, "Too many elements");
+                goto out;
+            }
+        }
+        if (*v == 0) {
+            not_done = 0; 
+        } else {
+            errno = 0;
+            element = (float) strtod(v, &tail);
+            if (errno) {
+                PyErr_SetString(PyExc_ValueError, "Element overflow");
+                goto out;
+            }
+            bigendian_copy(dest, &element, self->element_size);
+            dest += self->element_size;
+            if (v == tail) {
+                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                goto out;
+            }
+            v = tail;
+        }
+    }
+    if (self->num_elements != NUM_ELEMENTS_ANY) {
+        if (num_elements != self->num_elements) {
+            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+            goto out;
+        }
+    }
+        
+    ret = 0;
+out:
+    
+    return ret;
+}
+ 
+static int 
+Column_convert_string_char(Column *self, char *string, void *destination)
+{
+    //printf("Convert char %d:%s\n", self->num_elements, string);    
+    size_t n = strlen(string);
+    memcpy(destination, string, n); 
+    return 0;
+}
+
+static int 
+Column_convert_string_enum(Column *self, char *string, void *destination)
+{
+    //printf("Convert enum %d:%s\n", self->num_elements, string);    
+    return 0;
+}
+ 
+
 static void
 Column_dealloc(Column* self)
 {
@@ -122,6 +254,35 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     }
     Py_INCREF(self->name);
     Py_INCREF(self->description);
+    if (self->element_type == ELEMENT_TYPE_INT) {
+        if (self->element_size < 1 || self->element_size > 8) {
+            PyErr_SetString(PyExc_ValueError, "bad element size");
+            goto out;
+        }
+        self->convert_string = Column_convert_string_int;
+    } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
+        if (self->element_size != sizeof(float)) {
+            PyErr_SetString(PyExc_ValueError, "bad element size");
+            goto out;
+        }
+        self->convert_string = Column_convert_string_float;
+    } else if (self->element_type == ELEMENT_TYPE_CHAR) {
+        if (self->element_size != 1) {
+            PyErr_SetString(PyExc_ValueError, "bad element size");
+            goto out;
+        }
+        self->convert_string = Column_convert_string_char;
+    } else if (self->element_type == ELEMENT_TYPE_ENUM) {
+        if (self->element_size < 1 || self->element_size > 2) {
+            PyErr_SetString(PyExc_ValueError, "bad element size");
+            goto out;
+        }
+        self->convert_string = Column_convert_string_enum;
+    } else {    
+        PyErr_SetString(PyExc_ValueError, "Unknown element type");
+        goto out;
+    }
+    
     /*
     self->enum_values = PyDict_New();
     if (self->enum_values == NULL) {
@@ -130,7 +291,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     Py_INCREF(self->enum_values);
     */
     /*TODO Check the values for sanity*/
-    
+
     ret = 0;
 out:
     return ret;
@@ -435,16 +596,78 @@ WriteBuffer_set_record_value(WriteBuffer* self, PyObject *args)
     PyObject *ret = NULL;
     Column *column = NULL;
     PyBytesObject *value = NULL;
+    Py_ssize_t v_len;
+    char temp[1024];
+    char *v;
     if (! PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
             &value)) {
         goto out;
     }
     Py_INCREF(column);
     Py_INCREF(value);
-     
+    if (PyBytes_AsStringAndSize((PyObject *) value, &v, &v_len) < 0){
+        goto out;
+    }
     
-    printf("set_record_value %s \n", PyBytes_AsString((PyObject *) value));
+    
+    if (column->convert_string(column, v, temp) < 0) {
+        goto out;
+    }
 
+#if 0
+    if (column->num_elements == 1) {
+        num_elements = 1;
+        elements[0] = v; 
+    } else {
+        char *string = v;
+        num_elements = 0;
+        while (1) {
+            char *tail;
+            double next;
+
+            /* Skip whitespace by hand, to detect the end.  */
+            if (ispunct(*string)) {
+                string++;
+                num_elements++;
+            }
+            if (*string == NULL) {
+                break;
+            }
+            errno = 0;
+            /* Parse it.  */
+            next = strtod(string, &tail);
+            /* Add it in, if not overflow.  */
+            if (errno)
+                printf ("Overflow\n");
+            else
+                printf("next = %f\n", next);
+            if (string == tail) {
+                printf("PARSE ERROR!!\n");
+                break;
+            }
+            
+            /* Advance past it.  */
+            printf("string = %s, tail = %s\n", string, tail);
+            string = tail;
+        }
+
+        
+        /*
+        printf("%s\n", v);
+        for (j = 0; j < v_len; j++) {
+            if (v[j] == ',') {
+                printf("\tbreak at %d\n", j);
+            }
+        }
+        */
+            
+    }
+    /*
+    for (j = 0; j < num_elements; j++) {
+        printf("element %d: %s\n", j, elements[j]); 
+    }
+    */
+#endif
     ret = Py_BuildValue("");
 out:
     Py_XDECREF(column);
