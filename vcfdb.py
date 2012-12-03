@@ -162,10 +162,9 @@ class Schema(object):
         for c in self.__columns:
             t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             print(s.format(c.name, t, c.element_size, c.num_elements))
-            #print("enum_values = ", c.enum_values)
-            #if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
-                #for k, v in c.enum_values.items():
-                #    print(k, "\t", v)
+            if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+                for k, v in c.enum_values.items():
+                    print(k, "\t", v)
 
     def write_xml(self, directory, filename="schema.xml"):
         """
@@ -514,7 +513,8 @@ def main():
             dbw.build(f)
         dbw.close_database()
         dbw.finalise() 
-        
+        schema.show()
+
 
         #dbw = VCFDatabaseWriter(dbdir, vcf_file)
         #dbw.process_header()

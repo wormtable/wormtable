@@ -234,11 +234,45 @@ Column_convert_string_char(Column *self, char *string, void *destination)
     return n;
 }
 
+/*
+ * TODO We need to support lists of enumeration values - this will need to 
+ * copy the parsing code above.
+ */
 static int 
 Column_convert_string_enum(Column *self, char *string, void *destination)
 {
-    //printf("Convert enum %d:%s\n", self->num_elements, string);    
-    return 0;
+    int ret = -1;
+    unsigned long value; 
+    unsigned long max_value = 1l << (8 * self->element_size);
+    PyObject *v = PyDict_GetItemString(self->enum_values, string);
+    if (v == NULL) {
+        value = PyDict_Size(self->enum_values) + 1;
+        if (value > max_value) {
+            PyErr_SetString(PyExc_ValueError, "Enum value too large");
+            goto out;
+        }
+        v = PyLong_FromUnsignedLong(value);
+        if (v == NULL) {
+            PyErr_NoMemory();
+            goto out; 
+        }
+        if (PyDict_SetItemString(self->enum_values, string, v) < 0) {
+            Py_DECREF(v); 
+            goto out;
+        }
+        Py_DECREF(v);    
+    } else {
+        if (!PyLong_Check(v)) {
+            PyErr_SetString(PyExc_ValueError, "Enum value not a long");
+            goto out;
+        }
+        value = PyLong_AsUnsignedLong(v); 
+    }
+    bigendian_copy(destination, &value, self->element_size);
+    //printf("%s -> %ld\n", string, value);
+    ret = 1;
+out:
+    return ret;
 }
 
 /* 
@@ -256,13 +290,12 @@ Column_get_fixed_region_size(Column *self)
     return ret;
 }
 
-
 static void
 Column_dealloc(Column* self)
 {
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
-    //Py_XDECREF(self->enum_values); 
+    Py_XDECREF(self->enum_values); 
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -314,14 +347,12 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     
-    /*
     self->enum_values = PyDict_New();
     if (self->enum_values == NULL) {
         goto out;
     }
     Py_INCREF(self->enum_values);
-    */
-    /*TODO Check the values for sanity*/
+    
 
     ret = 0;
 out:
