@@ -326,10 +326,10 @@ class DatabaseWriter(object):
         self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), 
             self._schema.get_columns(), cache)
         self._database.create()
-        buffersize = 128 * 1024 #32 * 1024 * 1024
+        buffersize = 1024 * 1024
         #buffersize = 64 * 1024 * 1024 * 1024
-        # Assume a record size of around 512 bytes
-        max_records = buffersize // 512
+        # Assume a record size of around 256 bytes
+        max_records = buffersize // 256 
         self._record_buffer = _vcfdb.WriteBuffer(self._database, buffersize, 
                 max_records)
         #print(self._record_buffer.key_buffer_size)
@@ -372,7 +372,7 @@ class VCFDatabaseWriter(DatabaseWriter):
         # Get the genotypes from the header
         genotypes = s.split()[9:] 
         # TODO make this more elegant...
-        all_columns = {c.name: c for c in self._schema.get_columns()}
+        all_columns = dict((c.name, c) for c in self._schema.get_columns())
         all_fixed_columns = [("CHROM", 0), ("POS", 1),  ("ID", 2),
             ("REF", 3), ("ALT", 4), ("QUAL", 5), ("FILTER", 6)
         ]
