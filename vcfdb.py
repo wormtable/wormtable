@@ -428,8 +428,9 @@ class VCFDatabaseWriter(DatabaseWriter):
                 tokens = genotype_values.split(b":")
                 if len(tokens) == len(fmt):
                     for k in range(len(fmt)):
-                        col = genotype_columns[j][fmt[k]]
-                        rb.set_record_value(col, tokens[k])
+                        if fmt[k] in genotype_columns[j]:
+                            col = genotype_columns[j][fmt[k]]
+                            rb.set_record_value(col, tokens[k])
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
                     # We can have skipped columns at the end though, which we 
