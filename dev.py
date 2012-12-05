@@ -24,15 +24,15 @@ def main():
         dbdir = "db_NOBACKUP_"
         # TODO: put back in open_vcf_file
         with open(vcf_file, "r") as f:
-            sg = vcfdb.VCFSchemaFactory(f)
+            sg = vcfdb.vcf.VCFSchemaFactory(f)
             schema = sg.generate_schema()
             schema.write_xml(dbdir)
         
         # Start again - read the schema back
-        schema = vcfdb.Schema.read_xml(dbdir)
+        schema = vcfdb.core.Schema.read_xml(dbdir)
         #schema.show()
         
-        dbw = vcfdb.VCFDatabaseWriter(schema, dbdir)
+        dbw = vcfdb.vcf.VCFDatabaseWriter(schema, dbdir)
         dbw.open_database()
         with open(vcf_file, "r") as f:
             dbw.build(f)
