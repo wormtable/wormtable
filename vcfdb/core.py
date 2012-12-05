@@ -1,11 +1,13 @@
 
+from __future__ import print_function
+from __future__ import division 
+
 import os
 import sys
 import gzip
 
 from xml.etree import ElementTree
 from xml.dom import minidom
-
 
 import _vcfdb
 

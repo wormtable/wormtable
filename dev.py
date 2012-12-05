@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 """
 Development code.
 """
@@ -24,15 +26,15 @@ def main():
         dbdir = "db_NOBACKUP_"
         # TODO: put back in open_vcf_file
         with open(vcf_file, "r") as f:
-            sg = vcfdb.vcf.VCFSchemaFactory(f)
+            sg = vcfdb.VCFSchemaFactory(f)
             schema = sg.generate_schema()
             schema.write_xml(dbdir)
         
         # Start again - read the schema back
-        schema = vcfdb.core.Schema.read_xml(dbdir)
+        schema = vcfdb.Schema.read_xml(dbdir)
         #schema.show()
         
-        dbw = vcfdb.vcf.VCFDatabaseWriter(schema, dbdir)
+        dbw = vcfdb.VCFDatabaseWriter(schema, dbdir)
         dbw.open_database()
         with open(vcf_file, "r") as f:
             dbw.build(f)
@@ -48,7 +50,7 @@ def main():
         #ib.build(progress_monitor)
 
     else:
-        dbr = DatabaseReader()
+        #dbr = DatabaseReader()
         """
         records = 0
         for r in dbr.get_records(["POS", "QUAL"]):
@@ -57,7 +59,8 @@ def main():
             records += 1
         print("read ", records, "records")
         """
-        dbr.close()
+        #dbr.close()
+        print(dir(vcfdb))
 
 if __name__ == "__main__":
     # temp development code.

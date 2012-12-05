@@ -1,6 +1,9 @@
 
+from __future__ import print_function
+from __future__ import division 
+
 import _vcfdb
-import vcfdb.core 
+from . import core 
 
 class VCFFileColumn(object):
     """
@@ -187,10 +190,10 @@ class VCFSchemaFactory(object):
         for genotype in self._genotypes:
             for name, col in self._genotype_columns.items():
                 columns.append(col.get_db_column(genotype))
-        schema = vcfdb.core.Schema(columns)
+        schema = core.Schema(columns)
         return schema
 
-class VCFDatabaseWriter(vcfdb.core.DatabaseWriter):
+class VCFDatabaseWriter(core.DatabaseWriter):
     """
     Class responsible for parsing a VCF file and creating a database. 
     """
