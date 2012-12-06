@@ -62,7 +62,7 @@ typedef struct {
     int max_num_records;
     int data_buffer_size;
     int key_buffer_size;
-    
+    u_int64_t record_id; 
     /*
     u_int32_t record_buffer_size;
     int current_record_size;
@@ -362,7 +362,7 @@ out:
 static PyMemberDef Column_members[] = {
     {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
     {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
-    {"enum_values", T_OBJECT_EX, offsetof(Column, enum_values), READONLY, "enum_values"},
+    {"enum_values", T_OBJECT_EX, offsetof(Column, enum_values), 0, "enum_values"},
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
@@ -485,7 +485,7 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         col->fixed_region_offset = self->fixed_region_size;
         self->fixed_region_size += Column_get_fixed_region_size(col);
     }
-    
+    /* TODO check to make sure these are within 64K */ 
 
     ret = 0;
 out:
@@ -669,7 +669,7 @@ WriteBuffer_init(WriteBuffer *self, PyObject *args, PyObject *kwds)
     /* zero the DBTs before use */
     memset(self->key_dbts, 0, self->max_num_records * sizeof(DBT));
     memset(self->data_dbts, 0, self->max_num_records * sizeof(DBT));
-
+    self->record_id = 0;
     WriteBuffer_clear_buffers(self);
     
     ret = 0;
@@ -762,12 +762,8 @@ WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
     PyObject *ret = NULL;
     void *dest;
     int barrier = self->data_buffer_size - MAX_RECORD_SIZE;
-    unsigned PY_LONG_LONG key_val = 0;
-    if (!PyArg_ParseTuple(args, "K", &key_val)) { 
-        goto out;
-    }        
     dest = self->key_buffer + self->current_key_offset;
-    bigendian_copy(dest, &key_val, self->database->key_size);
+    bigendian_copy(dest, &self->record_id, self->database->key_size);
     /*
     int j;
     printf("Commit:%llu %d \n", key_val, self->current_record_size);
@@ -783,6 +779,7 @@ WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
     data->size = self->current_record_size;
     data->data = self->data_buffer + self->current_data_offset; 
     /* We are done with this record, so increment the counters */ 
+    self->record_id++;
     self->current_record_size = self->database->fixed_region_size;
     self->current_key_offset += self->database->key_size;
     self->current_data_offset += self->current_record_size;

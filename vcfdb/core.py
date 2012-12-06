@@ -45,13 +45,13 @@ class Schema(object):
             print(s.format(c.name, t, c.element_size, c.num_elements))
             if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
                 for k, v in c.enum_values.items():
-                    print(k, "\t", v)
+                    print("\t\t", k, "\t", v)
 
-    def write_xml(self, directory, filename="schema.xml"):
+    def write_xml(self, filename):
         """
         Writes out this schema to the specified file.
         """ 
-        d = {"version":"1.0"}
+        d = {"version":"0.1-dev"}
         root = ElementTree.Element("schema", d)
         columns = ElementTree.Element("columns")
         root.append(columns)
@@ -66,16 +66,23 @@ class Schema(object):
             }
             element = ElementTree.Element("column", d)
             columns.append(element)
+            if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+                enumeration_values = ElementTree.Element("enum_values")
+                element.append(enumeration_values)
+                for k, v in c.enum_values.items():
+                    d = {"key": str(k), "value": str(v)}
+                    value = ElementTree.Element("enum_value", d)
+                    enumeration_values.append(value)
+
         tree = ElementTree.ElementTree(root)
         raw_xml = ElementTree.tostring(root, 'utf-8')
         reparsed = minidom.parseString(raw_xml)
         pretty = reparsed.toprettyxml(indent="  ")
-        name = os.path.join(directory, filename)
-        with open(name, "w") as f:
+        with open(filename, "w") as f:
             f.write(pretty)
     
     @classmethod 
-    def read_xml(theclass, directory, filename="schema.xml"):
+    def read_xml(theclass, filename):
         """
         Returns a new schema object read from the specified file.
         """
@@ -83,7 +90,7 @@ class Schema(object):
         for k, v in theclass.ELEMENT_TYPE_STRING_MAP.items():
             reverse[v] = k
         columns = []
-        tree = ElementTree.parse(os.path.join(directory, filename))
+        tree = ElementTree.parse(filename)
         root = tree.getroot()
         if root.tag != "schema":
             # Should have a custom error for this.
@@ -101,20 +108,30 @@ class Schema(object):
             element_type = reverse[xmlcol.get("element_type")]
             col = _vcfdb.Column(name, description, element_type, element_size,
                     num_elements)
-            # TODO read in enum values
             columns.append(col)
+            if col.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+                d = {}    
+                xml_enum_values = xmlcol.find("enum_values")
+                for xmlvalue in xml_enum_values.getchildren():
+                    if xmlvalue.tag != "enum_value":
+                        raise ValueError("invalid xml")
+                    k = xmlvalue.get("key")
+                    v = xmlvalue.get("value")
+                    d[k] = int(v)
+            col.enum_values = d 
         schema = theclass(columns)
         return schema
 
         
-class DatabaseWriter(object):
+class TableBuilder(object):
     """
     Class responsible for generating databases.
     """
-    def __init__(self, schema, database_dir):
-        self._database_dir = database_dir 
-        self._build_db_name = os.path.join(database_dir, "__build_primary.db")
-        self._final_db_name = os.path.join(database_dir, "primary.db")
+    def __init__(self, schema, home_dir):
+        self._home_dir = home_dir 
+        self._build_db_name = os.path.join(home_dir, "__build_primary.db")
+        self._final_db_name = os.path.join(home_dir, "primary.db")
+        self._schema_name = os.path.join(home_dir, "schema.xml")
         self._schema = schema 
         self._database = None 
         self._record_buffer = None 
@@ -143,13 +160,6 @@ class DatabaseWriter(object):
         max_records = self._buffer_size // 256 
         self._record_buffer = _vcfdb.WriteBuffer(self._database, self._buffer_size, 
                 max_records)
-        #print(self._record_buffer.key_buffer_size)
-        #print(self._record_buffer.data_buffer_size)
-        #print(self._record_buffer.max_num_records)
-
-        #print(self._database.variable_region_offset)
-        #print(self._database.filename)
-        #print(self._database.cache_size)
 
     def close_database(self):
         """
@@ -164,45 +174,20 @@ class DatabaseWriter(object):
         Moves the database file to its permenent filename and updates
         the schema to contain enum values.
         """
-        # TODO implement
-
+        os.rename(self._build_db_name, self._final_db_name)  
+        self._schema.write_xml(self._schema_name)
            
-
-class DatabaseReader(object):
+class Table(object):
     """
-    Class representing a database reader for a particular directory.
+    Class representing a table object.
     """
-    def __init__(self):
-        with open("db_NOBACKUP_/schema.pkl", "rb") as f:
-            self.__schema = pickle.load(f)
-        
+    def __init__(self, home_dir):
+        self._home_dir = home_dir
+        self._schema_file = os.path.join(home_dir, "schema.xml") # TODO constant
+        self._schema = Schema.read_xml(self._schema_file)
+        self._schema.show()
 
-        self.__database = _vcfdb.BerkeleyDatabase()
-        self.__record_buffer = _vcfdb.RecordBuffer(self.__database)
-        self.__database.open()
-
-    
-    def get_records(self, column_names): 
-        """
-        Returns an iterator over records.
-        """
-        cols = []
-        for name in column_names:
-            old_col = self.__schema.get_column(name) 
-            cols.append(old_col.get_new_style_column())
-        print(cols) 
-        self.__record_buffer.set_selected_columns(cols) 
-        self.__record_buffer.fill()
-        record = self.__record_buffer.retrieve_record()
-        while record is not None:
-            yield record 
-            record = self.__record_buffer.retrieve_record()
-        #print("got record:", record_id) 
     
     def close(self):
-        """
-        Closes the backing database.
-        """
-        self.__database.close()
-
+        pass
 

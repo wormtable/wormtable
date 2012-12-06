@@ -193,10 +193,35 @@ class VCFSchemaFactory(object):
         schema = core.Schema(columns)
         return schema
 
-class VCFDatabaseWriter(core.DatabaseWriter):
+def vcf_schema_factory(vcf_file):
+    """
+    Returns a schema for the specified VCF file.
+    """
+    with open(vcf_file, "rb") as f:
+        sg = VCFSchemaFactory(f)
+        schema = sg.generate_schema()
+    return schema
+
+
+
+class VCFTableBuilder(core.TableBuilder):
     """
     Class responsible for parsing a VCF file and creating a database. 
     """
+    
+    def build(self, vcf_file, progress_callback=None):
+        """
+        Builds the table.
+        """
+        # TODO handle gzipped files.
+        self.open_database()
+        with open(vcf_file, "rb") as f:
+            self._prepare(f)
+            self._insert_records(f)
+        self.close_database()
+        self.finalise()
+        
+    
     def _prepare(self, f):
         """
         Prepares for parsing records by getting the database columns 
@@ -231,16 +256,14 @@ class VCFDatabaseWriter(core.DatabaseWriter):
                     self._genotype_columns[index][split[1].encode()] = c
  
 
-    def build(self, f):
+    def _insert_records(self, f):
         """
         Builds the database in opened file.
         """
-        self._prepare(f)
         fixed_columns = self._fixed_columns
         info_columns = self._info_columns
         genotype_columns = self._genotype_columns
         rb = self._record_buffer
-        record_id = 1
         # TODO: this doesn't handle missing values properly. We should 
         # test each value to see if it is "." before adding.
         for s in f:
@@ -277,6 +300,5 @@ class VCFDatabaseWriter(core.DatabaseWriter):
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
             # Finally, commit the record.
-            rb.commit_record(record_id)
-            record_id += 1
+            rb.commit_record()
  
