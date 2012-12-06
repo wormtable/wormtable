@@ -9,23 +9,12 @@ import vcfdb
 
 
 def main():
-    import time 
-
-    global last 
-    last = time.time()
-    def progress_monitor(progress, record_number):
-        #print("=", end="")
-        #sys.stdout.flush()
-        global last
-        now = time.time()
-        #print(progress, "\t", record_number, now - last)
-        last = now
 
     if len(sys.argv) == 2: 
         vcf_file = sys.argv[1]
         dbdir = "db_NOBACKUP_"
         # TODO: put back in open_vcf_file
-        with open(vcf_file, "r") as f:
+        with open(vcf_file, "rb") as f:
             sg = vcfdb.VCFSchemaFactory(f)
             schema = sg.generate_schema()
             schema.write_xml(dbdir)
@@ -35,19 +24,15 @@ def main():
         #schema.show()
         
         dbw = vcfdb.VCFDatabaseWriter(schema, dbdir)
+        dbw.set_cache_size(8 * 2**30)
+        dbw.set_buffer_size(64 * 2**20)
         dbw.open_database()
-        with open(vcf_file, "r") as f:
+        with open(vcf_file, "rb") as f:
             dbw.build(f)
         dbw.close_database()
         dbw.finalise() 
         schema.show()
 
-
-        #dbw = VCFDatabaseWriter(dbdir, vcf_file)
-        #dbw.process_header()
-        #dbw.process_records(progress_monitor)
-        #ib = IndexBuilder(dbdir, ["chrom", "pos"])
-        #ib.build(progress_monitor)
 
     else:
         #dbr = DatabaseReader()
@@ -63,6 +48,5 @@ def main():
         print(dir(vcfdb))
 
 if __name__ == "__main__":
-    # temp development code.
     main()
 

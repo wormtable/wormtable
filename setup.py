@@ -20,7 +20,7 @@ def parse_version(module_file):
     match = re.findall("__version__ = '([^']+)'", s)
     return match[0]
 
-vcfdb_version = parse_version("vcfdb.py") 
+vcfdb_version = parse_version("vcfdb/__init__.py") 
 
 _vcfdb_module = Extension('_vcfdb', 
     sources = ["_vcfdbmodule.c"],

@@ -118,20 +118,30 @@ class DatabaseWriter(object):
         self._schema = schema 
         self._database = None 
         self._record_buffer = None 
+        self._cache_size = 64 * 1024 * 1024
+        self._buffer_size = 1024 * 1024
+
+    def set_buffer_size(self, buffer_size):
+        """
+        Sets the write buffer size to the specified value.
+        """
+        self._buffer_size = buffer_size
+
+    def set_cache_size(self, cache_size):
+        """
+        Sets the database write-cache size fo the specified value. 
+        """
+        self._cache_size = cache_size
 
     def open_database(self):
         """
         Opens the database and gets ready for writing records.
         """
-        cache = 1024 * 1024 * 1024
         self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), 
-            self._schema.get_columns(), cache)
+            self._schema.get_columns(), self._cache_size)
         self._database.create()
-        buffersize = 1024 * 1024
-        #buffersize = 64 * 1024 * 1024 * 1024
-        # Assume a record size of around 256 bytes
-        max_records = buffersize // 256 
-        self._record_buffer = _vcfdb.WriteBuffer(self._database, buffersize, 
+        max_records = self._buffer_size // 256 
+        self._record_buffer = _vcfdb.WriteBuffer(self._database, self._buffer_size, 
                 max_records)
         #print(self._record_buffer.key_buffer_size)
         #print(self._record_buffer.data_buffer_size)
