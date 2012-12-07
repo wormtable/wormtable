@@ -4,6 +4,15 @@
 #include <db.h>
 
 
+
+/* TODO Items:
+ * 1) there are nasty issues here with type sizes. Is an  unsigned long long
+ *    the same as u_uint64_t? 
+ * 2) Operations on a closed Table segfault. There should be a check to see 
+ *    if the db is closed.
+ */
+
+
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
 #endif
@@ -33,14 +42,15 @@ typedef struct Column_t {
     int fixed_region_offset;
     /* possibly better names for this... */
     int (*convert_string)(struct Column_t*, char *, void *);
+    PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
 
 typedef struct {
     PyObject_HEAD
     DB *primary_db;
-    PyBytesObject *filename;
-    PyListObject *columns;
+    PyObject *filename;
+    PyObject *columns;
     Py_ssize_t cache_size;
     int fixed_region_size;
     int key_size;
@@ -63,17 +73,6 @@ typedef struct {
     int data_buffer_size;
     int key_buffer_size;
     u_int64_t record_id; 
-    /*
-    u_int32_t record_buffer_size;
-    int current_record_size;
-    u_int32_t current_record_offset;
-    unsigned char *key_buffer;
-    u_int32_t key_size;
-    u_int32_t num_records;
-    u_int32_t max_num_records;
-    DBT *keys; 
-    DBT *records; 
-    */
 } WriteBuffer;
 
 static void 
@@ -117,6 +116,112 @@ bigendian_copy(void* dest, void *source, size_t n)
  * Column object 
  *==========================================================
  */
+
+static PyObject * 
+Column_get_value_int(Column *self, void *row)
+{
+    int j;
+    void *v;
+    unsigned int num_elements = 0;
+    unsigned int offset = 0;
+    PyObject *ret = NULL;
+    PyObject *py_long = NULL;
+    PyObject *value = NULL;
+    long long int_value = 0LL;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        v = row + self->fixed_region_offset;
+        bigendian_copy(&offset, v, 2); // FIXME
+        v += 2;
+        bigendian_copy(&num_elements, v, 1); // FIXME
+    } else {
+        offset = self->fixed_region_offset;   
+        num_elements = self->num_elements;
+    }
+    v = row + offset;
+    if (self->num_elements == 1) {
+        bigendian_copy(&int_value, v, self->element_size); 
+        py_long = PyLong_FromLongLong(int_value);
+        value = py_long;
+    } else {
+        value = PyTuple_New(num_elements);
+        for (j = 0; j < num_elements; j++) {
+            int_value = 0LL;
+            bigendian_copy(&int_value, v, self->element_size); 
+            py_long = PyLong_FromLongLong(int_value);
+            PyTuple_SET_ITEM(value, j, py_long);
+            v += self->element_size;
+        }
+    }
+    
+    ret = value;
+    return ret;
+}
+
+static PyObject * 
+Column_get_value_float(Column *self, void *row)
+{
+    int j;
+    void *v;
+    unsigned int num_elements = 0;
+    unsigned int offset = 0;
+    PyObject *ret = NULL;
+    PyObject *py_float = NULL;
+    PyObject *value = NULL;
+    float float_value = 0.0;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        v = row + self->fixed_region_offset;
+        bigendian_copy(&offset, v, 2); // FIXME
+        v += 2;
+        bigendian_copy(&num_elements, v, 1); // FIXME
+    } else {
+        offset = self->fixed_region_offset;   
+        num_elements = self->num_elements;
+    }
+    v = row + offset;
+    if (self->num_elements == 1) {
+        bigendian_copy(&float_value, v, self->element_size); 
+        py_float = PyFloat_FromDouble((double) float_value);
+        value = py_float;
+    } else {
+        value = PyTuple_New(num_elements);
+        for (j = 0; j < num_elements; j++) {
+            float_value = 0.0;
+            bigendian_copy(&float_value, v, self->element_size); 
+            py_float = PyFloat_FromDouble((double) float_value);
+            PyTuple_SET_ITEM(value, j, py_float);
+            v += self->element_size;
+        }
+    }
+    
+    ret = value;
+    return ret;
+}
+
+static PyObject * 
+Column_get_value_char(Column *self, void *row)
+{
+    void *v;
+    unsigned int num_elements = 0;
+    unsigned int offset = 0;
+    PyObject *ret = NULL;
+    PyObject *value = NULL;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        v = row + self->fixed_region_offset;
+        bigendian_copy(&offset, v, 2); // FIXME
+        v += 2;
+        bigendian_copy(&num_elements, v, 1); // FIXME
+    } else {
+        offset = self->fixed_region_offset;   
+        num_elements = self->num_elements;
+    }
+    v = row + offset;
+    /* Strings are ALWAYS return returned as single elements */
+    value = PyBytes_FromStringAndSize(v, num_elements);
+    ret = value;
+    return ret;
+}
+
+
 
 
 static int 
@@ -176,6 +281,8 @@ out:
     return ret;
 }
 
+
+
 static int 
 Column_convert_string_float(Column *self, char *string, void *destination)
 {
@@ -228,7 +335,6 @@ out:
 static int 
 Column_convert_string_char(Column *self, char *string, void *destination)
 {
-    //printf("Convert char %d:%s\n", self->num_elements, string);    
     size_t n = strlen(string);
     memcpy(destination, string, n); 
     return n;
@@ -318,30 +424,35 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     self->description = description;
     Py_INCREF(self->name);
     Py_INCREF(self->description);
+    self->get_value = NULL;
     if (self->element_type == ELEMENT_TYPE_INT) {
         if (self->element_size < 1 || self->element_size > 8) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
         self->convert_string = Column_convert_string_int;
+        self->get_value = Column_get_value_int;
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
         if (self->element_size != sizeof(float)) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
         self->convert_string = Column_convert_string_float;
+        self->get_value = Column_get_value_float;
     } else if (self->element_type == ELEMENT_TYPE_CHAR) {
         if (self->element_size != 1) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
         self->convert_string = Column_convert_string_char;
+        self->get_value = Column_get_value_char;
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
         if (self->element_size < 1 || self->element_size > 2) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
         self->convert_string = Column_convert_string_enum;
+        self->get_value = Column_get_value_int;
     } else {    
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
@@ -446,8 +557,8 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
     u_int32_t gigs, bytes;
     Py_ssize_t gigabyte = 1024 * 1024 * 1024;
     static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
-    PyBytesObject *filename = NULL;
-    PyListObject *columns = NULL;
+    PyObject *filename = NULL;
+    PyObject *columns = NULL;
     self->primary_db = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
             &PyBytes_Type, &filename, 
@@ -472,7 +583,8 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    self->key_size = 5; /* TODO make this part of kwargs */
+    /* TODO make this part of kwargs */
+    self->key_size = 5; 
     /* calculate the variable region offset by summing up the fixed 
      * region size from each column
      */
@@ -505,23 +617,134 @@ static PyMemberDef BerkeleyDatabase_members[] = {
 
 
 static PyObject *
-BerkeleyDatabase_create(BerkeleyDatabase* self)
+BerkeleyDatabase_open_helper(BerkeleyDatabase* self, u_int32_t flags)
 {
     PyObject *ret = NULL;
     int db_ret;
-    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
     char *db_name = NULL;
-    db_name = PyBytes_AsString((PyObject *) self->filename);
-    db_ret = self->primary_db->open(self->primary_db, NULL, db_name, NULL, 
-            DB_BTREE,  flags,  0);         
+    DB *db = self->primary_db;
+    /* TODO this can be done better - we shouldn't insist on bytes */
+    db_name = PyBytes_AsString(self->filename);
+    db_ret = db->open(db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
     ret = Py_BuildValue("");
 out:
+    return ret;
+}
+
+static PyObject *
+BerkeleyDatabase_create(BerkeleyDatabase* self)
+{
+    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
+    return BerkeleyDatabase_open_helper(self, flags);
+}
+
+static PyObject *
+BerkeleyDatabase_open(BerkeleyDatabase* self)
+{
+    u_int32_t flags = DB_RDONLY|DB_NOMMAP;
+    return BerkeleyDatabase_open_helper(self, flags);
+}
+
+static PyObject *
+BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
+{
+    int db_ret;
+    unsigned long long max_key = 0;
+    PyObject *ret = NULL;
+    DBC *cursor = NULL;
+    DB *db = self->primary_db;
+    DBT key, data;
+    db_ret = db->cursor(db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    /* retrieve the last key from the DB */
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));  
+    db_ret = cursor->get(cursor, &key, &data, DB_PREV);
+    if (db_ret == 0) {
+        bigendian_copy(&max_key, key.data, self->key_size);
+        max_key++;
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    /* Free the cursor */
+    db_ret = cursor->close(cursor);
+    cursor = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = PyLong_FromUnsignedLongLong(max_key);
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
     return ret; 
 }
+
+static PyObject *
+BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
+{
+    int db_ret;
+    PyObject *ret = NULL;
+    PyObject *row = NULL;
+    Column *col = NULL;
+    PyObject *value = NULL;
+    Py_ssize_t j;
+    Py_ssize_t num_columns = 0;
+    unsigned long long record_id = 0;
+    unsigned char key_buff[sizeof(unsigned long long)];
+    DB *db = self->primary_db;
+    DBT key, data;
+    if (!PyArg_ParseTuple(args, "K", &record_id)) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));  
+    bigendian_copy(key_buff, &record_id, self->key_size);
+    key.size = self->key_size;
+    key.data = key_buff;
+    db_ret = db->get(db, NULL, &key, &data, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    num_columns = PyList_Size(self->columns);
+    row = PyTuple_New(num_columns);
+    if (row == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (j = 0; j < num_columns; j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
+        if (col->get_value == NULL) {
+            value = Py_BuildValue("");
+        } else {
+            value = col->get_value(col, data.data);
+        }
+        PyTuple_SET_ITEM(row, j, value);
+    }
+    ret = row;
+out:
+    return ret; 
+}
+
+
+
+
+
+
 
 static PyObject *
 BerkeleyDatabase_close(BerkeleyDatabase* self)
@@ -544,6 +767,9 @@ out:
 
 static PyMethodDef BerkeleyDatabase_methods[] = {
     {"create", (PyCFunction) BerkeleyDatabase_create, METH_NOARGS, "Create the database" },
+    {"open", (PyCFunction) BerkeleyDatabase_open, METH_NOARGS, "Open the database for reading" },
+    {"get_num_rows", (PyCFunction) BerkeleyDatabase_get_num_rows, METH_NOARGS, "return the number of rows." },
+    {"get_row", (PyCFunction) BerkeleyDatabase_get_row, METH_VARARGS, "returns the row at a specific index." },
     {"close", (PyCFunction) BerkeleyDatabase_close, METH_NOARGS, "Close the database" },
     {NULL}  /* Sentinel */
 };
@@ -741,9 +967,10 @@ WriteBuffer_set_record_value(WriteBuffer* self, PyObject *args)
     if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
         offset = column->fixed_region_offset;
         dest = self->data_buffer + self->current_data_offset + offset;
-        bigendian_copy(dest, &offset, 2); // FIXME
+        bigendian_copy(dest, &self->current_record_size, 2); // FIXME
         dest += 2;
         bigendian_copy(dest, &num_elements, 1); // FIXME
+        //printf("writing %d bytes to offset %d\n", num_elements, self->current_record_size);
         self->current_record_size += num_elements * column->element_size;
     }
     ret = Py_BuildValue("");
@@ -780,9 +1007,9 @@ WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
     data->data = self->data_buffer + self->current_data_offset; 
     /* We are done with this record, so increment the counters */ 
     self->record_id++;
-    self->current_record_size = self->database->fixed_region_size;
     self->current_key_offset += self->database->key_size;
     self->current_data_offset += self->current_record_size;
+    self->current_record_size = self->database->fixed_region_size;
     self->num_records++;
     if (self->current_data_offset >= barrier 
             || self->num_records == self->max_num_records) {

@@ -1,6 +1,11 @@
-
 from __future__ import print_function
 from __future__ import division 
+
+"""
+Core facilities in the vcfdb package.
+   
+TODO: document.
+"""
 
 import os
 import sys
@@ -10,6 +15,9 @@ from xml.etree import ElementTree
 from xml.dom import minidom
 
 import _vcfdb
+
+DEFAULT_READ_CACHE_SIZE = 32 * 2**20
+
 
 class Schema(object):
     """
@@ -127,12 +135,12 @@ class TableBuilder(object):
     """
     Class responsible for generating databases.
     """
-    def __init__(self, schema, home_dir):
+    def __init__(self, home_dir, input_schema):
         self._home_dir = home_dir 
         self._build_db_name = os.path.join(home_dir, "__build_primary.db")
         self._final_db_name = os.path.join(home_dir, "primary.db")
+        self._schema = Schema.read_xml(input_schema)
         self._schema_name = os.path.join(home_dir, "schema.xml")
-        self._schema = schema 
         self._database = None 
         self._record_buffer = None 
         self._cache_size = 64 * 1024 * 1024
@@ -181,13 +189,60 @@ class Table(object):
     """
     Class representing a table object.
     """
-    def __init__(self, home_dir):
+    def __init__(self, home_dir, cache_size=DEFAULT_READ_CACHE_SIZE):
         self._home_dir = home_dir
-        self._schema_file = os.path.join(home_dir, "schema.xml") # TODO constant
+        ## TODO Add constants for these filenames.
+        self._primary_db_file = os.path.join(home_dir, "primary.db")
+        self._schema_file = os.path.join(home_dir, "schema.xml") 
         self._schema = Schema.read_xml(self._schema_file)
-        self._schema.show()
+        self._cache_size = cache_size 
+        self._database = _vcfdb.BerkeleyDatabase(
+                self._primary_db_file.encode(), 
+                self._schema.get_columns(), self._cache_size)
+        self._database.open()
 
-    
+    def get_num_rows(self):
+        """
+        Returns the number of rows in this table.
+        """
+        return self._database.get_num_rows()
+
+    def get_row(self, index):
+        """
+        Returns the row at the specified zero-based index.
+        
+        This is a really nasty implementation, and is only
+        intended as a quick and dirty way to get at records 
+        during development.
+        """
+        t = self._database.get_row(index) 
+        l = [v for v in t]
+        for j in range(len(t)):
+            col = self._database.columns[j]
+            #print(col.name, "->", t[j])
+            if col.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+                d = dict((v, k) for k, v in col.enum_values.items())
+                if col.num_elements == 1:
+                    k = t[j]
+                    if k == 0:
+                        l[j] = None
+                    else:
+                        l[j] = d[k] 
+                else:
+                    e = []
+                    for k in t[j]:
+                        if k == 0:
+                            e.append(None)
+                        else:
+                            e.append(d[k])
+                    l[j] = e
+        d = dict((self._database.columns[j].name, l[j]) for j in range(len(t)))
+        return d 
+        
     def close(self):
-        pass
+        """
+        Closes the underlying database, releasing resources.
+        """
+        self._database.close()
+
 
