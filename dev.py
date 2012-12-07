@@ -14,8 +14,8 @@ def main():
         homedir = sys.argv[1] 
         vcf_file = sys.argv[2]
         input_schema = os.path.join(homedir, "input_schema.xml")
-        schema = vcfdb.vcf_schema_factory(vcf_file)
-        schema.write_xml(input_schema)
+        #schema = vcfdb.vcf_schema_factory(vcf_file)
+        #schema.write_xml(input_schema)
         # In the command line tool we'll optionally stop here 
         # and allow the user to edit the schema. This means 
         # we don't have to generate the 'perfect' vcf schema.
@@ -26,20 +26,13 @@ def main():
         
     elif len(sys.argv) == 2:
         table = vcfdb.Table(sys.argv[1])
-        while True:
-            print("num rows = ", table.get_num_rows())
-            v = 0
-            for j in range(table.get_num_rows()):
-                row = table.get_row(j)
-                v = max(v, row["POS"])
-                #print("record ", j)
-                #for k, v in row.items():
-                #    print("\t", k, "->", v)
-            print(v)
-            try:
-                table.get_row(v + 1)
-            except:
-                pass
+        print("num rows = ", table.get_num_rows())
+        v = 0
+        for j in range(table.get_num_rows()):
+            row = table.get_row(j)
+            print("row", j)
+            for k, v in row.items():
+                print("\t", k, "->", v)
         table.close()
     else:
         print("nothing for here")

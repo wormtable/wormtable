@@ -66,8 +66,8 @@ class Schema(object):
         for c in self.__columns:
             element_type = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             d = {
-                "name":c.name, 
-                "description":c.description,
+                "name":c.name.decode(), 
+                "description":c.description.decode(),
                 "element_size":str(c.element_size),
                 "num_elements":str(c.num_elements),
                 "element_type":element_type
@@ -108,8 +108,8 @@ class Schema(object):
         for xmlcol in xml_columns.getchildren():
             if xmlcol.tag != "column":
                 raise ValueError("invalid xml")
-            name = xmlcol.get("name")
-            description = xmlcol.get("description")
+            name = xmlcol.get("name").encode()
+            description = xmlcol.get("description").encode()
             # TODO some error checking here.
             element_size = int(xmlcol.get("element_size"))
             num_elements = int(xmlcol.get("num_elements"))
@@ -126,7 +126,7 @@ class Schema(object):
                     k = xmlvalue.get("key")
                     v = xmlvalue.get("value")
                     d[k] = int(v)
-            col.enum_values = d 
+                col.enum_values = d 
         schema = theclass(columns)
         return schema
 
@@ -235,7 +235,7 @@ class Table(object):
                             e.append(None)
                         else:
                             e.append(d[k])
-                    l[j] = e
+                    l[j] = tuple(e)
         d = dict((self._database.columns[j].name, l[j]) for j in range(len(t)))
         return d 
         
