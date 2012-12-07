@@ -14,8 +14,8 @@ def main():
         homedir = sys.argv[1] 
         vcf_file = sys.argv[2]
         input_schema = os.path.join(homedir, "input_schema.xml")
-        #schema = vcfdb.vcf_schema_factory(vcf_file)
-        #schema.write_xml(input_schema)
+        schema = vcfdb.vcf_schema_factory(vcf_file)
+        schema.write_xml(input_schema)
         # In the command line tool we'll optionally stop here 
         # and allow the user to edit the schema. This means 
         # we don't have to generate the 'perfect' vcf schema.
