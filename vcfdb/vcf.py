@@ -254,7 +254,7 @@ class VCFTableBuilder(core.TableBuilder):
             # Read in the fixed columns
             for col, index in fixed_columns:
                 if l[index] != MISSING_VALUE:
-                    rb.insert_encoded_element(col, l[index])
+                    rb.insert_encoded_elements(col, l[index])
             # Now process the info columns.
             for mapping in l[7].split(b";"):
                 tokens = mapping.split(b"=")
@@ -262,10 +262,10 @@ class VCFTableBuilder(core.TableBuilder):
                 if name in info_columns:
                     col = info_columns[name]
                     if len(tokens) == 2:
-                        rb.insert_encoded_element(col, tokens[1])
+                        rb.insert_encoded_elements(col, tokens[1])
                     else:
                         # This is a Flag column.
-                        rb.insert_encoded_element(col, b"1")
+                        rb.insert_encoded_elements(col, b"1")
             # Process the genotype columns. 
             j = 0
             fmt = l[8].split(b":")
@@ -275,7 +275,7 @@ class VCFTableBuilder(core.TableBuilder):
                     for k in range(len(fmt)):
                         if fmt[k] in genotype_columns[j]:
                             col = genotype_columns[j][fmt[k]]
-                            rb.insert_encoded_element(col, tokens[k])
+                            rb.insert_encoded_elements(col, tokens[k])
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
                     # We can have skipped columns at the end though, which we 

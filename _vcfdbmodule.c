@@ -952,7 +952,7 @@ out:
 }
 
 static PyObject *
-WriteBuffer_insert_encoded_element(WriteBuffer* self, PyObject *args)
+WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
     Column *column = NULL;
@@ -1040,8 +1040,8 @@ out:
 
 
 static PyMethodDef WriteBuffer_methods[] = {
-    {"insert_encoded_element", (PyCFunction) WriteBuffer_insert_encoded_element, 
-        METH_VARARGS, "insert element value encoded as a string." },
+    {"insert_encoded_elements", (PyCFunction) WriteBuffer_insert_encoded_elements, 
+        METH_VARARGS, "insert element values encoded as a string." },
     {"commit_row", (PyCFunction) WriteBuffer_commit_row, METH_VARARGS, "commit row" },
     {"flush", (PyCFunction) WriteBuffer_flush, METH_NOARGS, "flush" },
     {NULL}  /* Sentinel */
