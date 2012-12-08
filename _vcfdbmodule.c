@@ -31,6 +31,15 @@
 
 static PyObject *BerkeleyDatabaseError;
 
+/* TODO: The column struct should have a new member, element_buffer. 
+   This is then used to hold element values that are either parsed 
+   from the string encoding, or derived from Python types. Element 
+   insertion should then follow a straightforward process:
+   1) insert native values into the buffer;
+   2) copy these values from the buffer to the row.
+   The column object's methods can be much simpler then.
+ */
+
 typedef struct Column_t {
     PyObject_HEAD
     PyObject *name;
@@ -116,6 +125,8 @@ bigendian_copy(void* dest, void *source, size_t n)
  * Column object 
  *==========================================================
  */
+
+/* Element retrieval */
 
 static PyObject * 
 Column_get_value_int(Column *self, void *row)
@@ -223,6 +234,7 @@ Column_get_value_char(Column *self, void *row)
 
 
 
+/* Element insertion */
 
 static int 
 Column_convert_string_int(Column *self, char *string, void *destination)
@@ -940,7 +952,7 @@ out:
 }
 
 static PyObject *
-WriteBuffer_set_record_value(WriteBuffer* self, PyObject *args)
+WriteBuffer_insert_encoded_element(WriteBuffer* self, PyObject *args)
 {
     PyObject *ret = NULL;
     Column *column = NULL;
@@ -983,7 +995,7 @@ out:
 
 
 static PyObject *
-WriteBuffer_commit_record(WriteBuffer* self, PyObject *args)
+WriteBuffer_commit_row(WriteBuffer* self, PyObject *args)
 {
     DBT *key, *data;
     PyObject *ret = NULL;
@@ -1028,8 +1040,9 @@ out:
 
 
 static PyMethodDef WriteBuffer_methods[] = {
-    {"set_record_value", (PyCFunction) WriteBuffer_set_record_value, METH_VARARGS, "set value" },
-    {"commit_record", (PyCFunction) WriteBuffer_commit_record, METH_VARARGS, "commit record" },
+    {"insert_encoded_element", (PyCFunction) WriteBuffer_insert_encoded_element, 
+        METH_VARARGS, "insert element value encoded as a string." },
+    {"commit_row", (PyCFunction) WriteBuffer_commit_row, METH_VARARGS, "commit row" },
     {"flush", (PyCFunction) WriteBuffer_flush, METH_NOARGS, "flush" },
     {NULL}  /* Sentinel */
 };

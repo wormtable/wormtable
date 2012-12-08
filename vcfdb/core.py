@@ -142,7 +142,7 @@ class TableBuilder(object):
         self._schema = Schema.read_xml(input_schema)
         self._schema_name = os.path.join(home_dir, "schema.xml")
         self._database = None 
-        self._record_buffer = None 
+        self._row_buffer = None 
         self._cache_size = 64 * 1024 * 1024
         self._buffer_size = 1024 * 1024
 
@@ -160,21 +160,21 @@ class TableBuilder(object):
 
     def open_database(self):
         """
-        Opens the database and gets ready for writing records.
+        Opens the database and gets ready for writing row.
         """
         self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), 
             self._schema.get_columns(), self._cache_size)
         self._database.create()
-        max_records = self._buffer_size // 256 
-        self._record_buffer = _vcfdb.WriteBuffer(self._database, self._buffer_size, 
-                max_records)
+        max_rows = self._buffer_size // 256 
+        self._row_buffer = _vcfdb.WriteBuffer(self._database, self._buffer_size, 
+                max_rows)
 
     def close_database(self):
         """
         Closes the underlying database and moves the db file to its
         permenent name. 
         """
-        self._record_buffer.flush()
+        self._row_buffer.flush()
         self._database.close()
 
     def finalise(self):
@@ -212,7 +212,7 @@ class Table(object):
         Returns the row at the specified zero-based index.
         
         This is a really nasty implementation, and is only
-        intended as a quick and dirty way to get at records 
+        intended as a quick and dirty way to get at rows 
         during development.
         """
         t = self._database.get_row(index) 

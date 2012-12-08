@@ -32,6 +32,16 @@ INFO = b"INFO"
 # Special values in VCF
 MISSING_VALUE = b"."
 
+# Strings used in the header for identifiers
+ID = b"ID"
+DESCRIPTION = b"Description"
+NUMBER = b"Number"
+TYPE = b"Type"
+INTEGER = b"Integer"
+FLOAT = b"Float"
+FLAG = b"Flag"
+CHARACTER = b"Character"
+STRING = b"String"
 
 def vcf_column_factory(line):
     """
@@ -47,27 +57,27 @@ def vcf_column_factory(line):
         d[tokens[0]] = tokens[1]
     tokens = s.split(b"=", 1)
     d[tokens[0]] = tokens[1]
-    name = d[b"ID"]
-    description = d[b"Description"].strip(b"\"")
-    number = d[b"Number"]
+    name = d[ID]
+    description = d[DESCRIPTION].strip(b"\"")
+    number = d[NUMBER]
     if number == b".":
         num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
     else:
         num_elements = int(number) 
-    st = d[b"Type"]
-    if st == b"Integer":
+    st = d[TYPE]
+    if st == INTEGER:
         element_type = _vcfdb.ELEMENT_TYPE_INT
         element_size = 2
-    elif st == b"Float":
+    elif st == FLOAT: 
         element_type = _vcfdb.ELEMENT_TYPE_FLOAT
         element_size = 4
-    elif st == b"Flag":
+    elif st == FLAG: 
         element_type = _vcfdb.ELEMENT_TYPE_INT
         element_size = 1
-    elif st == b"Character":
+    elif st == CHARACTER: 
         element_type = _vcfdb.ELEMENT_TYPE_CHAR
         element_size = 1
-    elif st == b"String":
+    elif st == STRING: 
         element_type = _vcfdb.ELEMENT_TYPE_ENUM
         element_size = 1
     else:
@@ -148,6 +158,8 @@ class VCFSchemaGenerator(object):
         enum_type = _vcfdb.ELEMENT_TYPE_ENUM
         variable = _vcfdb.NUM_ELEMENTS_VARIABLE
         # Get the fixed columns
+        # TODO Add string constants at the top of the file for the descriptions 
+        # of these columns.
         columns = [
             _vcfdb.Column(CHROM, b"Chromosome", enum_type, 2, 1),
             _vcfdb.Column(POS, b"position", int_type, 5, 1),
@@ -189,7 +201,7 @@ class VCFTableBuilder(core.TableBuilder):
         with open(vcf_file, "rb") as f:
             self._source_file = f 
             self._prepare()
-            self._insert_records()
+            self._insert_rows()
         self.close_database()
         self.finalise()
         
@@ -229,20 +241,20 @@ class VCFTableBuilder(core.TableBuilder):
                     self._genotype_columns[index][split[1]] = c
  
 
-    def _insert_records(self):
+    def _insert_rows(self):
         """
         Builds the database in opened file.
         """
         fixed_columns = self._fixed_columns
         info_columns = self._info_columns
         genotype_columns = self._genotype_columns
-        rb = self._record_buffer
+        rb = self._row_buffer
         for s in self._source_file:
             l = s.split()
             # Read in the fixed columns
             for col, index in fixed_columns:
                 if l[index] != MISSING_VALUE:
-                    rb.set_record_value(col, l[index])
+                    rb.insert_encoded_element(col, l[index])
             # Now process the info columns.
             for mapping in l[7].split(b";"):
                 tokens = mapping.split(b"=")
@@ -250,10 +262,10 @@ class VCFTableBuilder(core.TableBuilder):
                 if name in info_columns:
                     col = info_columns[name]
                     if len(tokens) == 2:
-                        rb.set_record_value(col, tokens[1])
+                        rb.insert_encoded_element(col, tokens[1])
                     else:
                         # This is a Flag column.
-                        rb.set_record_value(col, b"1")
+                        rb.insert_encoded_element(col, b"1")
             # Process the genotype columns. 
             j = 0
             fmt = l[8].split(b":")
@@ -263,7 +275,7 @@ class VCFTableBuilder(core.TableBuilder):
                     for k in range(len(fmt)):
                         if fmt[k] in genotype_columns[j]:
                             col = genotype_columns[j][fmt[k]]
-                            rb.set_record_value(col, tokens[k])
+                            rb.insert_encoded_element(col, tokens[k])
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
                     # We can have skipped columns at the end though, which we 
@@ -272,5 +284,5 @@ class VCFTableBuilder(core.TableBuilder):
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
             # Finally, commit the record.
-            rb.commit_record()
+            rb.commit_row()
  
