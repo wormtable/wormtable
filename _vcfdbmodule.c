@@ -700,10 +700,6 @@ BerkeleyDatabase_open_helper(BerkeleyDatabase* self, u_int32_t flags)
         handle_bdb_error(db_ret);
         goto out;    
     }
-
-    
-    
-    /* TODO this can be done better - we shouldn't insist on bytes */
     db_name = PyBytes_AsString(self->filename);
     db_ret = db->open(db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
     if (db_ret != 0) {
@@ -1008,6 +1004,11 @@ WriteBuffer_flush(WriteBuffer* self)
     DB *db;
     DBT *key, *data;
     db = self->database->primary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    
     //printf("Flushing buffer: %d records in %dKiB\n", self->num_records, 
     //        self->current_data_offset / 1024);
     for (j = 0; j < self->num_records; j++) {
