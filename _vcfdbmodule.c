@@ -616,7 +616,7 @@ BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
     Py_XDECREF(self->columns);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->primary_db != NULL) {
-        self->primary_db->close(self->primary_db, 0); 
+        self->primary_db->close(self->primary_db, 0);
     }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -624,13 +624,9 @@ BerkeleyDatabase_dealloc(BerkeleyDatabase* self)
 static int
 BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
 {
-    DB *db;
     int j;
     Column *col;
     int ret = -1;
-    int db_ret = 0;
-    u_int32_t gigs, bytes;
-    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
     static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
     PyObject *filename = NULL;
     PyObject *columns = NULL;
@@ -642,22 +638,9 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     self->filename = filename;
+    Py_INCREF(self->filename);
     self->columns = columns;
     Py_INCREF(self->columns);
-    Py_INCREF(self->filename);
-    db_ret = db_create(&db, NULL, 0);
-    self->primary_db = db;
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    gigs = (u_int32_t) (self->cache_size / gigabyte);
-    bytes = (u_int32_t) (self->cache_size % gigabyte);
-    db_ret = db->set_cachesize(db, gigs, bytes, 1); 
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
     /* TODO make this part of kwargs */
     self->key_size = 5; 
     /* calculate the variable region offset by summing up the fixed 
@@ -697,7 +680,29 @@ BerkeleyDatabase_open_helper(BerkeleyDatabase* self, u_int32_t flags)
     PyObject *ret = NULL;
     int db_ret;
     char *db_name = NULL;
-    DB *db = self->primary_db;
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    u_int32_t gigs, bytes;
+    DB *db;
+    if (self->primary_db != NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database already open");
+        goto out;
+    }
+    db_ret = db_create(&db, NULL, 0);
+    self->primary_db = db;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    gigs = (u_int32_t) (self->cache_size / gigabyte);
+    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    db_ret = db->set_cachesize(db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+
+    
+    
     /* TODO this can be done better - we shouldn't insist on bytes */
     db_name = PyBytes_AsString(self->filename);
     db_ret = db->open(db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
@@ -733,6 +738,10 @@ BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
     DBC *cursor = NULL;
     DB *db = self->primary_db;
     DBT key, data;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
     db_ret = db->cursor(db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -781,6 +790,10 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "K", &record_id)) {
         goto out;
     }
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));  
     bigendian_copy(key_buff, &record_id, self->key_size);
@@ -817,21 +830,21 @@ out:
 
 
 
-
-
-
-
 static PyObject *
 BerkeleyDatabase_close(BerkeleyDatabase* self)
 {
     PyObject *ret = NULL;
     int db_ret;
-    if (self->primary_db != NULL) {
-        db_ret = self->primary_db->close(self->primary_db, 0); 
-        if (db_ret != 0) {
-            handle_bdb_error(db_ret);
-            goto out;    
-        }
+    DB *db = self->primary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    db_ret = db->close(db, 0); 
+    self->primary_db = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
     }
     ret = Py_BuildValue("");
 out:

@@ -33,6 +33,8 @@ def main():
             print("row", j)
             for k, v in row.items():
                 print("\t", k, "->", v)
+            
+        table.close()
         table.close()
     else:
         print("nothing for here")
