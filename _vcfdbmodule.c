@@ -49,8 +49,8 @@ typedef struct Column_t {
     int element_size;
     int num_elements;
     int fixed_region_offset;
-    /* possibly better names for this... */
-    int (*convert_string)(struct Column_t*, char *, void *);
+    void *element_buffer;
+    int (*convert_string)(struct Column_t*, char *);
     PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
@@ -234,10 +234,34 @@ Column_get_value_char(Column *self, void *row)
 
 
 
+/* Parses the specified string, returning the offset of the 
+ * next delimiter character, or -1 if no delimiter is found 
+ * before the NULL string terminator. List delimiters are 
+ * ',' and ';'.
+static int 
+get_delimiter(Column *self, char *string)
+{
+    int ret = -1;
+    int j = 0;
+    int not_found = 1;
+    while (not_found && string[j] != '\0') {
+        not_found = string[j] != ',' && string[j] != ';';
+        j++;
+    }
+    if (!not_found) {
+        ret = j - 1;
+    }
+    return ret;
+}
+ */
+
+
+
+
 /* Element insertion */
 
 static int 
-Column_convert_string_int(Column *self, char *string, void *destination)
+Column_convert_string_int(Column *self, char *string)
 {
     int ret = -1;
     char *v = string;
@@ -245,9 +269,10 @@ Column_convert_string_int(Column *self, char *string, void *destination)
     long long element;
     int num_elements = 1;
     int not_done = 1; 
-    void *dest = destination;
+    void *dest = self->element_buffer; 
     /* TODO check this - probably not totally right */
     long long max_element_value = (1l << (8 * self->element_size - 1)) - 1;
+
     while (not_done) {
         if (*v == ',') {
             v++;
@@ -296,7 +321,7 @@ out:
 
 
 static int 
-Column_convert_string_float(Column *self, char *string, void *destination)
+Column_convert_string_float(Column *self, char *string)
 {
     int ret = -1;
     char *v = string;
@@ -304,7 +329,7 @@ Column_convert_string_float(Column *self, char *string, void *destination)
     float element;
     int num_elements = 1;
     int not_done = 1; 
-    void *dest = destination;
+    void *dest = self->element_buffer;
     while (not_done) {
         if (*v == ',') {
             v++;
@@ -345,10 +370,10 @@ out:
 }
  
 static int 
-Column_convert_string_char(Column *self, char *string, void *destination)
+Column_convert_string_char(Column *self, char *string)
 {
     size_t n = strlen(string);
-    memcpy(destination, string, n); 
+    memcpy(self->element_buffer, string, n); 
     return n;
 }
 
@@ -357,7 +382,7 @@ Column_convert_string_char(Column *self, char *string, void *destination)
  * copy the parsing code above.
  */
 static int 
-Column_convert_string_enum(Column *self, char *string, void *destination)
+Column_convert_string_enum(Column *self, char *string)
 {
     int ret = -1;
     unsigned long value; 
@@ -386,10 +411,37 @@ Column_convert_string_enum(Column *self, char *string, void *destination)
         }
         value = PyLong_AsUnsignedLong(v); 
     }
-    bigendian_copy(destination, &value, self->element_size);
+    bigendian_copy(self->element_buffer, &value, self->element_size);
     //printf("%s -> %ld\n", string, value);
     ret = 1;
 out:
+    return ret;
+}
+
+/*
+ * Inserts the values in the element buffer into the specified row which 
+ * is currently of the specified size, and return the number of bytes 
+ * used in the variable region. Returns -1 in the case of an error with 
+ * the appropriate Python exception set.
+ */
+static int 
+Column_update_row(Column *self, int num_elements, void *row, u_int32_t row_size)
+{
+    int ret = -1;
+    void *dest;
+    int bytes_added = 0;
+    int data_size = num_elements * self->element_size;
+    dest = row + self->fixed_region_offset; 
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        bigendian_copy(dest, &row_size, 2); // FIXME
+        dest += 2; // FIXME
+        bigendian_copy(dest, &num_elements, 1); // FIXME
+        dest = row + row_size; 
+        bytes_added = data_size; 
+    }
+    memcpy(dest, self->element_buffer, data_size);
+    
+    ret = bytes_added;
     return ret;
 }
 
@@ -414,6 +466,7 @@ Column_dealloc(Column* self)
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
     Py_XDECREF(self->enum_values); 
+    PyMem_Free(self->element_buffer);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -424,8 +477,10 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     int ret = -1;
     static char *kwlist[] = {"name", "description",  "element_type", 
         "element_size", "num_elements", NULL};
+    Py_ssize_t element_buffer_size = 0;
     PyObject *name = NULL;
     PyObject *description = NULL;
+    self->element_buffer = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
             &name, &description, 
             &self->element_type, &self->element_size, 
@@ -475,7 +530,15 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     Py_INCREF(self->enum_values);
-    
+    element_buffer_size = self->element_size * self->num_elements;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        element_buffer_size = self->element_size * MAX_ELEMENTS;
+    }
+    self->element_buffer = PyMem_Malloc(element_buffer_size);
+    if (self->element_buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
 
     ret = 0;
 out:
@@ -957,9 +1020,9 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     PyObject *ret = NULL;
     Column *column = NULL;
     PyBytesObject *value = NULL;
-    unsigned int num_elements, offset;
-    void *dest = NULL; 
+    void *dest = self->data_buffer + self->current_data_offset;
     char *v;
+    int n, m;
     if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
             &value)) {
         goto out;
@@ -967,6 +1030,16 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     Py_INCREF(column);
     Py_INCREF(value);
     v = PyBytes_AsString((PyObject *) value);
+    n = column->convert_string(column, v);
+    if (n < 0) {
+        goto cleanup;   
+    }
+    m = Column_update_row(column, n, dest, self->current_record_size); 
+    if (m < 0) {
+        goto cleanup;
+    }
+    self->current_record_size += m;
+    /*
     offset = column->fixed_region_offset;
     if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
         offset = self->current_record_size;
@@ -974,7 +1047,7 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     dest = self->data_buffer + self->current_data_offset + offset;
     num_elements = column->convert_string(column, v, dest);
     if (num_elements < 0) {
-        goto out;
+        goto cleanup;
     }
     if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
         offset = column->fixed_region_offset;
@@ -985,10 +1058,12 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
         //printf("writing %d bytes to offset %d\n", num_elements, self->current_record_size);
         self->current_record_size += num_elements * column->element_size;
     }
+    */
     ret = Py_BuildValue("");
+cleanup:
+    Py_DECREF(column);
+    Py_DECREF(value);
 out:
-    Py_XDECREF(column);
-    Py_XDECREF(value);
     return ret; 
 }
 
