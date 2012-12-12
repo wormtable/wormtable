@@ -135,12 +135,12 @@ class TableBuilder(object):
     """
     Class responsible for generating databases.
     """
-    def __init__(self, home_dir, input_schema):
-        self._home_dir = home_dir 
-        self._build_db_name = os.path.join(home_dir, "__build_primary.db")
-        self._final_db_name = os.path.join(home_dir, "primary.db")
+    def __init__(self, homedir, input_schema):
+        self._homedir = homedir 
+        self._build_db_name = os.path.join(homedir, "__build_primary.db")
+        self._final_db_name = os.path.join(homedir, "primary.db")
         self._schema = Schema.read_xml(input_schema)
-        self._schema_name = os.path.join(home_dir, "schema.xml")
+        self._schema_name = os.path.join(homedir, "schema.xml")
         self._database = None 
         self._row_buffer = None 
         self._cache_size = 64 * 1024 * 1024
@@ -189,11 +189,11 @@ class Table(object):
     """
     Class representing a table object.
     """
-    def __init__(self, home_dir, cache_size=DEFAULT_READ_CACHE_SIZE):
-        self._home_dir = home_dir
+    def __init__(self, homedir, cache_size=DEFAULT_READ_CACHE_SIZE):
+        self._homedir = homedir
         ## TODO Add constants for these filenames.
-        self._primary_db_file = os.path.join(home_dir, "primary.db")
-        self._schema_file = os.path.join(home_dir, "schema.xml") 
+        self._primary_db_file = os.path.join(homedir, "primary.db")
+        self._schema_file = os.path.join(homedir, "schema.xml") 
         self._schema = Schema.read_xml(self._schema_file)
         self._cache_size = cache_size 
         self._database = _vcfdb.BerkeleyDatabase(
