@@ -23,8 +23,8 @@
 #define ELEMENT_TYPE_ENUM 3
 
 #define NUM_ELEMENTS_VARIABLE 0 
-#define MAX_ELEMENTS 256
-#define MAX_RECORD_SIZE 65536
+#define MAX_NUM_ELEMENTS 256
+#define MAX_ROW_SIZE 65536
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for vcfdb"
@@ -266,18 +266,26 @@ Column_convert_string_int(Column *self, char *string)
     int ret = -1;
     char *v = string;
     char *tail;
-    long long element;
     int num_elements = 1;
     int not_done = 1; 
     void *dest = self->element_buffer; 
+    int64_t element;
     /* TODO check this - probably not totally right */
-    long long max_element_value = (1l << (8 * self->element_size - 1)) - 1;
-
+    /* This seems to be wrong - must get the correct formula */
+    int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
+    
+    
+    /* TODO this doesn't cover the problem of empty elements within the list */
+    if (*v == '\0') {
+        PyErr_SetString(PyExc_ValueError, "Empty value");
+        goto out;
+    }
     while (not_done) {
         if (*v == ',') {
             v++;
             num_elements++;
-            if (num_elements >= MAX_ELEMENTS) {
+            if (num_elements > MAX_NUM_ELEMENTS) {
                 PyErr_SetString(PyExc_ValueError, "Too many elements");
                 goto out;
             }
@@ -291,8 +299,8 @@ Column_convert_string_int(Column *self, char *string)
                 PyErr_SetString(PyExc_ValueError, "Element overflow");
                 goto out;
             }
-            if (abs(element) >= max_element_value) {
-                PyErr_SetString(PyExc_ValueError, "Value too large");
+            if (element < min_value || element > max_value) {
+                PyErr_SetString(PyExc_ValueError, "Value out of bounds");
                 goto out;
             }
             
@@ -330,11 +338,15 @@ Column_convert_string_float(Column *self, char *string)
     int num_elements = 1;
     int not_done = 1; 
     void *dest = self->element_buffer;
+    if (*v == '\0') {
+        PyErr_SetString(PyExc_ValueError, "Empty value");
+        goto out;
+    }
     while (not_done) {
         if (*v == ',') {
             v++;
             num_elements++;
-            if (num_elements >= MAX_ELEMENTS) {
+            if (num_elements >= MAX_NUM_ELEMENTS) {
                 PyErr_SetString(PyExc_ValueError, "Too many elements");
                 goto out;
             }
@@ -433,15 +445,19 @@ Column_update_row(Column *self, int num_elements, void *row, u_int32_t row_size)
     int data_size = num_elements * self->element_size;
     dest = row + self->fixed_region_offset; 
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        bytes_added = data_size;
+        if (row_size + bytes_added > MAX_ROW_SIZE) {
+            PyErr_SetString(PyExc_ValueError, "Row overflow");
+            goto out;
+        }
         bigendian_copy(dest, &row_size, 2); // FIXME
         dest += 2; // FIXME
         bigendian_copy(dest, &num_elements, 1); // FIXME
         dest = row + row_size; 
-        bytes_added = data_size; 
     }
     memcpy(dest, self->element_buffer, data_size);
-    
     ret = bytes_added;
+out:
     return ret;
 }
 
@@ -524,7 +540,14 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
     }
-    
+    if (self->num_elements > MAX_NUM_ELEMENTS) {
+        PyErr_SetString(PyExc_ValueError, "Too many elements");
+        goto out;
+    }
+    if (self->num_elements < 0) {
+        PyErr_SetString(PyExc_ValueError, "negative num elements");
+        goto out;
+    }
     self->enum_values = PyDict_New();
     if (self->enum_values == NULL) {
         goto out;
@@ -532,7 +555,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     Py_INCREF(self->enum_values);
     element_buffer_size = self->element_size * self->num_elements;
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        element_buffer_size = self->element_size * MAX_ELEMENTS;
+        element_buffer_size = self->element_size * MAX_NUM_ELEMENTS;
     }
     self->element_buffer = PyMem_Malloc(element_buffer_size);
     if (self->element_buffer == NULL) {
@@ -654,9 +677,11 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
         }
         col->fixed_region_offset = self->fixed_region_size;
         self->fixed_region_size += Column_get_fixed_region_size(col);
+        if (self->fixed_region_size > MAX_ROW_SIZE) {
+            PyErr_SetString(PyExc_ValueError, "Columns exceed max row size");
+            goto out;
+        }
     }
-    /* TODO check to make sure these are within 64K */ 
-
     ret = 0;
 out:
 
@@ -946,7 +971,7 @@ WriteBuffer_init(WriteBuffer *self, PyObject *args, PyObject *kwds)
     }
     self->database = database;
     Py_INCREF(self->database);
-    if (self->data_buffer_size < MAX_RECORD_SIZE) {
+    if (self->data_buffer_size < MAX_ROW_SIZE) {
         PyErr_SetString(PyExc_ValueError, "data buffer size too small");
         goto out;
     }
@@ -1089,7 +1114,7 @@ WriteBuffer_commit_row(WriteBuffer* self, PyObject *args)
     DBT *key, *data;
     PyObject *ret = NULL;
     void *dest;
-    int barrier = self->data_buffer_size - MAX_RECORD_SIZE;
+    int barrier = self->data_buffer_size - MAX_ROW_SIZE;
     dest = self->key_buffer + self->current_key_offset;
     bigendian_copy(dest, &self->record_id, self->database->key_size);
     /*
@@ -1245,10 +1270,14 @@ init_vcfdb(void)
     
     PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE", 
             NUM_ELEMENTS_VARIABLE);
+    PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE_OVERHEAD", 3); /* FIXME */
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_CHAR", ELEMENT_TYPE_CHAR);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_ENUM", ELEMENT_TYPE_ENUM);
+    
+    PyModule_AddIntConstant(module, "MAX_ROW_SIZE", MAX_ROW_SIZE);
+    PyModule_AddIntConstant(module, "MAX_NUM_ELEMENTS", MAX_NUM_ELEMENTS);
 
 #if PY_MAJOR_VERSION >= 3
     return module;
