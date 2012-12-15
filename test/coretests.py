@@ -81,6 +81,7 @@ class TestElementParsers(unittest.TestCase):
         values = ["-1", "-2", "0", "4", "14", "100"]
         for c in self._int_columns.values():
             for v in values:
+                self.assertIsNone(rb.insert_elements(c, int(v)))
                 self.assertIsNone(rb.insert_encoded_elements(c, v.encode()))
         # try some values inside of the acceptable range.
         for j in range(1, 9):
@@ -89,6 +90,7 @@ class TestElementParsers(unittest.TestCase):
             for k in range(10):
                 v = random.randint(min_v, max_v)
                 b = str(v).encode()
+                self.assertIsNone(rb.insert_elements(c, v))
                 self.assertIsNone(rb.insert_encoded_elements(c, b))
              
     def test_bad_integer_values(self):
@@ -167,19 +169,14 @@ class TestDatabaseLimits(unittest.TestCase):
         """
         rb = self._row_buffer
         v = [j for j in range(_vcfdb.MAX_NUM_ELEMENTS)]
-        b = str(v).strip("[]").encode()
         n = len(self._columns)
-        for j in range(50):
-            for k in range(n - 1):
-                rb.insert_encoded_elements(self._columns[k], b) 
-            v2 = [k for k in range(j + 1)]
-            b2 = str(v).strip("[]").encode()
-            print(b2)
-            self.assertRaises(ValueError, rb.insert_encoded_elements,
-                    self._columns[0], b2)  
-            self.assertRaises(ValueError, rb.insert_encoded_elements,
-                    self._columns[0], b)
-            rb.commit_row()
+        for k in range(n - 1):
+            rb.insert_elements(self._columns[k], v) 
+        self.assertRaises(ValueError, rb.insert_elements,
+                self._columns[0], v)  
+        self.assertRaises(ValueError, rb.insert_elements,
+                self._columns[0], v)
+        rb.commit_row()
         
 
     def test_column_allocation_limits(self):

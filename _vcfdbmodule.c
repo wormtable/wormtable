@@ -1,16 +1,6 @@
 #include <Python.h>
 #include <structmember.h>
-
 #include <db.h>
-
-
-
-/* TODO Items:
- * 1) there are nasty issues here with type sizes. Is an  unsigned long long
- *    the same as u_uint64_t? 
- * 2) Operations on a closed Table segfault. There should be a check to see 
- *    if the db is closed.
- */
 
 
 #if PY_MAJOR_VERSION >= 3
@@ -51,6 +41,7 @@ typedef struct Column_t {
     int fixed_region_offset;
     void *element_buffer;
     int (*convert_string)(struct Column_t*, char *);
+    int (*convert_python)(struct Column_t*, PyObject *);
     PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
@@ -163,7 +154,6 @@ Column_get_value_int(Column *self, void *row)
             v += self->element_size;
         }
     }
-    
     ret = value;
     return ret;
 }
@@ -259,6 +249,59 @@ get_delimiter(Column *self, char *string)
 
 
 /* Element insertion */
+
+static int 
+Column_convert_python_int(Column *self, PyObject *elements)
+{
+    int ret = -1;
+    int64_t element;
+    void *dest = self->element_buffer; 
+    int j, num_elements;
+    PyObject *seq = NULL;
+    PyObject *v;
+    if (self->num_elements == 1) {
+        if (!PyLong_Check(elements)) {
+            PyErr_SetString(PyExc_TypeError, "Must be long integer");
+            goto out;
+        }
+        element = PyLong_AsLongLong(elements);
+        bigendian_copy(dest, &element, self->element_size);
+        dest += self->element_size;
+        num_elements = 1;
+    } else {
+        seq = PySequence_Fast(elements, "Sequence required");
+        if (seq == NULL) {
+            goto out;
+        }
+        Py_INCREF(seq); 
+        num_elements = PySequence_Fast_GET_SIZE(seq);
+        if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+            if (num_elements > MAX_NUM_ELEMENTS) {
+                PyErr_SetString(PyExc_ValueError, "too many elements");
+                goto out;
+            }
+        } else {    
+            if (num_elements != self->num_elements) {
+                PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+                goto out;
+            }
+        }
+        for (j = 0; j < num_elements; j++) {
+            v = PySequence_Fast_GET_ITEM(seq, j);
+            if (!PyLong_Check(v)) {
+                PyErr_SetString(PyExc_TypeError, "Must be long integer");
+                goto out;
+            }
+            element = PyLong_AsLongLong(v);
+            bigendian_copy(dest, &element, self->element_size);
+            dest += self->element_size;
+        }
+    }
+    ret = num_elements;
+out:
+    Py_XDECREF(seq);
+    return ret;
+}
 
 static int 
 Column_convert_string_int(Column *self, char *string)
@@ -513,6 +556,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
+        self->convert_python = Column_convert_python_int;
         self->convert_string = Column_convert_string_int;
         self->get_value = Column_get_value_int;
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
@@ -1066,45 +1110,48 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
             &value)) {
         goto out;
     }
-    Py_INCREF(column);
-    Py_INCREF(value);
     v = PyBytes_AsString((PyObject *) value);
     n = column->convert_string(column, v);
     if (n < 0) {
-        goto cleanup;   
+        goto out;   
     }
+    //printf("converted %d elements\n", n);
     m = Column_update_row(column, n, dest, self->current_record_size); 
     if (m < 0) {
-        goto cleanup;
+        goto out;
     }
     self->current_record_size += m;
-    /*
-    offset = column->fixed_region_offset;
-    if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
-        offset = self->current_record_size;
-    }
-    dest = self->data_buffer + self->current_data_offset + offset;
-    num_elements = column->convert_string(column, v, dest);
-    if (num_elements < 0) {
-        goto cleanup;
-    }
-    if (column->num_elements == NUM_ELEMENTS_VARIABLE) {
-        offset = column->fixed_region_offset;
-        dest = self->data_buffer + self->current_data_offset + offset;
-        bigendian_copy(dest, &self->current_record_size, 2); // FIXME
-        dest += 2;
-        bigendian_copy(dest, &num_elements, 1); // FIXME
-        //printf("writing %d bytes to offset %d\n", num_elements, self->current_record_size);
-        self->current_record_size += num_elements * column->element_size;
-    }
-    */
     ret = Py_BuildValue("");
-cleanup:
-    Py_DECREF(column);
-    Py_DECREF(value);
 out:
     return ret; 
 }
+
+static PyObject *
+WriteBuffer_insert_elements(WriteBuffer* self, PyObject *args)
+{
+    int n, m;
+    PyObject *ret = NULL;
+    Column *column = NULL;
+    PyObject *elements = NULL;
+    void *dest = self->data_buffer + self->current_data_offset;
+    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) { 
+        goto out;
+    }
+    n = column->convert_python(column, elements);
+    if (n < 0) {
+        goto out;   
+    }
+    //printf("converted %d elements\n", n);
+    m = Column_update_row(column, n, dest, self->current_record_size); 
+    if (m < 0) {
+        goto out;
+    }
+    self->current_record_size += m;
+    ret = Py_BuildValue("");
+out:
+    return ret; 
+}
+
 
 
 
@@ -1156,6 +1203,8 @@ out:
 static PyMethodDef WriteBuffer_methods[] = {
     {"insert_encoded_elements", (PyCFunction) WriteBuffer_insert_encoded_elements, 
         METH_VARARGS, "insert element values encoded as a string." },
+    {"insert_elements", (PyCFunction) WriteBuffer_insert_elements, 
+        METH_VARARGS, "insert element values encoded native Python objects." },
     {"commit_row", (PyCFunction) WriteBuffer_commit_row, METH_VARARGS, "commit row" },
     {"flush", (PyCFunction) WriteBuffer_flush, METH_NOARGS, "flush" },
     {NULL}  /* Sentinel */
