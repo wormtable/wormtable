@@ -21,13 +21,10 @@
 
 static PyObject *BerkeleyDatabaseError;
 
-/* TODO: The column struct should have a new member, native_elements. 
-   This is then used to hold element values that are either parsed 
-   from the string encoding, or derived from Python types. Element 
-   insertion should then follow a straightforward process:
-   1) insert native values into the buffer;
-   2) copy these values from the buffer to the row.
-   The column object's methods can be much simpler then.
+/* TODO:
+ * 1) We need much better error reporting for the parsers. These should have a
+ * top level variadic function that takes arguments and set the Python exception
+ * appropriately.
  */
 
 typedef struct Column_t {
@@ -39,17 +36,17 @@ typedef struct Column_t {
     int element_size;
     int num_elements;
     int fixed_region_offset;
-    /* The element buffer holds elements in their widest supported type 
-     * in native format.
-     */
-    void **input_elements; /* pointers to individual elements in input format */
-    void *native_elements; /* parsed input elements in native CPU format */
-    int num_input_elements;
+    void **input_elements; /* pointer to each elements in input format */
+    void *element_buffer; /* parsed input elements in native CPU format */
+    int num_buffered_elements;
     int (*string_to_native)(struct Column_t*, char *);
     int (*python_to_native)(struct Column_t*, PyObject *);
     int (*verify_elements)(struct Column_t*);
     int (*pack_elements)(struct Column_t*, void *);
-    /* These are not good names ... */
+    int (*unpack_elements)(struct Column_t*, void *);
+    /* TODO: implement */
+    PyObject *(*native_to_python)(struct Column_t *);
+    /* DEPRECATED ... */
     PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
@@ -105,16 +102,6 @@ bigendian_copy(void* dest, void *source, size_t n)
     for (j = 0; j < n; j++) {
         dest_c[j] = source_c[n - j - 1];
     }
-    /*
-    for (j = 0; j < n; j++) {
-        printf("%03d ", source_c[j]); 
-    }
-    printf("\t -> \t"); 
-    for (j = 0; j < n; j++) {
-        printf("%03d ", dest_c[j]); 
-    }
-    printf("\n");
-    */
 }
 
 
@@ -231,11 +218,50 @@ Column_get_value_char(Column *self, void *row)
 }
 
 
+/******************************************************************************
+ *
+ * Unpacking from a row to the element buffer. 
+ *
+ *****************************************************************************/
+
+static int 
+Column_unpack_elements_int(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    int64_t *elements = (int64_t *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        bigendian_copy(&elements[j], v, self->element_size);
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+static int 
+Column_unpack_elements_float(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    double *elements = (double *) self->element_buffer;
+    float element;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        bigendian_copy(&element, v, self->element_size);
+        elements[j] = (double) element;
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+
 
 
 /******************************************************************************
  *
- * Packing native valus from the element_buffer to a row.
+ * Packing native values from the element_buffer to a row.
  *
  *****************************************************************************/
 
@@ -245,9 +271,9 @@ Column_pack_elements_int(Column *self, void *dest)
     int j;
     int ret = -1;
     void *v = dest;
-    int64_t *elements = (int64_t *) self->native_elements;
-    for (j = 0; j < self->num_input_elements; j++) {
-        bigendian_copy(dest, &elements[j], self->element_size);
+    int64_t *elements = (int64_t *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        bigendian_copy(v, &elements[j], self->element_size);
         v += self->element_size;
     }
     ret = 0;
@@ -260,11 +286,11 @@ Column_pack_elements_float(Column *self, void *dest)
     int j;
     int ret = -1;
     void *v = dest;
-    double *elements = (double *) self->native_elements;
+    double *elements = (double *) self->element_buffer;
     float element;
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         element = (float) elements[j];
-        bigendian_copy(dest, &element, self->element_size);
+        bigendian_copy(v, &element, self->element_size);
         v += self->element_size;
     }
     ret = 0;
@@ -283,12 +309,12 @@ Column_verify_elements_int(Column *self)
 {
     int j;
     int ret = -1;
-    int64_t *elements = (int64_t *) self->native_elements;
+    int64_t *elements = (int64_t *) self->element_buffer;
     /* TODO check this - probably not totally right */
     /* This seems to be wrong - must get the correct formula */
     int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1));
     int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         if (elements[j] < min_value || elements[j] > max_value) {
             PyErr_SetString(PyExc_ValueError, "Value out of bounds");
             goto out;
@@ -328,7 +354,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
     int j, num_elements;
     PyObject *seq = NULL;
     PyObject *v;
-    self->num_input_elements = 0;
+    self->num_buffered_elements = 0;
     if (self->num_elements == 1) {
         self->input_elements[0] = elements;
         num_elements = 1;
@@ -361,7 +387,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             goto out;
         }
     }
-    self->num_input_elements = num_elements;
+    self->num_buffered_elements = num_elements;
     ret = 0;
 out:
     Py_XDECREF(seq);
@@ -372,19 +398,31 @@ static int
 Column_python_to_native_int(Column *self, PyObject *elements)
 {
     int ret = -1;
-    int64_t *native= (int64_t *) self->native_elements; 
+    int64_t *native= (int64_t *) self->element_buffer; 
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
         goto out;
     }
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
+        /* 
+         * This should be the only place that we _have_ to work around
+         * the difference between integers in Python 2 and 3.
+         */
+#if PY_MAJOR_VERSION >= 3
         if (!PyLong_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be long integer");
+            PyErr_SetString(PyExc_TypeError, "Must be integer");
             goto out;
         }
         native[j] = (int64_t) PyLong_AsLongLong(v);
+#else
+        if (!PyInt_Check(v)) {
+            PyErr_SetString(PyExc_TypeError, "Must be integer");
+            goto out;
+        }
+        native[j] = (int64_t) PyInt_AsLong(v);
+#endif
     }
     ret = 0;
 out:
@@ -395,16 +433,16 @@ static int
 Column_python_to_native_float(Column *self, PyObject *elements)
 {
     int ret = -1;
-    double *native = (double *) self->native_elements; 
+    double *native = (double *) self->element_buffer; 
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
         goto out;
     }
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
         if (!PyFloat_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be long integer");
+            PyErr_SetString(PyExc_TypeError, "Must be float");
             goto out;
         }
         native[j] = (double) PyFloat_AsDouble(v);
@@ -432,7 +470,7 @@ Column_parse_string_sequence(Column *self, char *s)
 {
     int ret = -1;
     int j, num_elements, delimiter;
-    self->num_input_elements = 0;
+    self->num_buffered_elements = 0;
     if (self->num_elements == 1) {
         self->input_elements[0] = s;
         num_elements = 1;
@@ -463,7 +501,7 @@ Column_parse_string_sequence(Column *self, char *s)
             goto out;
         }
     }
-    self->num_input_elements = num_elements;
+    self->num_buffered_elements = num_elements;
     ret = 0;
 out:
     return ret;
@@ -474,13 +512,13 @@ static int
 Column_string_to_native_int(Column *self, char *string)
 {
     int ret = -1;
-    int64_t *native= (int64_t *) self->native_elements; 
+    int64_t *native= (int64_t *) self->element_buffer; 
     char *v, *tail;
     int j;
     if (Column_parse_string_sequence(self, string) < 0) {
         goto out;
     }
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         v = (char *) self->input_elements[j];
         errno = 0;
         native[j] = (int64_t) strtoll(v, &tail, 0);
@@ -509,13 +547,13 @@ static int
 Column_string_to_native_float(Column *self, char *string)
 {
     int ret = -1;
-    double *native= (double *) self->native_elements; 
+    double *native= (double *) self->element_buffer; 
     char *v, *tail;
     int j;
     if (Column_parse_string_sequence(self, string) < 0) {
         goto out;
     }
-    for (j = 0; j < self->num_input_elements; j++) {
+    for (j = 0; j < self->num_buffered_elements; j++) {
         v = (char *) self->input_elements[j];
         errno = 0;
         native[j] = (double) strtod(v, &tail);
@@ -547,7 +585,7 @@ static int
 Column_string_to_native_char(Column *self, char *string)
 {
     size_t n = strlen(string);
-    memcpy(self->native_elements, string, n); 
+    memcpy(self->element_buffer, string, n); 
     return n;
 }
 
@@ -585,7 +623,7 @@ Column_string_to_native_enum(Column *self, char *string)
         }
         value = PyLong_AsUnsignedLong(v); 
     }
-    bigendian_copy(self->native_elements, &value, self->element_size);
+    bigendian_copy(self->element_buffer, &value, self->element_size);
     //printf("%s -> %ld\n", string, value);
     ret = 1;
 out:
@@ -604,7 +642,7 @@ Column_update_row(Column *self, void *row, u_int32_t row_size)
     int ret = -1;
     void *dest;
     int bytes_added = 0;
-    int num_elements = self->num_input_elements;
+    int num_elements = self->num_buffered_elements;
     int data_size = num_elements * self->element_size;
     if (self->verify_elements(self) < 0) {
         goto out;
@@ -648,7 +686,7 @@ Column_dealloc(Column* self)
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
     Py_XDECREF(self->enum_values); 
-    PyMem_Free(self->native_elements);
+    PyMem_Free(self->element_buffer);
     PyMem_Free(self->input_elements);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -664,7 +702,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     Py_ssize_t native_element_size;
     PyObject *name = NULL;
     PyObject *description = NULL;
-    self->native_elements = NULL;
+    self->element_buffer = NULL;
     self->input_elements = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
             &name, &description, 
@@ -686,7 +724,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->string_to_native = Column_string_to_native_int;
         self->verify_elements = Column_verify_elements_int;
         self->pack_elements = Column_pack_elements_int;
-        
+        self->unpack_elements = Column_unpack_elements_int;
+         
         self->get_value = Column_get_value_int;
         native_element_size = sizeof(int64_t);
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
@@ -698,6 +737,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->string_to_native = Column_string_to_native_float;
         self->verify_elements = Column_verify_elements_float;
         self->pack_elements = Column_pack_elements_float;
+        self->unpack_elements = Column_unpack_elements_float;
         
         self->get_value = Column_get_value_float;
         native_element_size = sizeof(double);
@@ -709,6 +749,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->string_to_native = Column_string_to_native_char;
         self->get_value = Column_get_value_char;
         native_element_size = sizeof(char);
+        printf("Column NOT SUPPORTED!\n");
+        exit(1);
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
         if (self->element_size < 1 || self->element_size > 2) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -717,6 +759,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->string_to_native = Column_string_to_native_enum;
         self->get_value = Column_get_value_int;
         native_element_size = sizeof(char);
+        printf("Column NOT SUPPORTED!\n");
+        exit(1);
     } else {    
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
@@ -738,9 +782,9 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
         max_num_elements = MAX_NUM_ELEMENTS;    
     }
-    self->native_elements = PyMem_Malloc(max_num_elements 
+    self->element_buffer = PyMem_Malloc(max_num_elements 
             * native_element_size);
-    if (self->native_elements == NULL) {
+    if (self->element_buffer == NULL) {
         PyErr_NoMemory();
         goto out;
     }
