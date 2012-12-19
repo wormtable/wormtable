@@ -49,7 +49,6 @@ class TestElementParsers(unittest.TestCase):
         for j in range(1, 9):
             self._int_columns[j] = get_int_column(j, 1)
         self._float_columns = {4: get_float_column(4, 1)}
-        
         self._columns = list(self._int_columns.values()) + list(self._float_columns.values()) 
         self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
             self._columns, cache_size=1024)
@@ -78,7 +77,7 @@ class TestElementParsers(unittest.TestCase):
     def test_good_integer_values(self):
         rb = self._row_buffer
         c = self._int_columns[1]
-        values = ["-1", "-2", "0", "4", "14", "100"]
+        values = ["\t-1 ", "   -2  ", "0   ", "\n4\n\n", " 14 ", "100"]
         for c in self._int_columns.values():
             for v in values:
                 self.assertIsNone(rb.insert_elements(c, int(v)))
@@ -116,7 +115,7 @@ class TestElementParsers(unittest.TestCase):
                 b = str(v).encode()
                 self.assertRaises(ValueError, rb.insert_encoded_elements, c, b)
 
-    def dont_test_good_float_values(self):
+    def test_good_float_values(self):
         rb = self._row_buffer
         c = self._int_columns[1]
         values = ["-1", "-2", "0", "4", "14", "100",
@@ -124,19 +123,79 @@ class TestElementParsers(unittest.TestCase):
         for c in self._float_columns.values():
             for v in values:
                 self.assertIsNone(rb.insert_encoded_elements(c, v.encode()))
+                self.assertIsNone(rb.insert_elements(c, float(v)))
             for k in range(10):
                 v = random.uniform(-100, 100)
                 b = str(v).encode()
                 self.assertIsNone(rb.insert_encoded_elements(c, b))
+                self.assertIsNone(rb.insert_elements(c, v))
      
-    def dont_test_bad_float_values(self):
+    def test_bad_float_values(self):
         rb = self._row_buffer
         values = ["", "--1", "sdasd", "[]", "3qsd", "1Q0.023"]
         for c in self._float_columns.values():
             for v in values:
                 e = v.encode()
                 self.assertRaises(ValueError, rb.insert_encoded_elements, c, e)
-             
+        values = [None, [], 234, "1.23"]
+        for c in self._float_columns.values():
+            for v in values:
+                self.assertRaises(TypeError, rb.insert_elements, c, v)
+        
+
+class TestListParsers(unittest.TestCase):
+    """
+    Test the list parsers to make sure that malformed lists are correctly
+    detected.
+    """     
+    def setUp(self):
+        fd, self._db_file = tempfile.mkstemp("-parse-test.db") 
+        self._int_columns = {}
+        self._float_columns = {}
+        for j in range(1, 5):
+            self._int_columns[j] = get_int_column(1, j)
+            self._float_columns[j] = get_float_column(4, j)
+        self._columns = list(self._int_columns.values()) + list(self._float_columns.values()) 
+        self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
+            self._columns, cache_size=1024)
+        self._database.create()
+        # We can close the open fd now that db has opened it.
+        os.close(fd)
+        buffer_size = 64 * 1024
+        self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
+
+    def tearDown(self):
+        self._row_buffer.flush()
+        self._database.close()
+        os.unlink(self._db_file)
+
+
+    def test_good_integer_values(self):
+        rb = self._row_buffer
+        c = self._int_columns[1]
+        values = ["\t-1 ", "   -2  ", "0   ", "\n4\n\n", " 14 ", "100"]
+        for n, c in self._int_columns.items(): 
+            for j in range(10):
+                s = ""
+                for r in random.sample(values, n):
+                    s += r + ";"
+                self.assertIsNone(rb.insert_encoded_elements(c, s.encode()))
+
+    def test_good_float_values(self):
+        rb = self._row_buffer
+        c = self._int_columns[1]
+        values = ["\t-1 ", "0.22", " \n1e-7  ", "\n4.0\n\n", " 14 ", "100"]
+        for n, c in self._float_columns.items(): 
+            for j in range(10):
+                s = ""
+                for r in random.sample(values, n):
+                    s += r + ";"
+                self.assertIsNone(rb.insert_encoded_elements(c, s.encode()))
+
+
+
+
+
 
 
 class TestDatabaseLimits(unittest.TestCase):

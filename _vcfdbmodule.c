@@ -21,7 +21,7 @@
 
 static PyObject *BerkeleyDatabaseError;
 
-/* TODO: The column struct should have a new member, element_buffer. 
+/* TODO: The column struct should have a new member, native_elements. 
    This is then used to hold element values that are either parsed 
    from the string encoding, or derived from Python types. Element 
    insertion should then follow a straightforward process:
@@ -42,13 +42,14 @@ typedef struct Column_t {
     /* The element buffer holds elements in their widest supported type 
      * in native format.
      */
-    void *element_buffer;
-    int num_buffered_elements;
+    void **input_elements; /* pointers to individual elements in input format */
+    void *native_elements; /* parsed input elements in native CPU format */
+    int num_input_elements;
+    int (*string_to_native)(struct Column_t*, char *);
+    int (*python_to_native)(struct Column_t*, PyObject *);
     int (*verify_elements)(struct Column_t*);
     int (*pack_elements)(struct Column_t*, void *);
-
-    int (*convert_string)(struct Column_t*, char *);
-    int (*convert_python)(struct Column_t*, PyObject *);
+    /* These are not good names ... */
     PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
@@ -231,39 +232,21 @@ Column_get_value_char(Column *self, void *row)
 
 
 
-/* Parses the specified string, returning the offset of the 
- * next delimiter character, or -1 if no delimiter is found 
- * before the NULL string terminator. List delimiters are 
- * ',' and ';'.
-static int 
-get_delimiter(Column *self, char *string)
-{
-    int ret = -1;
-    int j = 0;
-    int not_found = 1;
-    while (not_found && string[j] != '\0') {
-        not_found = string[j] != ',' && string[j] != ';';
-        j++;
-    }
-    if (!not_found) {
-        ret = j - 1;
-    }
-    return ret;
-}
- */
 
+/******************************************************************************
+ *
+ * Packing native valus from the element_buffer to a row.
+ *
+ *****************************************************************************/
 
-
-
-/* Element insertion */
 static int 
 Column_pack_elements_int(Column *self, void *dest)
 {
     int j;
     int ret = -1;
     void *v = dest;
-    int64_t *elements = (int64_t *) self->element_buffer;
-    for (j = 0; j < self->num_buffered_elements; j++) {
+    int64_t *elements = (int64_t *) self->native_elements;
+    for (j = 0; j < self->num_input_elements; j++) {
         bigendian_copy(dest, &elements[j], self->element_size);
         v += self->element_size;
     }
@@ -272,16 +255,40 @@ Column_pack_elements_int(Column *self, void *dest)
 }
 
 static int 
+Column_pack_elements_float(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    double *elements = (double *) self->native_elements;
+    float element;
+    for (j = 0; j < self->num_input_elements; j++) {
+        element = (float) elements[j];
+        bigendian_copy(dest, &element, self->element_size);
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+
+
+/******************************************************************************
+ *
+ * Verify elements in the buffer. 
+ *
+ *****************************************************************************/
+static int 
 Column_verify_elements_int(Column *self)
 {
     int j;
     int ret = -1;
-    int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t *elements = (int64_t *) self->native_elements;
     /* TODO check this - probably not totally right */
     /* This seems to be wrong - must get the correct formula */
     int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1));
     int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
-    for (j = 0; j < self->num_buffered_elements; j++) {
+    for (j = 0; j < self->num_input_elements; j++) {
         if (elements[j] < min_value || elements[j] > max_value) {
             PyErr_SetString(PyExc_ValueError, "Value out of bounds");
             goto out;
@@ -293,22 +300,37 @@ out:
 
 }
 
-
-
 static int 
-Column_convert_python_int(Column *self, PyObject *elements)
+Column_verify_elements_float(Column *self)
 {
     int ret = -1;
-    int64_t *buffer = (int64_t *) self->element_buffer; 
+    ret = 0;
+    return ret; 
+
+}
+
+/******************************************************************************
+ *
+ * Python input element parsing.
+ *
+ *****************************************************************************/
+
+
+/*
+ * Takes a Python sequence and places pointers to the Python 
+ * elements into the input_elements list. Checks for various 
+ * errors in the format of this sequence.
+ */
+static int 
+Column_parse_python_sequence(Column *self, PyObject *elements)
+{
+    int ret = -1;
     int j, num_elements;
     PyObject *seq = NULL;
     PyObject *v;
+    self->num_input_elements = 0;
     if (self->num_elements == 1) {
-        if (!PyLong_Check(elements)) {
-            PyErr_SetString(PyExc_TypeError, "Must be long integer");
-            goto out;
-        }
-        buffer[0] = (int64_t) PyLong_AsLongLong(elements);
+        self->input_elements[0] = elements;
         num_elements = 1;
     } else {
         seq = PySequence_Fast(elements, "Sequence required");
@@ -330,57 +352,109 @@ Column_convert_python_int(Column *self, PyObject *elements)
         }
         for (j = 0; j < num_elements; j++) {
             v = PySequence_Fast_GET_ITEM(seq, j);
-            if (!PyLong_Check(v)) {
-                PyErr_SetString(PyExc_TypeError, "Must be long integer");
-                goto out;
-            }
-            buffer[j] = (int64_t) PyLong_AsLongLong(v);
+            self->input_elements[j] = v; 
         }
     }
-    self->num_buffered_elements = num_elements;
-    ret = num_elements;
+    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
+        if (num_elements != self->num_elements) {
+            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+            goto out;
+        }
+    }
+    self->num_input_elements = num_elements;
+    ret = 0;
 out:
     Py_XDECREF(seq);
     return ret;
 }
 
 static int 
-Column_convert_string_int(Column *self, char *string)
+Column_python_to_native_int(Column *self, PyObject *elements)
 {
     int ret = -1;
-    char *v = string;
-    char *tail;
-    int num_elements = 1;
-    int not_done = 1; 
-    int64_t *buffer = (int64_t *) self->element_buffer; 
-    /* TODO this doesn't cover the problem of empty elements within the list */
-    if (*v == '\0') {
-        PyErr_SetString(PyExc_ValueError, "Empty value");
+    int64_t *native= (int64_t *) self->native_elements; 
+    PyObject *v;
+    int j;
+    if (Column_parse_python_sequence(self, elements) < 0) {
         goto out;
     }
-    while (not_done) {
-        if (*v == ',') {
-            v++;
-            num_elements++;
-            if (num_elements > MAX_NUM_ELEMENTS) {
-                PyErr_SetString(PyExc_ValueError, "Too many elements");
-                goto out;
-            }
+    for (j = 0; j < self->num_input_elements; j++) {
+        v = (PyObject *) self->input_elements[j];
+        if (!PyLong_Check(v)) {
+            PyErr_SetString(PyExc_TypeError, "Must be long integer");
+            goto out;
         }
-        if (*v == 0) {
-            not_done = 0; 
-        } else {
-            errno = 0;
-            buffer[num_elements - 1] = (int64_t) strtoll(v, &tail, 0);
-            if (errno) {
-                PyErr_SetString(PyExc_ValueError, "Element overflow");
-                goto out;
+        native[j] = (int64_t) PyLong_AsLongLong(v);
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+static int 
+Column_python_to_native_float(Column *self, PyObject *elements)
+{
+    int ret = -1;
+    double *native = (double *) self->native_elements; 
+    PyObject *v;
+    int j;
+    if (Column_parse_python_sequence(self, elements) < 0) {
+        goto out;
+    }
+    for (j = 0; j < self->num_input_elements; j++) {
+        v = (PyObject *) self->input_elements[j];
+        if (!PyFloat_Check(v)) {
+            PyErr_SetString(PyExc_TypeError, "Must be long integer");
+            goto out;
+        }
+        native[j] = (double) PyFloat_AsDouble(v);
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+
+/******************************************************************************
+ *
+ * String input element parsing.
+ *
+ *****************************************************************************/
+
+/*
+ * Takes a string sequence and places pointers to the start
+ * of each individual element into the input_elements list.
+ * Checks for various errors in the format of this sequence.
+ */
+static int 
+Column_parse_string_sequence(Column *self, char *s)
+{
+    int ret = -1;
+    int j, num_elements, delimiter;
+    self->num_input_elements = 0;
+    if (self->num_elements == 1) {
+        self->input_elements[0] = s;
+        num_elements = 1;
+    } else {
+        j = 0;
+        num_elements = 0;
+        delimiter = -1;
+        if (s[0] == '\0') {
+            PyErr_SetString(PyExc_ValueError, "Empty value");
+            goto out;
+        }
+        /* TODO this needs lots of error checking! */
+        while (s[j] != '\0') {
+            if (s[j] == ',' || s[j] == ';') {
+                delimiter = j; 
             }
-            if (v == tail) {
-                PyErr_SetString(PyExc_ValueError, "Element parse error");
-                goto out;
+            if (j == delimiter + 1) {
+                /* this is the start of a new element */
+                self->input_elements[num_elements] = &s[j];
+                num_elements++;
             }
-            v = tail;
+            j++;
         }
     }
     if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
@@ -389,73 +463,91 @@ Column_convert_string_int(Column *self, char *string)
             goto out;
         }
     }
-    self->num_buffered_elements = num_elements;
-    ret = num_elements;
+    self->num_input_elements = num_elements;
+    ret = 0;
 out:
     return ret;
 }
-
 
 
 static int 
-Column_convert_string_float(Column *self, char *string)
+Column_string_to_native_int(Column *self, char *string)
 {
     int ret = -1;
-    char *v = string;
-    char *tail;
-    float element;
-    int num_elements = 1;
-    int not_done = 1; 
-    void *dest = self->element_buffer;
-    abort();
-    if (*v == '\0') {
-        PyErr_SetString(PyExc_ValueError, "Empty value");
+    int64_t *native= (int64_t *) self->native_elements; 
+    char *v, *tail;
+    int j;
+    if (Column_parse_string_sequence(self, string) < 0) {
         goto out;
     }
-    while (not_done) {
-        if (*v == ',') {
-            v++;
-            num_elements++;
-            if (num_elements >= MAX_NUM_ELEMENTS) {
-                PyErr_SetString(PyExc_ValueError, "Too many elements");
-                goto out;
-            }
+    for (j = 0; j < self->num_input_elements; j++) {
+        v = (char *) self->input_elements[j];
+        errno = 0;
+        native[j] = (int64_t) strtoll(v, &tail, 0);
+        if (errno) {
+            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            goto out;
         }
-        if (*v == 0) {
-            not_done = 0; 
-        } else {
-            errno = 0;
-            element = (float) strtod(v, &tail);
-            if (errno) {
-                PyErr_SetString(PyExc_ValueError, "Element overflow");
-                goto out;
-            }
-            bigendian_copy(dest, &element, self->element_size);
-            dest += self->element_size;
-            if (v == tail) {
+        if (v == tail) {
+            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            goto out;
+        }
+        if (*tail != '\0') {
+            if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
                 PyErr_SetString(PyExc_ValueError, "Element parse error");
                 goto out;
             }
-            v = tail;
         }
     }
-    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
-        if (num_elements != self->num_elements) {
-            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
-            goto out;
-        }
-    }
-    ret = num_elements;
+    ret = 0;
 out:
-    
     return ret;
 }
+
+
+static int 
+Column_string_to_native_float(Column *self, char *string)
+{
+    int ret = -1;
+    double *native= (double *) self->native_elements; 
+    char *v, *tail;
+    int j;
+    if (Column_parse_string_sequence(self, string) < 0) {
+        goto out;
+    }
+    for (j = 0; j < self->num_input_elements; j++) {
+        v = (char *) self->input_elements[j];
+        errno = 0;
+        native[j] = (double) strtod(v, &tail);
+        if (errno) {
+            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            goto out;
+        }
+        if (v == tail) {
+            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            goto out;
+        }
+        if (*tail != '\0') {
+            if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
+                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                goto out;
+            }
+        }
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+
+
  
 static int 
-Column_convert_string_char(Column *self, char *string)
+Column_string_to_native_char(Column *self, char *string)
 {
     size_t n = strlen(string);
-    memcpy(self->element_buffer, string, n); 
+    memcpy(self->native_elements, string, n); 
     return n;
 }
 
@@ -464,7 +556,7 @@ Column_convert_string_char(Column *self, char *string)
  * copy the parsing code above.
  */
 static int 
-Column_convert_string_enum(Column *self, char *string)
+Column_string_to_native_enum(Column *self, char *string)
 {
     int ret = -1;
     unsigned long value; 
@@ -493,7 +585,7 @@ Column_convert_string_enum(Column *self, char *string)
         }
         value = PyLong_AsUnsignedLong(v); 
     }
-    bigendian_copy(self->element_buffer, &value, self->element_size);
+    bigendian_copy(self->native_elements, &value, self->element_size);
     //printf("%s -> %ld\n", string, value);
     ret = 1;
 out:
@@ -507,11 +599,12 @@ out:
  * the appropriate Python exception set.
  */
 static int 
-Column_update_row(Column *self, int num_elements, void *row, u_int32_t row_size)
+Column_update_row(Column *self, void *row, u_int32_t row_size)
 {
     int ret = -1;
     void *dest;
     int bytes_added = 0;
+    int num_elements = self->num_input_elements;
     int data_size = num_elements * self->element_size;
     if (self->verify_elements(self) < 0) {
         goto out;
@@ -555,7 +648,8 @@ Column_dealloc(Column* self)
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
     Py_XDECREF(self->enum_values); 
-    PyMem_Free(self->element_buffer);
+    PyMem_Free(self->native_elements);
+    PyMem_Free(self->input_elements);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -566,11 +660,12 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     int ret = -1;
     static char *kwlist[] = {"name", "description",  "element_type", 
         "element_size", "num_elements", NULL};
-    Py_ssize_t element_buffer_size = 0;
+    Py_ssize_t max_num_elements; 
     Py_ssize_t native_element_size;
     PyObject *name = NULL;
     PyObject *description = NULL;
-    self->element_buffer = NULL;
+    self->native_elements = NULL;
+    self->input_elements = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
             &name, &description, 
             &self->element_type, &self->element_size, 
@@ -587,11 +682,11 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
+        self->python_to_native = Column_python_to_native_int;
+        self->string_to_native = Column_string_to_native_int;
         self->verify_elements = Column_verify_elements_int;
         self->pack_elements = Column_pack_elements_int;
         
-        self->convert_python = Column_convert_python_int;
-        self->convert_string = Column_convert_string_int;
         self->get_value = Column_get_value_int;
         native_element_size = sizeof(int64_t);
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
@@ -599,7 +694,11 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
-        self->convert_string = Column_convert_string_float;
+        self->python_to_native = Column_python_to_native_float;
+        self->string_to_native = Column_string_to_native_float;
+        self->verify_elements = Column_verify_elements_float;
+        self->pack_elements = Column_pack_elements_float;
+        
         self->get_value = Column_get_value_float;
         native_element_size = sizeof(double);
     } else if (self->element_type == ELEMENT_TYPE_CHAR) {
@@ -607,7 +706,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
-        self->convert_string = Column_convert_string_char;
+        self->string_to_native = Column_string_to_native_char;
         self->get_value = Column_get_value_char;
         native_element_size = sizeof(char);
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
@@ -615,7 +714,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
-        self->convert_string = Column_convert_string_enum;
+        self->string_to_native = Column_string_to_native_enum;
         self->get_value = Column_get_value_int;
         native_element_size = sizeof(char);
     } else {    
@@ -635,16 +734,21 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     Py_INCREF(self->enum_values);
-    element_buffer_size = native_element_size * self->num_elements;
+    max_num_elements = self->num_elements;
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        element_buffer_size = self->element_size * MAX_NUM_ELEMENTS;
+        max_num_elements = MAX_NUM_ELEMENTS;    
     }
-    self->element_buffer = PyMem_Malloc(element_buffer_size);
-    if (self->element_buffer == NULL) {
+    self->native_elements = PyMem_Malloc(max_num_elements 
+            * native_element_size);
+    if (self->native_elements == NULL) {
         PyErr_NoMemory();
         goto out;
     }
-
+    self->input_elements = PyMem_Malloc(max_num_elements * sizeof(void *));
+    if (self->input_elements == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     ret = 0;
 out:
     return ret;
@@ -1143,21 +1247,16 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     PyBytesObject *value = NULL;
     void *dest = self->data_buffer + self->current_data_offset;
     char *v;
-    int n, m;
+    int  m;
     if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
             &value)) {
         goto out;
     }
     v = PyBytes_AsString((PyObject *) value);
-    /* this protocol of returning the number of elements encoded is
-     * not necessary now and should be removed. We now use num_buffered_elements
-     * everywhere.
-     */
-    n = column->convert_string(column, v);
-    if (n < 0) {
+    if (column->string_to_native(column, v) < 0) {
         goto out;   
     }
-    m = Column_update_row(column, n, dest, self->current_record_size); 
+    m = Column_update_row(column, dest, self->current_record_size); 
     if (m < 0) {
         goto out;
     }
@@ -1170,7 +1269,7 @@ out:
 static PyObject *
 WriteBuffer_insert_elements(WriteBuffer* self, PyObject *args)
 {
-    int n, m;
+    int m;
     PyObject *ret = NULL;
     Column *column = NULL;
     PyObject *elements = NULL;
@@ -1178,12 +1277,10 @@ WriteBuffer_insert_elements(WriteBuffer* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) { 
         goto out;
     }
-    /* See note above */
-    n = column->convert_python(column, elements);
-    if (n < 0) {
+    if (column->python_to_native(column, elements) < 0) {
         goto out;   
     }
-    m = Column_update_row(column, n, dest, self->current_record_size); 
+    m = Column_update_row(column, dest, self->current_record_size); 
     if (m < 0) {
         goto out;
     }
