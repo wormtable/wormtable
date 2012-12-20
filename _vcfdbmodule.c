@@ -27,6 +27,12 @@ static PyObject *BerkeleyDatabaseError;
  * appropriately.
  * 2) It seems we have a memory leak somewhere. If we run the test cases in a 
  * loop the memory usage keeps increasing. We need to track this down.
+ * 3) The numerical types need a little cleaning up and thought put into. We
+ * now have single and double floating point sizes and should export constants
+ * to tell what they are. There should also be some constants telling range
+ * of integers and so on.
+ * 4) Integer limits are not correct and need to be fixed, and then tested 
+ * properly.
  */
 
 typedef struct Column_t {
@@ -46,10 +52,7 @@ typedef struct Column_t {
     int (*verify_elements)(struct Column_t*);
     int (*pack_elements)(struct Column_t*, void *);
     int (*unpack_elements)(struct Column_t*, void *);
-    /* TODO: implement */
     PyObject *(*native_to_python)(struct Column_t *, int);
-    /* DEPRECATED ... */
-    PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
 
 
@@ -142,6 +145,18 @@ Column_native_to_python_float(Column *self, int index)
     return ret;
 }
 
+static PyObject *
+Column_native_to_python_char(Column *self, int index)
+{
+    PyObject *ret = NULL;
+    char *str = (char *) self->element_buffer;
+    ret = PyBytes_FromStringAndSize(str, self->num_buffered_elements);
+    if (ret == NULL) {
+        PyErr_NoMemory();
+    }
+    return ret;
+}
+
 
 
 /**************************************
@@ -151,11 +166,11 @@ Column_native_to_python_float(Column *self, int index)
  *************************************/
 
 static int 
-Column_unpack_elements_int(Column *self, void *dest)
+Column_unpack_elements_int(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    void *v = source;
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t tmp;
     for (j = 0; j < self->num_buffered_elements; j++) {
@@ -184,11 +199,11 @@ Column_unpack_elements_int(Column *self, void *dest)
 }
 
 static int 
-Column_unpack_elements_float(Column *self, void *dest)
+Column_unpack_elements_float(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    void *v = source;
     double *elements = (double *) self->element_buffer;
     float f_element;
     double d_element;
@@ -206,6 +221,13 @@ Column_unpack_elements_float(Column *self, void *dest)
     }
     ret = 0;
     return ret; 
+}
+
+static int 
+Column_unpack_elements_char(Column *self, void *source)
+{
+    memcpy(self->element_buffer, source, self->num_buffered_elements); 
+    return  0; 
 }
 
 
@@ -261,6 +283,14 @@ Column_pack_elements_float(Column *self, void *dest)
     return ret; 
 }
 
+static int 
+Column_pack_elements_char(Column *self, void *dest)
+{
+    int ret = -1;
+    memcpy(dest, self->element_buffer, self->num_buffered_elements); 
+    return ret; 
+}
+
 
 
 /**************************************
@@ -293,12 +323,14 @@ out:
 static int 
 Column_verify_elements_float(Column *self)
 {
-    int ret = -1;
-    ret = 0;
-    return ret; 
-
+    return 0; 
 }
 
+static int 
+Column_verify_elements_char(Column *self)
+{
+    return 0; 
+}
 /**************************************
  *
  * Python input element parsing.
@@ -412,6 +444,28 @@ Column_python_to_native_float(Column *self, PyObject *elements)
         native[j] = (double) PyFloat_AsDouble(v);
     }
     ret = 0;
+out:
+    return ret;
+}
+
+static int 
+Column_python_to_native_char(Column *self, PyObject *elements)
+{
+    int ret = -1;
+    char *s;
+    Py_ssize_t length;
+    /* Elements must be a single Python bytes object */
+    if (!PyBytes_Check(elements)) {
+        PyErr_SetString(PyExc_TypeError, "Must be bytes");
+        goto out;
+    }
+    if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
+        PyErr_SetString(PyExc_ValueError, "Error in string conversion");
+        goto out;
+    }
+    memcpy(self->element_buffer, s, length);
+    self->num_buffered_elements = length;
+    ret = 0; 
 out:
     return ret;
 }
@@ -540,10 +594,6 @@ Column_string_to_native_float(Column *self, char *string)
 out:
     return ret;
 }
-
-
-
-
  
 static int 
 Column_string_to_native_char(Column *self, char *string)
@@ -678,7 +728,7 @@ Column_get_python_elements(Column *self)
     PyObject *ret = NULL;
     PyObject *u, *t;
     Py_ssize_t j;
-    if (self->num_elements == 1) {
+    if (self->num_elements == 1 || self->element_type == ELEMENT_TYPE_CHAR) {
         ret = self->native_to_python(self, 0);
         if (ret == NULL) {
             goto out;
@@ -755,7 +805,6 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     self->description = description;
     Py_INCREF(self->name);
     Py_INCREF(self->description);
-    self->get_value = NULL;
     if (self->element_type == ELEMENT_TYPE_INT) {
         if (self->element_size < 1 || self->element_size > 8) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -786,8 +835,12 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
-        Py_FatalError("Column type not supported yet");
+        self->python_to_native = Column_python_to_native_char;
         self->string_to_native = Column_string_to_native_char;
+        self->verify_elements = Column_verify_elements_char;
+        self->pack_elements = Column_pack_elements_char;
+        self->unpack_elements = Column_unpack_elements_char;
+        self->native_to_python = Column_native_to_python_char; 
         native_element_size = sizeof(char);
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
         if (self->element_size < 1 || self->element_size > 2) {

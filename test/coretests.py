@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 import random
+import string
 
 import vcfdb
 import _vcfdb
@@ -27,6 +28,17 @@ def get_float_column(element_size, num_elements):
     return _vcfdb.Column(name.encode(), b"", _vcfdb.ELEMENT_TYPE_FLOAT, 
             element_size, num_elements)
 
+def get_char_column(num_elements):
+    """
+    Returns a char column with the specified number of elements.
+    """
+    name = "char_{0}".format(num_elements)
+    return _vcfdb.Column(name.encode(), b"", _vcfdb.ELEMENT_TYPE_CHAR, 1, 
+            num_elements)
+
+
+
+
 # This must be wrong, as we're not triggering an overflow with this 
 # test code.
 def get_int_range(element_size):
@@ -37,6 +49,13 @@ def get_int_range(element_size):
     min_v = -2**(8 * element_size - 1)
     max_v = 2**(8 * element_size - 1) - 1
     return min_v, max_v
+
+def random_string(n):
+    """
+    Returns a random string of length n.
+    """
+    s = ''.join(random.choice(string.printable) for x in range(n)) 
+    return s
 
 class TestDatabase(unittest.TestCase):
     """
@@ -384,4 +403,37 @@ class TestDatabaseFloatIntegrity(TestDatabase):
                         for u, v in zip(rows[j][k], r[c.name]):
                             self.assertAlmostEqual(u, v, places=6)
                     
+class TestDatabaseCharIntegrity(TestDatabase):
+    """
+    Tests the integrity of the database by inserting values and testing 
+    to ensure they are retreived correctly.
+    """ 
+    def get_columns(self):
+        columns = [get_char_column(j) for j in range(1, 20)]
+        columns.append(get_char_column( _vcfdb.NUM_ELEMENTS_VARIABLE))
+        return columns
 
+    def test_random_char_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        cols = self._columns
+        num_rows = 500
+        num_cols = len(cols)
+        rows = [[None for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = self._columns[k]
+                n = c.num_elements
+                if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                    n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                rows[j][k] = random_string(n).encode() 
+                rb.insert_elements(c, rows[j][k]) 
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), num_rows)
+        for j in range(num_rows):
+            r = db.get_row(j)
+            for k in range(num_cols): 
+                c = cols[k]
+                self.assertEqual(rows[j][k], r[c.name])
+ 
