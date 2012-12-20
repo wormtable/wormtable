@@ -190,10 +190,18 @@ Column_unpack_elements_float(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     double *elements = (double *) self->element_buffer;
-    float element;
+    float f_element;
+    double d_element;
+    /* TODO Tidy this up and make it consistent with the pack definition */
     for (j = 0; j < self->num_buffered_elements; j++) {
-        bigendian_copy(&element, v, self->element_size);
-        elements[j] = (double) element;
+        if (self->element_size == 4) {
+            bigendian_copy(&f_element, v, self->element_size);
+            elements[j] = (double) f_element;
+        } else {
+            bigendian_copy(&d_element, v, self->element_size);
+            elements[j] = d_element;
+        }
+            
         v += self->element_size;
     }
     ret = 0;
@@ -232,10 +240,21 @@ Column_pack_elements_float(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     double *elements = (double *) self->element_buffer;
-    float element;
+    float f_element;
+    double d_element;
+    /* TODO tidy this up */
     for (j = 0; j < self->num_buffered_elements; j++) {
-        element = (float) elements[j];
-        bigendian_copy(v, &element, self->element_size);
+        if (self->element_size == 4) {
+            f_element = (float) elements[j];
+            bigendian_copy(v, &f_element, self->element_size);
+        } else if (self->element_size == 8) {
+            d_element = (double) elements[j];
+            bigendian_copy(v, &d_element, self->element_size);
+        } else {
+            assert(0);
+        }
+        
+        
         v += self->element_size;
     }
     ret = 0;
@@ -750,7 +769,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->native_to_python = Column_native_to_python_int; 
         native_element_size = sizeof(int64_t);
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
-        if (self->element_size != sizeof(float)) {
+        if (self->element_size != sizeof(float)
+                && self->element_size != sizeof(double)) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }

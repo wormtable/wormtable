@@ -315,7 +315,7 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
                     n = c.num_elements
                     if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
-                    v = tuple([random.randint(min_v, max_v) for j in range(n)])
+                    v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     rows[j][k] = v
                 rb.insert_elements(c, rows[j][k]) 
             rb.commit_row()
@@ -327,4 +327,61 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
                 c = cols[k]
                 self.assertEqual(rows[j][k], r[c.name])
    
+class TestDatabaseFloatIntegrity(TestDatabase):
+    """
+    Tests the integrity of the database by inserting values and testing 
+    to ensure they are retreived correctly.
+    """ 
+    def get_columns(self):
+        q = _vcfdb.NUM_ELEMENTS_VARIABLE
+        columns = [
+                get_float_column(4, q), get_float_column(8, q), 
+                get_float_column(4, 1), get_float_column(8, 1), 
+                get_float_column(4, 2), get_float_column(8, 2), 
+                get_float_column(4, 3), get_float_column(8, 3), 
+                get_float_column(4, 4), get_float_column(8, 4), 
+                get_float_column(4, 5), get_float_column(8, 5), 
+                ]
+        # randomise the columns so we don't have all the variable 
+        # columns at the start.
+        random.shuffle(columns)
+        return columns
+
+    def test_random_float_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        cols = self._columns
+        num_rows = 500
+        num_cols = len(cols)
+        rows = [[0 for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = cols[k]
+                min_v, max_v = -10, 10 
+                if c.num_elements == 1:
+                    rows[j][k] = random.uniform(min_v, max_v) 
+                else:
+                    n = c.num_elements
+                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                    v = tuple([random.uniform(min_v, max_v) for l in range(n)])
+                    rows[j][k] = v
+                rb.insert_elements(c, rows[j][k]) 
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), num_rows)
+        for j in range(num_rows):
+            r = db.get_row(j)
+            for k in range(num_cols): 
+                c = cols[k]
+                if c.element_size == 8:
+                    self.assertEqual(rows[j][k], r[c.name])
+                else:
+                    #print(rows[j][k])
+                    if c.num_elements == 1:
+                        self.assertAlmostEqual(rows[j][k], r[c.name], places=6)
+                    else:
+                        for u, v in zip(rows[j][k], r[c.name]):
+                            self.assertAlmostEqual(u, v, places=6)
+                    
 
