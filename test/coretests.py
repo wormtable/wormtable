@@ -1,3 +1,5 @@
+from __future__ import print_function
+from __future__ import division 
 
 import os
 import tempfile
@@ -6,7 +8,6 @@ import random
 
 import vcfdb
 import _vcfdb
-
 
 def get_int_column(element_size, num_elements=_vcfdb.NUM_ELEMENTS_VARIABLE):
     """
@@ -37,21 +38,17 @@ def get_int_range(element_size):
     max_v = 2**(8 * element_size - 1) - 1
     return min_v, max_v
 
-
-class TestElementParsers(unittest.TestCase):
+class TestParser(unittest.TestCase):
     """
-    Test the element parsers to ensure they accept and reject 
-    values correctly.
-    """     
+    Superclass of all parser tests. Takes care of allocating a database and
+    clearing it up afterwards. Subclasses must define the get_columns 
+    method.
+    """
     def setUp(self):
         fd, self._db_file = tempfile.mkstemp("-parse-test.db") 
-        self._int_columns = {}
-        for j in range(1, 9):
-            self._int_columns[j] = get_int_column(j, 1)
-        self._float_columns = {4: get_float_column(4, 1)}
-        self._columns = list(self._int_columns.values()) + list(self._float_columns.values()) 
+        self._columns = self.get_columns()
         self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
-            self._columns, cache_size=1024)
+                self._columns, cache_size=1024)
         self._database.create()
         # We can close the open fd now that db has opened it.
         os.close(fd)
@@ -63,6 +60,18 @@ class TestElementParsers(unittest.TestCase):
         self._database.close()
         os.unlink(self._db_file)
 
+class TestElementParsers(TestParser):
+    """
+    Test the element parsers to ensure they accept and reject 
+    values correctly.
+    """     
+    def get_columns(self):
+        self._int_columns = {}
+        for j in range(1, 9):
+            self._int_columns[j] = get_int_column(j, 1)
+        self._float_columns = {4: get_float_column(4, 1)}
+        cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
+        return cols
 
     def test_bad_types(self):
         """
@@ -76,7 +85,6 @@ class TestElementParsers(unittest.TestCase):
 
     def test_good_integer_values(self):
         rb = self._row_buffer
-        c = self._int_columns[1]
         values = ["\t-1 ", "   -2  ", "0   ", "\n4\n\n", " 14 ", "100"]
         for c in self._int_columns.values():
             for v in values:
@@ -117,7 +125,6 @@ class TestElementParsers(unittest.TestCase):
 
     def test_good_float_values(self):
         rb = self._row_buffer
-        c = self._int_columns[1]
         values = ["-1", "-2", "0", "4", "14", "100",
             "0.01", "-5.224234345235", "1E12"]
         for c in self._float_columns.values():
@@ -143,36 +150,45 @@ class TestElementParsers(unittest.TestCase):
                 self.assertRaises(TypeError, rb.insert_elements, c, v)
         
 
-class TestListParsers(unittest.TestCase):
+class TestListParsers(TestParser):
     """
     Test the list parsers to make sure that malformed lists are correctly
     detected.
     """     
-    def setUp(self):
-        fd, self._db_file = tempfile.mkstemp("-parse-test.db") 
+    def get_columns(self): 
         self._int_columns = {}
         self._float_columns = {}
         for j in range(1, 5):
             self._int_columns[j] = get_int_column(1, j)
             self._float_columns[j] = get_float_column(4, j)
-        self._columns = list(self._int_columns.values()) + list(self._float_columns.values()) 
-        self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
-            self._columns, cache_size=1024)
-        self._database.create()
-        # We can close the open fd now that db has opened it.
-        os.close(fd)
-        buffer_size = 64 * 1024
-        self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
+        cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
+        return cols
+     
+    def test_malformed_string_lists(self):
+        rb = self._row_buffer
+        i1 = self._int_columns[1]
+        f1 = self._int_columns[1]
+        for s in [b";", b"-", b",", b",;,;"]:
+            self.assertRaises(ValueError, rb.insert_encoded_elements, f1, s)
+            self.assertRaises(ValueError, rb.insert_encoded_elements, i1, s)
+        i2 = self._int_columns[2]
+        f2 = self._int_columns[2]
+        for s in [b";;", b"-,123", b"0.1,", b"1;2;09"]:
+            self.assertRaises(ValueError, rb.insert_encoded_elements, f2, s)
+            self.assertRaises(ValueError, rb.insert_encoded_elements, i2, s)
 
-    def tearDown(self):
-        self._row_buffer.flush()
-        self._database.close()
-        os.unlink(self._db_file)
+    def test_malformed_python_lists(self):
+        rb = self._row_buffer
+        i2 = self._int_columns[2]
+        f2 = self._int_columns[2]
+        for s in [[1], [1, 2, 3], (1, 2, 3), range(40)]:
+            self.assertRaises(ValueError, rb.insert_elements, f2, s)
+            self.assertRaises(ValueError, rb.insert_elements, i2, s)
+
 
 
     def test_good_integer_values(self):
         rb = self._row_buffer
-        c = self._int_columns[1]
         values = ["\t-1 ", "   -2  ", "0   ", "\n4\n\n", " 14 ", "100"]
         for n, c in self._int_columns.items(): 
             for j in range(10):
@@ -183,7 +199,6 @@ class TestListParsers(unittest.TestCase):
 
     def test_good_float_values(self):
         rb = self._row_buffer
-        c = self._int_columns[1]
         values = ["\t-1 ", "0.22", " \n1e-7  ", "\n4.0\n\n", " 14 ", "100"]
         for n, c in self._float_columns.items(): 
             for j in range(10):
