@@ -45,7 +45,7 @@ typedef struct Column_t {
     int (*pack_elements)(struct Column_t*, void *);
     int (*unpack_elements)(struct Column_t*, void *);
     /* TODO: implement */
-    PyObject *(*native_to_python)(struct Column_t *);
+    PyObject *(*native_to_python)(struct Column_t *, int);
     /* DEPRECATED ... */
     PyObject* (*get_value)(struct Column_t*, void *);
 } Column;
@@ -105,124 +105,48 @@ bigendian_copy(void* dest, void *source, size_t n)
 }
 
 
-
-
 /*==========================================================
  * Column object 
  *==========================================================
  */
 
-/* Element retrieval */
+/**************************************
+ *
+ * Native values to Python conversion. 
+ *
+ *************************************/
 
-static PyObject * 
-Column_get_value_int(Column *self, void *row)
+static PyObject *
+Column_native_to_python_int(Column *self, int index)
 {
-    int j;
-    void *v;
-    unsigned int num_elements = 0;
-    unsigned int offset = 0;
     PyObject *ret = NULL;
-    PyObject *py_long = NULL;
-    PyObject *value = NULL;
-    long long int_value = 0LL;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        v = row + self->fixed_region_offset;
-        bigendian_copy(&offset, v, 2); // FIXME
-        v += 2;
-        bigendian_copy(&num_elements, v, 1); // FIXME
-    } else {
-        offset = self->fixed_region_offset;   
-        num_elements = self->num_elements;
+    int64_t *elements = (int64_t *) self->element_buffer;
+    ret = PyLong_FromLongLong((long long) elements[index]);
+    if (ret == NULL) {
+        PyErr_NoMemory();
     }
-    v = row + offset;
-    if (self->num_elements == 1) {
-        bigendian_copy(&int_value, v, self->element_size); 
-        py_long = PyLong_FromLongLong(int_value);
-        value = py_long;
-    } else {
-        value = PyTuple_New(num_elements);
-        for (j = 0; j < num_elements; j++) {
-            int_value = 0LL;
-            bigendian_copy(&int_value, v, self->element_size); 
-            py_long = PyLong_FromLongLong(int_value);
-            PyTuple_SET_ITEM(value, j, py_long);
-            v += self->element_size;
-        }
-    }
-    ret = value;
     return ret;
 }
 
-static PyObject * 
-Column_get_value_float(Column *self, void *row)
+static PyObject *
+Column_native_to_python_float(Column *self, int index)
 {
-    int j;
-    void *v;
-    unsigned int num_elements = 0;
-    unsigned int offset = 0;
     PyObject *ret = NULL;
-    PyObject *py_float = NULL;
-    PyObject *value = NULL;
-    float float_value = 0.0;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        v = row + self->fixed_region_offset;
-        bigendian_copy(&offset, v, 2); // FIXME
-        v += 2;
-        bigendian_copy(&num_elements, v, 1); // FIXME
-    } else {
-        offset = self->fixed_region_offset;   
-        num_elements = self->num_elements;
+    double *elements = (double *) self->element_buffer;
+    ret = PyFloat_FromDouble(elements[index]);
+    if (ret == NULL) {
+        PyErr_NoMemory();
     }
-    v = row + offset;
-    if (self->num_elements == 1) {
-        bigendian_copy(&float_value, v, self->element_size); 
-        py_float = PyFloat_FromDouble((double) float_value);
-        value = py_float;
-    } else {
-        value = PyTuple_New(num_elements);
-        for (j = 0; j < num_elements; j++) {
-            float_value = 0.0;
-            bigendian_copy(&float_value, v, self->element_size); 
-            py_float = PyFloat_FromDouble((double) float_value);
-            PyTuple_SET_ITEM(value, j, py_float);
-            v += self->element_size;
-        }
-    }
-    
-    ret = value;
-    return ret;
-}
-
-static PyObject * 
-Column_get_value_char(Column *self, void *row)
-{
-    void *v;
-    unsigned int num_elements = 0;
-    unsigned int offset = 0;
-    PyObject *ret = NULL;
-    PyObject *value = NULL;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        v = row + self->fixed_region_offset;
-        bigendian_copy(&offset, v, 2); // FIXME
-        v += 2;
-        bigendian_copy(&num_elements, v, 1); // FIXME
-    } else {
-        offset = self->fixed_region_offset;   
-        num_elements = self->num_elements;
-    }
-    v = row + offset;
-    /* Strings are ALWAYS return returned as single elements */
-    value = PyBytes_FromStringAndSize(v, num_elements);
-    ret = value;
     return ret;
 }
 
 
-/******************************************************************************
+
+/**************************************
  *
  * Unpacking from a row to the element buffer. 
  *
- *****************************************************************************/
+ *************************************/
 
 static int 
 Column_unpack_elements_int(Column *self, void *dest)
@@ -231,9 +155,27 @@ Column_unpack_elements_int(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t tmp;
     for (j = 0; j < self->num_buffered_elements; j++) {
-        bigendian_copy(&elements[j], v, self->element_size);
+        bigendian_copy(&tmp, v, self->element_size);
         v += self->element_size;
+        /* TODO fix this to work for all int sizes */
+        switch (self->element_size) {
+            case 1:
+                elements[j] = (int8_t) tmp;
+                break;
+            case 2:
+                elements[j] = (int16_t) tmp;
+                break;
+            case 4:
+                elements[j] = (int32_t) tmp;
+                break;
+            case 8:
+                elements[j] = (int64_t) tmp;
+                break;
+            default:
+                Py_FatalError("Complete int sizes not yet supported");
+        }
     }
     ret = 0;
     return ret; 
@@ -259,11 +201,11 @@ Column_unpack_elements_float(Column *self, void *dest)
 
 
 
-/******************************************************************************
+/**************************************
  *
  * Packing native values from the element_buffer to a row.
  *
- *****************************************************************************/
+ *************************************/
 
 static int 
 Column_pack_elements_int(Column *self, void *dest)
@@ -273,6 +215,7 @@ Column_pack_elements_int(Column *self, void *dest)
     void *v = dest;
     int64_t *elements = (int64_t *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
+        //printf("\npacking :%ld\n", elements[j]); 
         bigendian_copy(v, &elements[j], self->element_size);
         v += self->element_size;
     }
@@ -299,11 +242,11 @@ Column_pack_elements_float(Column *self, void *dest)
 
 
 
-/******************************************************************************
+/**************************************
  *
  * Verify elements in the buffer. 
  *
- *****************************************************************************/
+ *************************************/
 static int 
 Column_verify_elements_int(Column *self)
 {
@@ -335,11 +278,11 @@ Column_verify_elements_float(Column *self)
 
 }
 
-/******************************************************************************
+/**************************************
  *
  * Python input element parsing.
  *
- *****************************************************************************/
+ *************************************/
 
 
 /*
@@ -454,11 +397,11 @@ out:
 
 
 
-/******************************************************************************
+/**************************************
  *
  * String input element parsing.
  *
- *****************************************************************************/
+ *************************************/
 
 /*
  * Takes a string sequence and places pointers to the start
@@ -665,6 +608,61 @@ out:
     return ret;
 }
 
+/*
+ * Extracts elements from the specified row and inserts them into the 
+ * element buffer.
+ */
+static int 
+Column_extract_elements(Column *self, void *row)
+{
+    int ret = -1;
+    void *dest;
+    int offset, num_elements;
+    dest = row + self->fixed_region_offset; 
+    num_elements = self->num_elements;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        bigendian_copy(&offset, dest, 2); // FIXME
+        dest += 2; // FIXME
+        bigendian_copy(&num_elements, dest, 1); // FIXME
+        dest = row + offset;
+        /* These should really be considered to be internal 
+         * fatal errors, as they should only happen on database
+         * corruption
+         */
+        if (offset >= MAX_ROW_SIZE) {
+            PyErr_SetString(PyExc_ValueError, "Row overflow");
+            goto out;
+        }
+        if (num_elements > MAX_NUM_ELEMENTS) {
+            PyErr_SetString(PyExc_ValueError, "too many elements");
+            goto out;
+        }
+    }
+    ret = self->unpack_elements(self, dest);
+out:
+    return ret;
+}
+
+/*
+ * Converts the native values in the element buffer to the appropriate 
+ * Python types, and returns the result.
+ */
+static PyObject *
+Column_get_python_elements(Column *self)
+{
+    PyObject *ret = NULL;
+    if (self->num_elements == 1) {
+        ret = self->native_to_python(self, 0);
+        if (ret == NULL) {
+            goto out;
+        }
+    }
+out:
+    return ret;
+}
+
+
+
 /* 
  * Returns the number of bytes that this column occupies in the 
  * fixed region of records.
@@ -725,8 +723,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->verify_elements = Column_verify_elements_int;
         self->pack_elements = Column_pack_elements_int;
         self->unpack_elements = Column_unpack_elements_int;
-         
-        self->get_value = Column_get_value_int;
+        self->native_to_python = Column_native_to_python_int; 
         native_element_size = sizeof(int64_t);
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
         if (self->element_size != sizeof(float)) {
@@ -738,29 +735,24 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->verify_elements = Column_verify_elements_float;
         self->pack_elements = Column_pack_elements_float;
         self->unpack_elements = Column_unpack_elements_float;
-        
-        self->get_value = Column_get_value_float;
+        self->native_to_python = Column_native_to_python_float; 
         native_element_size = sizeof(double);
     } else if (self->element_type == ELEMENT_TYPE_CHAR) {
         if (self->element_size != 1) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
+        Py_FatalError("Column type not supported yet");
         self->string_to_native = Column_string_to_native_char;
-        self->get_value = Column_get_value_char;
         native_element_size = sizeof(char);
-        printf("Column NOT SUPPORTED!\n");
-        exit(1);
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
         if (self->element_size < 1 || self->element_size > 2) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
         }
         self->string_to_native = Column_string_to_native_enum;
-        self->get_value = Column_get_value_int;
         native_element_size = sizeof(char);
-        printf("Column NOT SUPPORTED!\n");
-        exit(1);
+        Py_FatalError("Column type not supported yet");
     } else {    
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
@@ -1056,7 +1048,7 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
         goto out;    
     }
     num_columns = PyList_Size(self->columns);
-    row = PyTuple_New(num_columns);
+    row = PyDict_New();
     if (row == NULL) {
         PyErr_NoMemory();
         goto out;
@@ -1067,12 +1059,16 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
             PyErr_SetString(PyExc_ValueError, "Must be Column objects");
             goto out;
         }
-        if (col->get_value == NULL) {
-            value = Py_BuildValue("");
-        } else {
-            value = col->get_value(col, data.data);
+        if (Column_extract_elements(col, data.data) < 0) {
+            goto out;
         }
-        PyTuple_SET_ITEM(row, j, value);
+        value = Column_get_python_elements(col); 
+        if (value == NULL) {
+            goto out;
+        }
+        if (PyDict_SetItem(row, col->name, value) < 0) {
+            goto out;
+        }
     }
     ret = row;
 out:

@@ -38,14 +38,14 @@ def get_int_range(element_size):
     max_v = 2**(8 * element_size - 1) - 1
     return min_v, max_v
 
-class TestParser(unittest.TestCase):
+class TestDatabase(unittest.TestCase):
     """
-    Superclass of all parser tests. Takes care of allocating a database and
+    Superclass of all database tests. Takes care of allocating a database and
     clearing it up afterwards. Subclasses must define the get_columns 
     method.
     """
     def setUp(self):
-        fd, self._db_file = tempfile.mkstemp("-parse-test.db") 
+        fd, self._db_file = tempfile.mkstemp("-test.db") 
         self._columns = self.get_columns()
         self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
                 self._columns, cache_size=1024)
@@ -54,13 +54,21 @@ class TestParser(unittest.TestCase):
         os.close(fd)
         buffer_size = 64 * 1024
         self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
+    
+    def open_reading(self):
+        """
+        Flushes any records and opens the database for reading.
+        """
+        self._row_buffer.flush()
+        self._database.close()
+        self._database.open()
 
     def tearDown(self):
         self._row_buffer.flush()
         self._database.close()
         os.unlink(self._db_file)
 
-class TestElementParsers(TestParser):
+class TestElementParsers(TestDatabase):
     """
     Test the element parsers to ensure they accept and reject 
     values correctly.
@@ -150,7 +158,7 @@ class TestElementParsers(TestParser):
                 self.assertRaises(TypeError, rb.insert_elements, c, v)
         
 
-class TestListParsers(TestParser):
+class TestListParsers(TestDatabase):
     """
     Test the list parsers to make sure that malformed lists are correctly
     detected.
@@ -209,32 +217,16 @@ class TestListParsers(TestParser):
 
 
 
-
-
-
-
-class TestDatabaseLimits(unittest.TestCase):
+class TestDatabaseLimits(TestDatabase):
     """
     Tests the limits of various aspects of the database to see if errors
     are flagged correctly.
-    """     
-    def setUp(self):
-        fd, self._db_file = tempfile.mkstemp("-parse-test.db") 
+    """ 
+    def get_columns(self):
         n = _vcfdb.MAX_ROW_SIZE // (_vcfdb.MAX_NUM_ELEMENTS * 8 
                 + _vcfdb.NUM_ELEMENTS_VARIABLE_OVERHEAD)
-        self._columns = [get_int_column(8) for j in range(n + 1)]
-        self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
-            self._columns, cache_size=1024)
-        self._database.create()
-        # We can close the open fd now that db has opened it.
-        os.close(fd)
-        buffer_size = 64 * 1024
-        self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
-
-    def tearDown(self):
-        self._row_buffer.flush()
-        self._database.close()
-        os.unlink(self._db_file)
+        columns = [get_int_column(8) for j in range(n + 1)]
+        return columns
     
     def test_column_overflow(self):
         """
@@ -251,7 +243,6 @@ class TestDatabaseLimits(unittest.TestCase):
         self.assertRaises(ValueError, rb.insert_elements,
                 self._columns[0], v)
         rb.commit_row()
-        
 
     def test_column_allocation_limits(self):
         # Test zero size columns
@@ -266,6 +257,53 @@ class TestDatabaseLimits(unittest.TestCase):
         self.assertRaises(ValueError, get_int_column, 1, -1)
         self.assertRaises(ValueError, get_float_column, 1, -100)
 
-        
-        
+class TestDatabaseIntegrity(TestDatabase):
+    """
+    Tests the integrity of the database by inserting values and testing 
+    to ensure they are retreived correctly.
+    """ 
+    def get_columns(self):
+        columns = [get_int_column(1, 1), get_int_column(2, 1), 
+                get_int_column(4, 1), get_int_column(8, 1)]
+        return columns
+
+    def test_small_int_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        values = range(-20, 20)
+        for v in values:
+            for c in self._columns:
+                rb.insert_elements(c, v) 
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), len(values))
+        j = 0
+        for v in values:
+            r = self._database.get_row(j)
+            for c in self._columns:
+                self.assertEqual(v, r[c.name])
+            j += 1
+
+    def test_random_int_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        cols = self._columns
+        num_rows = 500
+        num_cols = len(cols)
+        rows = [[0 for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = cols[k]
+                min_v, max_v = get_int_range(c.element_size)
+                rows[j][k] = random.randint(min_v, max_v) 
+                rb.insert_elements(c, rows[j][k]) 
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), num_rows)
+        for j in range(num_rows):
+            r = db.get_row(j)
+            for k in range(num_cols): 
+                c = cols[k]
+                self.assertEqual(rows[j][k], r[c.name])
+   
 
