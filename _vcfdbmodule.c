@@ -13,7 +13,7 @@
 #define ELEMENT_TYPE_ENUM 3
 
 #define NUM_ELEMENTS_VARIABLE 0 
-#define MAX_NUM_ELEMENTS 256
+#define MAX_NUM_ELEMENTS 255
 #define MAX_ROW_SIZE 65536
 
 #define MODULE_DOC \
@@ -25,6 +25,8 @@ static PyObject *BerkeleyDatabaseError;
  * 1) We need much better error reporting for the parsers. These should have a
  * top level variadic function that takes arguments and set the Python exception
  * appropriately.
+ * 2) It seems we have a memory leak somewhere. If we run the test cases in a 
+ * loop the memory usage keeps increasing. We need to track this down.
  */
 
 typedef struct Column_t {
@@ -621,15 +623,18 @@ Column_extract_elements(Column *self, void *row)
     dest = row + self->fixed_region_offset; 
     num_elements = self->num_elements;
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        offset = 0;
+        num_elements = 0;
         bigendian_copy(&offset, dest, 2); // FIXME
         dest += 2; // FIXME
         bigendian_copy(&num_elements, dest, 1); // FIXME
         dest = row + offset;
+        //printf("read %d * %d @ %d\n", offset, num_elements, self->fixed_region_offset);
         /* These should really be considered to be internal 
          * fatal errors, as they should only happen on database
          * corruption
          */
-        if (offset >= MAX_ROW_SIZE) {
+        if (offset < 0 || offset >= MAX_ROW_SIZE) {
             PyErr_SetString(PyExc_ValueError, "Row overflow");
             goto out;
         }
@@ -638,6 +643,7 @@ Column_extract_elements(Column *self, void *row)
             goto out;
         }
     }
+    self->num_buffered_elements = num_elements;
     ret = self->unpack_elements(self, dest);
 out:
     return ret;
@@ -651,11 +657,29 @@ static PyObject *
 Column_get_python_elements(Column *self)
 {
     PyObject *ret = NULL;
+    PyObject *u, *t;
+    Py_ssize_t j;
     if (self->num_elements == 1) {
         ret = self->native_to_python(self, 0);
         if (ret == NULL) {
             goto out;
         }
+    } else {
+        t = PyTuple_New(self->num_buffered_elements);
+        if (t == NULL) {
+            PyErr_NoMemory();
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            u = self->native_to_python(self, j);
+            if (u == NULL) {
+                Py_DECREF(t);
+                PyErr_NoMemory();
+                goto out;
+            }
+            PyTuple_SET_ITEM(t, j, u);
+        }
+        ret = t;
     }
 out:
     return ret;

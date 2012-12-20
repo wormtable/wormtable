@@ -257,14 +257,26 @@ class TestDatabaseLimits(TestDatabase):
         self.assertRaises(ValueError, get_int_column, 1, -1)
         self.assertRaises(ValueError, get_float_column, 1, -100)
 
-class TestDatabaseIntegrity(TestDatabase):
+class TestDatabaseIntegerIntegrity(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
     to ensure they are retreived correctly.
     """ 
     def get_columns(self):
-        columns = [get_int_column(1, 1), get_int_column(2, 1), 
-                get_int_column(4, 1), get_int_column(8, 1)]
+        q = _vcfdb.NUM_ELEMENTS_VARIABLE
+        columns = [
+                get_int_column(1, q), get_int_column(2, q), 
+                get_int_column(4, q), get_int_column(8, q),
+                get_int_column(1, 1), get_int_column(2, 1), 
+                get_int_column(4, 1), get_int_column(8, 1),
+                get_int_column(1, 2), get_int_column(2, 2), 
+                get_int_column(1, 3), get_int_column(2, 3), 
+                get_int_column(1, 4), get_int_column(2, 4), 
+                get_int_column(1, 10), get_int_column(2, 10), 
+                ]
+        # randomise the columns so we don't have all the variable 
+        # columns at the start.
+        random.shuffle(columns)
         return columns
 
     def test_small_int_retrieval(self):
@@ -273,7 +285,8 @@ class TestDatabaseIntegrity(TestDatabase):
         values = range(-20, 20)
         for v in values:
             for c in self._columns:
-                rb.insert_elements(c, v) 
+                if c.num_elements == 1:
+                    rb.insert_elements(c, v)
             rb.commit_row()
         self.open_reading()
         self.assertEqual(db.get_num_rows(), len(values))
@@ -281,7 +294,8 @@ class TestDatabaseIntegrity(TestDatabase):
         for v in values:
             r = self._database.get_row(j)
             for c in self._columns:
-                self.assertEqual(v, r[c.name])
+                if c.num_elements == 1:
+                    self.assertEqual(v, r[c.name])
             j += 1
 
     def test_random_int_retrieval(self):
@@ -295,7 +309,14 @@ class TestDatabaseIntegrity(TestDatabase):
             for k in range(num_cols): 
                 c = cols[k]
                 min_v, max_v = get_int_range(c.element_size)
-                rows[j][k] = random.randint(min_v, max_v) 
+                if c.num_elements == 1:
+                    rows[j][k] = random.randint(min_v, max_v) 
+                else:
+                    n = c.num_elements
+                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
+                    v = tuple([random.randint(min_v, max_v) for j in range(n)])
+                    rows[j][k] = v
                 rb.insert_elements(c, rows[j][k]) 
             rb.commit_row()
         self.open_reading()
