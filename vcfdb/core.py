@@ -210,34 +210,8 @@ class Table(object):
     def get_row(self, index):
         """
         Returns the row at the specified zero-based index.
-        
-        This is a really nasty implementation, and is only
-        intended as a quick and dirty way to get at rows 
-        during development.
         """
-        t = self._database.get_row(index) 
-        l = [v for v in t]
-        for j in range(len(t)):
-            col = self._database.columns[j]
-            #print(col.name, "->", t[j])
-            if col.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
-                d = dict((v, k) for k, v in col.enum_values.items())
-                if col.num_elements == 1:
-                    k = t[j]
-                    if k == 0:
-                        l[j] = None
-                    else:
-                        l[j] = d[k] 
-                else:
-                    e = []
-                    for k in t[j]:
-                        if k == 0:
-                            e.append(None)
-                        else:
-                            e.append(d[k])
-                    l[j] = tuple(e)
-        d = dict((self._database.columns[j].name, l[j]) for j in range(len(t)))
-        return d 
+        return self._database.get_row(index) 
         
     def close(self):
         """

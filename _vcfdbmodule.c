@@ -33,6 +33,7 @@ static PyObject *BerkeleyDatabaseError;
  * of integers and so on.
  * 4) Integer limits are not correct and need to be fixed, and then tested 
  * properly.
+ * 5) Insert check for duplicate column names and columns: this is a nasty bug!
  */
 
 typedef struct Column_t {
@@ -226,6 +227,12 @@ Column_unpack_elements_float(Column *self, void *source)
 static int 
 Column_unpack_elements_char(Column *self, void *source)
 {
+    /*
+    char v[1024];
+    memcpy(v, source, self->num_buffered_elements); 
+    v[self->num_buffered_elements] = 0;
+    printf("unpacked: '%s': %d\n", v, self->num_buffered_elements);
+    */
     memcpy(self->element_buffer, source, self->num_buffered_elements); 
     return  0; 
 }
@@ -287,7 +294,14 @@ static int
 Column_pack_elements_char(Column *self, void *dest)
 {
     int ret = -1;
+    /*
+    char v[1024];
+    memcpy(v, self->element_buffer, self->num_buffered_elements); 
+    v[self->num_buffered_elements] = 0;
+    printf("packed: '%s': %d\n", v, self->num_buffered_elements);
+    */
     memcpy(dest, self->element_buffer, self->num_buffered_elements); 
+    ret = 0;
     return ret; 
 }
 
@@ -671,6 +685,7 @@ Column_update_row(Column *self, void *row, u_int32_t row_size)
         bigendian_copy(dest, &row_size, 2); // FIXME
         dest += 2; // FIXME
         bigendian_copy(dest, &num_elements, 1); // FIXME
+        //printf("set to offset %d, with %d bytes\n", row_size, num_elements);
         dest = row + row_size; 
     }
     self->pack_elements(self, dest);
@@ -1385,6 +1400,10 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     void *dest = self->data_buffer + self->current_data_offset;
     char *v;
     int  m;
+    PyErr_SetString(BerkeleyDatabaseError, "encoded elements not supported: use"
+           " insert_elements instead. This method is being removed. ");
+    goto out;
+    
     if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
             &value)) {
         goto out;

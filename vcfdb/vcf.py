@@ -78,7 +78,10 @@ def vcf_column_factory(line):
         element_type = _vcfdb.ELEMENT_TYPE_CHAR
         element_size = 1
     elif st == STRING: 
-        element_type = _vcfdb.ELEMENT_TYPE_ENUM
+        #element_type = _vcfdb.ELEMENT_TYPE_ENUM
+        # TMP while we're fixing ENUMs
+        num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
+        element_type = _vcfdb.ELEMENT_TYPE_CHAR
         element_size = 1
     else:
         raise ValueError("Unknown VFC type:", st)
@@ -155,14 +158,18 @@ class VCFSchemaGenerator(object):
         int_type = _vcfdb.ELEMENT_TYPE_INT
         char_type = _vcfdb.ELEMENT_TYPE_CHAR
         float_type = _vcfdb.ELEMENT_TYPE_FLOAT
-        enum_type = _vcfdb.ELEMENT_TYPE_ENUM
+        #enum_type = _vcfdb.ELEMENT_TYPE_ENUM
+        # TMP while we're fixing enums
+        enum_type = _vcfdb.ELEMENT_TYPE_CHAR
         variable = _vcfdb.NUM_ELEMENTS_VARIABLE
         # Get the fixed columns
         # TODO Add string constants at the top of the file for the descriptions 
         # of these columns.
+        # TODO These sizes have been changed until some bugs are fixed - they 
+        # need to be gone through again.
         columns = [
-            _vcfdb.Column(CHROM, b"Chromosome", enum_type, 2, 1),
-            _vcfdb.Column(POS, b"position", int_type, 5, 1),
+            _vcfdb.Column(CHROM, b"Chromosome", enum_type, 1, variable),
+            _vcfdb.Column(POS, b"position", int_type, 8, 1),
             _vcfdb.Column(ID, b"ID", char_type, 1, variable),  
             _vcfdb.Column(REF, b"Reference allele", enum_type, 1, 1),
             _vcfdb.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
@@ -239,22 +246,50 @@ class VCFTableBuilder(core.TableBuilder):
                 else:
                     index = genotypes.index(split[0])
                     self._genotype_columns[index][split[1]] = c
- 
+    
+
+    def _insert_elements(self, col, encoded):
+        """
+        Insert the elements into the table after converting to the correct
+        types.
+        """
+        rb = self._row_buffer
+        if col.element_type == _vcfdb.ELEMENT_TYPE_CHAR:
+            rb.insert_elements(col, encoded)
+        else:
+            f = int
+            if col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT:
+                f = float
+            if col.num_elements == 1:
+                rb.insert_elements(col, f(encoded))
+            else:
+                l = [f(s) for s in encoded.split(b",")]
+                rb.insert_elements(col, l)
+                    
+                
 
     def _insert_rows(self):
         """
         Builds the database in opened file.
         """
+        
+        # This was originally written with the idea that the element 
+        # parsing would be done in the C layer. This worked out to 
+        # be more trouble that it was worth, so was quickly 
+        # updated to use the _insert_elements method above. This 
+        # is a quick hack and will be revised again later. This 
+        # function is so time-critical that it will probably be 
+        # 
+        
         fixed_columns = self._fixed_columns
         info_columns = self._info_columns
         genotype_columns = self._genotype_columns
-        rb = self._row_buffer
         for s in self._source_file:
             l = s.split()
             # Read in the fixed columns
             for col, index in fixed_columns:
                 if l[index] != MISSING_VALUE:
-                    rb.insert_encoded_elements(col, l[index])
+                    self._insert_elements(col, l[index])
             # Now process the info columns.
             for mapping in l[7].split(b";"):
                 tokens = mapping.split(b"=")
@@ -262,10 +297,10 @@ class VCFTableBuilder(core.TableBuilder):
                 if name in info_columns:
                     col = info_columns[name]
                     if len(tokens) == 2:
-                        rb.insert_encoded_elements(col, tokens[1])
+                        self._insert_elements(col, tokens[1])
                     else:
                         # This is a Flag column.
-                        rb.insert_encoded_elements(col, b"1")
+                        self._row_buffer.insert_elements(col, [1])
             # Process the genotype columns. 
             j = 0
             fmt = l[8].split(b":")
@@ -275,7 +310,7 @@ class VCFTableBuilder(core.TableBuilder):
                     for k in range(len(fmt)):
                         if fmt[k] in genotype_columns[j]:
                             col = genotype_columns[j][fmt[k]]
-                            rb.insert_encoded_elements(col, tokens[k])
+                            self._insert_elements(col, tokens[k])
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
                     # We can have skipped columns at the end though, which we 
@@ -284,5 +319,5 @@ class VCFTableBuilder(core.TableBuilder):
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
             # Finally, commit the record.
-            rb.commit_row()
+            self._row_buffer.commit_row()
  
