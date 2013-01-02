@@ -161,6 +161,54 @@ Column_native_to_python_char(Column *self, int index)
     return ret;
 }
 
+/**************************************
+ *
+ * Floating point packing and unpacking. This is based on the implementation 
+ * of SortedFloat and SortedDouble from Berkeley DB Java edition. See 
+ * com.sleepycat.bind.tuple.TupleInput for the source of the bit
+ * manipulations below.
+ *
+ *************************************/
+
+static void 
+pack_float(float value, void *dest)
+{
+    int32_t float_bits;
+    memcpy(&float_bits, &value, sizeof(float));
+    float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
+    bigendian_copy(dest, &float_bits, sizeof(float)); 
+}
+
+static double  
+unpack_float(void *src)
+{
+    int32_t float_bits;
+    float value;
+    bigendian_copy(&float_bits, src, sizeof(float));
+    float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
+    memcpy(&value, &float_bits, sizeof(float));
+    return (double) value;
+}
+
+static void 
+pack_double(double value, void *dest)
+{
+    int64_t double_bits;
+    memcpy(&double_bits, &value, sizeof(double));
+    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffL: 0x8000000000000000L;
+    bigendian_copy(dest, &double_bits, sizeof(double)); 
+}
+
+static double  
+unpack_double(void *src)
+{
+    int64_t double_bits;
+    double value;
+    bigendian_copy(&double_bits, src, sizeof(double));
+    double_bits ^= (double_bits < 0) ? 0x8000000000000000L: 0xffffffffffffffffL;
+    memcpy(&value, &double_bits, sizeof(double));
+    return (double) value;
+}
 
 
 /**************************************
@@ -209,18 +257,13 @@ Column_unpack_elements_float(Column *self, void *source)
     int ret = -1;
     void *v = source;
     double *elements = (double *) self->element_buffer;
-    float f_element;
-    double d_element;
     /* TODO Tidy this up and make it consistent with the pack definition */
     for (j = 0; j < self->num_buffered_elements; j++) {
         if (self->element_size == 4) {
-            bigendian_copy(&f_element, v, self->element_size);
-            elements[j] = (double) f_element;
+            elements[j] = unpack_float(v); 
         } else {
-            bigendian_copy(&d_element, v, self->element_size);
-            elements[j] = d_element;
+            elements[j] = unpack_double(v); 
         }
-            
         v += self->element_size;
     }
     ret = 0;
@@ -272,16 +315,12 @@ Column_pack_elements_float(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     double *elements = (double *) self->element_buffer;
-    float f_element;
-    double d_element;
     /* TODO tidy this up */
     for (j = 0; j < self->num_buffered_elements; j++) {
         if (self->element_size == 4) {
-            f_element = (float) elements[j];
-            bigendian_copy(v, &f_element, self->element_size);
+            pack_float((float) elements[j], v);
         } else if (self->element_size == 8) {
-            d_element = (double) elements[j];
-            bigendian_copy(v, &d_element, self->element_size);
+            pack_double(elements[j], v);
         } else {
             assert(0);
         }
