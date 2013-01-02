@@ -65,7 +65,7 @@ def random_string(n):
     """
     Returns a random string of length n.
     """
-    s = ''.join(random.choice(string.ascii_letters) for x in range(n)) 
+    s = ''.join(random.choice(string.printable) for x in range(n)) 
     return s
 
 class TestDatabase(unittest.TestCase):
@@ -385,13 +385,27 @@ class TestDatabaseCharIntegrity(TestDatabase):
         random.shuffle(columns)
         return [c] + columns
 
+    def test_illegal_long_strings(self):
+        """
+        Test to ensure that long strings are trapped correctly.
+        """
+        rb = self._row_buffer
+        for c in self._columns:
+            n = c.num_elements
+            if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                n = _vcfdb.MAX_NUM_ELEMENTS
+            for j in [1, 2, 3, 10, 500, 1000]:
+                s = random_string(n + j).encode() 
+                self.assertRaises(ValueError, rb.insert_elements, c, s)
+        
+
     def test_variable_char_retrieval(self):
         rb = self._row_buffer
         db = self._database
         cols = [c for c in self._columns if 
                 c.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE]
         num_cols = len(cols)
-        num_rows = 10 
+        num_rows = 100
         rows = [[None for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):
             for k in range(num_cols): 
@@ -406,12 +420,36 @@ class TestDatabaseCharIntegrity(TestDatabase):
             for k in range(num_cols): 
                 c = cols[k]
                 self.assertEqual(rows[j][k], r[c.name])
-
+    
+    def test_short_char_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        cols = [c for c in self._columns if 
+                c.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE]
+        num_cols = len(cols)
+        num_rows = 100
+        rows = [[None for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = cols[k]
+                n = random.randint(0, c.num_elements)
+                rows[j][k] = random_string(n).encode() 
+                rb.insert_elements(c, rows[j][k]) 
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), num_rows)
+        for j in range(num_rows):
+            r = db.get_row(j)
+            for k in range(num_cols): 
+                c = cols[k]
+                self.assertEqual(rows[j][k], r[c.name])
+    
+    
     def test_random_char_retrieval(self):
         rb = self._row_buffer
         db = self._database
         cols = self._columns
-        num_rows = 5
+        num_rows = 100
         num_cols = len(cols)
         rows = [[None for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):

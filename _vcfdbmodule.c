@@ -48,7 +48,7 @@ typedef struct Column_t {
     void **input_elements; /* pointer to each elements in input format */
     void *element_buffer; /* parsed input elements in native CPU format */
     int num_buffered_elements;
-    int (*string_to_native)(struct Column_t*, char *);
+    int (*string_to_native)(struct Column_t*, char *);  /* DEPRECATED */
     int (*python_to_native)(struct Column_t*, PyObject *);
     int (*verify_elements)(struct Column_t*);
     int (*pack_elements)(struct Column_t*, void *);
@@ -153,8 +153,16 @@ static PyObject *
 Column_native_to_python_char(Column *self, int index)
 {
     PyObject *ret = NULL;
+    int j = self->num_buffered_elements - 1;
     char *str = (char *) self->element_buffer;
-    ret = PyBytes_FromStringAndSize(str, self->num_buffered_elements);
+    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
+        /* check for shortened fixed-length strings, which will be padded 
+         * with NULLs */
+        while (str[j] == '\0' && j >= 0) {
+            j--;
+        }
+    }
+    ret = PyBytes_FromStringAndSize(str, j + 1); 
     if (ret == NULL) {
         PyErr_NoMemory();
     }
@@ -509,6 +517,8 @@ Column_python_to_native_char(Column *self, PyObject *elements)
 {
     int ret = -1;
     char *s;
+    Py_ssize_t max_length = self->num_elements == NUM_ELEMENTS_VARIABLE?
+            MAX_NUM_ELEMENTS: self->num_elements;
     Py_ssize_t length;
     /* Elements must be a single Python bytes object */
     if (!PyBytes_Check(elements)) {
@@ -518,6 +528,11 @@ Column_python_to_native_char(Column *self, PyObject *elements)
     if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
         PyErr_SetString(PyExc_ValueError, "Error in string conversion");
         goto out;
+    }
+    if (length > max_length) {
+        PyErr_SetString(PyExc_ValueError, "String too long");
+        goto out;
+        
     }
     memcpy(self->element_buffer, s, length);
     self->num_buffered_elements = length;
