@@ -96,18 +96,21 @@ handle_bdb_error(int err)
  * Copies n bytes of source into destination, swapping the order of the 
  * bytes if necessary.
  *
- * TODO We need to put in #defs to detect endianness and adapt accordingly.
- * Currently this is little-endian only.
  */
 static void
 bigendian_copy(void* dest, void *source, size_t n)
 {
+#ifdef WORDS_BIGENDIAN
+    printf("bigendian systems not supported\n");
+    abort();
+#else
     size_t j = 0;
     unsigned char *dest_c = (unsigned char *) dest;
     unsigned char *source_c = (unsigned char *) source;
     for (j = 0; j < n; j++) {
         dest_c[j] = source_c[n - j - 1];
     }
+#endif
 }
 
 
