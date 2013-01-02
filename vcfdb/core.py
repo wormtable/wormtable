@@ -18,6 +18,7 @@ import _vcfdb
 
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
+SCHEMA_VERSION = "0.2-dev"
 
 class Schema(object):
     """
@@ -59,7 +60,7 @@ class Schema(object):
         """
         Writes out this schema to the specified file.
         """ 
-        d = {"version":"0.1-dev"}
+        d = {"version":SCHEMA_VERSION}
         root = ElementTree.Element("schema", d)
         columns = ElementTree.Element("columns")
         root.append(columns)
@@ -103,7 +104,13 @@ class Schema(object):
         if root.tag != "schema":
             # Should have a custom error for this.
             raise ValueError("invalid xml")
-        # TODO check version
+        version = root.get("version")
+        if version is None:
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        if version != SCHEMA_VERSION:
+            raise ValueError("Unsupported schema version - rebuild required.")
+
         xml_columns = root.find("columns")
         for xmlcol in xml_columns.getchildren():
             if xmlcol.tag != "column":
