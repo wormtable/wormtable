@@ -86,6 +86,14 @@ typedef struct {
     u_int64_t record_id; 
 } WriteBuffer;
 
+typedef struct {
+    PyObject_HEAD
+    DB *secondary_db;
+    PyObject *filename;
+    Py_ssize_t cache_size;
+} Index;
+
+
 static void 
 handle_bdb_error(int err)
 {
