@@ -40,6 +40,13 @@ class Schema(object):
         Returns the list of columns in this schema.
         """
         return self.__columns
+    
+    def get_column(self, name):
+        """
+        Returns the column with the specified name.
+        """
+        cols = dict((col.name, col) for col in self.__columns)
+        return cols[name]
 
     def show(self):
         """
@@ -208,6 +215,19 @@ class Table(object):
                 self._schema.get_columns(), self._cache_size)
         self._database.open()
 
+    
+    def get_database(self):
+        return self._database
+
+    def get_homdir(self):
+        return self._homedir
+
+    def get_schema(self):
+        """
+        Returns the schema for this table.
+        """
+        return self._schema
+
     def get_num_rows(self):
         """
         Returns the number of rows in this table.
@@ -226,4 +246,20 @@ class Table(object):
         """
         self._database.close()
 
+class Index(object):
+    """
+    Class representing an index over a set of columns in a table.
+    """
+    def __init__(self, table, columns):
+        self._table = table
+        self._columns = columns
+        name = b"+".join(c.name for c in columns)
+        filename = os.path.join(table.get_homdir().encode(), name + b".db")        
+        self._index = _vcfdb.Index(table.get_database(), filename, columns, 
+                DEFAULT_READ_CACHE_SIZE)
+        self._index.create()
+        self._index.close()
+        self._index.open()
+        self._index.print()
+        self._index.close()
 

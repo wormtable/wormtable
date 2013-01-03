@@ -88,8 +88,10 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
+    BerkeleyDatabase *database;
     DB *secondary_db;
     PyObject *filename;
+    PyObject *columns;
     Py_ssize_t cache_size;
 } Index;
 
@@ -796,6 +798,26 @@ Column_extract_elements(Column *self, void *row)
 out:
     return ret;
 }
+
+/* Copies the data values from the specified source to the specified 
+ * destination
+ */
+static int
+Column_copy_row(Column *self, void *dest, void *src)
+{
+    int ret = -1;
+    void *v = src + self->fixed_region_offset;
+    int len = self->element_size * self->num_elements;
+    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        PyErr_SetString(PyExc_ValueError, "copy not supported on variable size columns.");
+        goto out;
+    }
+    memcpy(dest, v, len); 
+    ret = len;
+out:
+    return ret;
+}
+
 
 /*
  * Converts the native values in the element buffer to the appropriate 
@@ -1608,6 +1630,372 @@ static PyTypeObject WriteBufferType = {
     (initproc)WriteBuffer_init,      /* tp_init */
 };
  
+/*==========================================================
+ * Index object 
+ *==========================================================
+ */
+
+static void
+Index_dealloc(Index* self)
+{
+    Py_XDECREF(self->filename);
+    Py_XDECREF(self->columns);
+    /* make sure that the DB handles are closed. We can ignore errors here. */ 
+    if (self->secondary_db != NULL) {
+        self->secondary_db->close(self->secondary_db, 0);
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Index_init(Index *self, PyObject *args, PyObject *kwds)
+{
+    int j;
+    Column *col;
+    int ret = -1;
+    static char *kwlist[] = {"database", "filename", "columns", "cache_size", NULL}; 
+    PyObject *filename = NULL;
+    PyObject *columns = NULL;
+    BerkeleyDatabase *database = NULL;
+    self->secondary_db = NULL;
+    self->database = NULL;
+    
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
+            &BerkeleyDatabaseType, &database, 
+            &PyBytes_Type, &filename, 
+            &PyList_Type,  &columns, 
+            &self->cache_size)) {
+        goto out;
+    }
+    self->database = database;
+    Py_INCREF(self->database);
+    self->filename = filename;
+    Py_INCREF(self->filename);
+    self->columns = columns;
+    Py_INCREF(self->columns);
+    
+    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
+    }
+    ret = 0;
+out:
+
+    return ret;
+}
+
+
+static PyMemberDef Index_members[] = {
+    {"database", T_OBJECT_EX, offsetof(Index, database), READONLY, "database"},
+    {"filename", T_OBJECT_EX, offsetof(Index, filename), READONLY, "filename"},
+    {"columns", T_OBJECT_EX, offsetof(Index, columns), READONLY, "columns"},
+    {"cache_size", T_PYSSIZET, offsetof(Index, cache_size), READONLY, "cache_size"},
+    {NULL}  /* Sentinel */
+};
+
+
+
+static PyObject *
+Index_open_helper(Index* self, u_int32_t flags)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    char *db_name = NULL;
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    u_int32_t gigs, bytes;
+    DB *db;
+    if (self->secondary_db != NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database already open");
+        goto out;
+    }
+    db_ret = db_create(&db, NULL, 0);
+    self->secondary_db = db;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    gigs = (u_int32_t) (self->cache_size / gigabyte);
+    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    db_ret = db->set_cachesize(db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    db_ret = db->set_flags(db, DB_DUPSORT); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    db_ret = db->set_bt_compress(db, NULL, NULL); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    
+    db_name = PyBytes_AsString(self->filename);
+    db_ret = db->open(db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue("");
+out:
+    return ret;
+}
+
+/* extract values from the specified row and push them into the specified 
+ * secondary key. This has valid memory associated with it.
+ */
+static int 
+Index_fill_key(Index *self, DBT *row, DBT *skey)
+{
+    Column *col;
+    uint32_t len, j;
+    void *v = skey->data;
+    skey->size = 0;
+    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
+        len = Column_copy_row(col, skey->data, row->data);
+        skey->size += len;
+        v += len;
+    }
+ 
+out: 
+    return 0;
+}
+
+static PyObject *
+Index_create(Index* self)
+{
+    int db_ret;
+    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
+    PyObject *ret = NULL;
+    PyObject *tmp = NULL;
+    DBC *cursor = NULL;
+    DB *pdb, *sdb;
+    DBT pkey, pdata, skey, sdata;
+    void *buffer = PyMem_Malloc(MAX_ROW_SIZE);
+    if (buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    tmp = Index_open_helper(self, flags);
+    if (tmp == NULL) {
+        goto out;
+    }
+    pdb = self->database->primary_db;
+    sdb = self->secondary_db;
+    if (pdb == NULL || sdb == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    db_ret = pdb->cursor(pdb, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    memset(&pkey, 0, sizeof(DBT));
+    memset(&pdata, 0, sizeof(DBT));
+    memset(&skey, 0, sizeof(DBT));
+    memset(&sdata, 0, sizeof(DBT));
+    skey.data = buffer;
+    while ((db_ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
+        if (Index_fill_key(self, &pdata, &skey) < 0 ) {
+            goto out;
+        }
+        sdata.data = pkey.data;
+        sdata.size = pkey.size;
+        db_ret = sdb->put(sdb, NULL, &skey, &sdata, 0);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret); 
+            goto out;
+        } 
+    }
+    if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+
+
+    /* Free the cursor */
+    db_ret = cursor->close(cursor);
+    cursor = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+
+    
+    printf("creating index\n");
+    ret = Py_BuildValue(""); 
+
+out:
+    if (buffer != NULL) {
+        PyMem_Free(buffer);
+    }
+    return ret;
+}
+
+static PyObject *
+Index_open(Index* self)
+{
+    int db_ret;
+    PyObject *ret = NULL;
+    u_int32_t flags = DB_RDONLY|DB_NOMMAP;
+    DB *pdb, *sdb;
+    if (Index_open_helper(self, flags) == NULL) {
+        goto out;   
+    }
+    pdb = self->database->primary_db;
+    sdb = self->secondary_db;
+    if (pdb == NULL || sdb == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    db_ret = pdb->associate(pdb, NULL, sdb, NULL, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue(""); 
+out:
+    return ret;
+}
+
+static PyObject *
+Index_print(Index* self)
+{
+    int db_ret, j;
+    Column *col;
+    PyObject *value;
+    PyObject *ret = NULL;
+    DBC *cursor = NULL;
+    DB *pdb, *sdb;
+    DBT key, data; 
+    pdb = self->database->primary_db;
+    sdb = self->secondary_db;
+    if (pdb == NULL || sdb == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    db_ret = sdb->cursor(sdb, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    while ((db_ret = cursor->get(cursor, &key, &data, DB_NEXT)) == 0) {
+        for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+            col = (Column *) PyList_GET_ITEM(self->columns, j);
+            if (!PyObject_TypeCheck(col, &ColumnType)) {
+                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+                goto out;
+            }
+            if (Column_extract_elements(col, data.data) < 0) {
+                goto out;
+            }
+            value = Column_get_python_elements(col); 
+            if (value == NULL) {
+                goto out;
+            }
+            PyObject_Print(value, stdout, 0); 
+            printf("\t");
+        }
+        printf("\n");
+
+    }
+    if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue(""); 
+out:
+    return ret;
+}
+
+
+
+
+static PyObject *
+Index_close(Index* self)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    DB *db = self->secondary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "index closed");
+        goto out;
+    }
+    db_ret = db->close(db, 0); 
+    self->secondary_db = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue("");
+out:
+    self->secondary_db = NULL;
+    return ret; 
+}
+
+
+static PyMethodDef Index_methods[] = {
+    {"create", (PyCFunction) Index_create, METH_NOARGS, "Create the index" },
+    {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
+    {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
+    {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject IndexType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_vcfdb.Index",             /* tp_name */
+    sizeof(Index),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)Index_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "Index objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    0,                     /* tp_iter */
+    0,                     /* tp_iternext */
+    Index_methods,             /* tp_methods */
+    Index_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)Index_init,      /* tp_init */
+};
+   
+
 
 
 /* Initialisation code supports Python 2.x and 3.x. The framework uses the 
@@ -1661,7 +2049,13 @@ init_vcfdb(void)
     }
     Py_INCREF(&ColumnType);
     PyModule_AddObject(module, "Column", (PyObject *) &ColumnType);
-    
+    /* Index */
+    IndexType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&IndexType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&IndexType);
+    PyModule_AddObject(module, "Index", (PyObject *) &IndexType);
     /* WriteBuffer */
     WriteBufferType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriteBufferType) < 0) {

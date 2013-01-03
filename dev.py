@@ -8,6 +8,13 @@ import sys
 
 import vcfdb
 
+def create_index(homedir, column_names):
+    print("creating index", homedir, column_names)
+    table = vcfdb.Table(homedir)
+    schema = table.get_schema()
+    columns = [schema.get_column(name) for name in column_names] 
+    index = vcfdb.Index(table, columns)
+
 def main():
 
     if len(sys.argv) == 3: 
@@ -33,11 +40,10 @@ def main():
             print("row", j)
             for k, v in row.items():
                 print("\t", k, "->", v)
-            
-        table.close()
         table.close()
     else:
-        print("nothing for here")
+        create_index("db_NOBACKUP_/", [b"H27_DP"])
+        
        
 if __name__ == "__main__":
     main()
