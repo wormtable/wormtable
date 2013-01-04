@@ -42,7 +42,7 @@ def main():
                 print("\t", k, "->", v)
         table.close()
     else:
-        create_index("db_NOBACKUP_/", [b"H27_DP"])
+        create_index("db_NOBACKUP_/", [b"CHROM", b"H27_DP", b"INFO_DP4", b"QUAL"])
         
        
 if __name__ == "__main__":

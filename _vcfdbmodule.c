@@ -806,15 +806,21 @@ static int
 Column_copy_row(Column *self, void *dest, void *src)
 {
     int ret = -1;
+    uint32_t len, num_elements, offset;
     void *v = src + self->fixed_region_offset;
-    int len = self->element_size * self->num_elements;
+    num_elements = self->num_elements;
+    // TODO test for DB corruption - this could segfault.
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        PyErr_SetString(PyExc_ValueError, "copy not supported on variable size columns.");
-        goto out;
+        offset = 0;
+        num_elements = 0;
+        bigendian_copy(&offset, v, 2); // FIXME
+        v += 2; // FIXME
+        bigendian_copy(&num_elements, v, 1); // FIXME
+        v = src + offset;
     }
+    len = self->element_size * num_elements;
     memcpy(dest, v, len); 
     ret = len;
-out:
     return ret;
 }
 
@@ -1752,8 +1758,10 @@ out:
 static int 
 Index_fill_key(Index *self, DBT *row, DBT *skey)
 {
+    int ret = -1;
     Column *col;
-    uint32_t len, j;
+    uint32_t j;
+    int len;
     void *v = skey->data;
     skey->size = 0;
     for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
@@ -1762,13 +1770,16 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
             PyErr_SetString(PyExc_ValueError, "Must be Column objects");
             goto out;
         }
-        len = Column_copy_row(col, skey->data, row->data);
+        len = Column_copy_row(col, v, row->data);
+        if (len < 0) {
+            goto out;
+        }
         skey->size += len;
         v += len;
     }
- 
+    ret = 0;
 out: 
-    return 0;
+    return ret;
 }
 
 static PyObject *
@@ -1831,9 +1842,7 @@ Index_create(Index* self)
         handle_bdb_error(db_ret);
         goto out;    
     }
-
     
-    printf("creating index\n");
     ret = Py_BuildValue(""); 
 
 out:
