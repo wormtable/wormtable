@@ -423,7 +423,6 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
         if (seq == NULL) {
             goto out;
         }
-        Py_INCREF(seq); 
         num_elements = PySequence_Fast_GET_SIZE(seq);
         if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
             if (num_elements > MAX_NUM_ELEMENTS) {
