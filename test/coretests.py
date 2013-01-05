@@ -285,35 +285,44 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
                     self.assertEqual(v, r[c.name])
             j += 1
 
-    def test_random_int_retrieval(self):
+    def populate_randomly(self, num_rows):
+        """
+        Generates random values for the columns and inserts them
+        into database. Store these as lists in the instance variable
+        self.rows.
+        """
         rb = self._row_buffer
         db = self._database
         cols = self._columns
-        num_rows = 500
         num_cols = len(cols)
-        rows = [[0 for c in self._columns] for j in range(num_rows)]
+        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):
             for k in range(num_cols): 
                 c = cols[k]
                 min_v, max_v = get_int_range(c.element_size)
                 if c.num_elements == 1:
-                    rows[j][k] = random.randint(min_v, max_v) 
+                    self.rows[j][k] = random.randint(min_v, max_v) 
                 else:
                     n = c.num_elements
                     if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
-                    rows[j][k] = v
-                rb.insert_elements(c, rows[j][k]) 
+                    self.rows[j][k] = v
+                rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
+
+    def test_random_int_retrieval(self):
+        num_rows = 500
+        self.populate_randomly(num_rows)
         self.open_reading()
-        self.assertEqual(db.get_num_rows(), num_rows)
-        for j in range(num_rows):
-            r = db.get_row(j)
-            for k in range(num_cols): 
-                c = cols[k]
-                self.assertEqual(rows[j][k], r[c.name])
-   
+        self.assertEqual(self._database.get_num_rows(), num_rows)
+        for j in range(num_rows): 
+            r = self._database.get_row(j)
+            for k in range(len(self._columns)): 
+                c = self._columns[k]
+                self.assertEqual(self.rows[j][k], r[c.name])
+
+
 class TestDatabaseFloatIntegrity(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
@@ -334,43 +343,55 @@ class TestDatabaseFloatIntegrity(TestDatabase):
         random.shuffle(columns)
         return columns
 
-    def test_random_float_retrieval(self):
+    def populate_randomly(self, num_rows):
+        """
+        Generates random values for the columns and inserts them
+        into database. Store these as lists in the instance variable
+        self.rows.
+        """
         rb = self._row_buffer
         db = self._database
         cols = self._columns
-        num_rows = 500
         num_cols = len(cols)
-        rows = [[0 for c in self._columns] for j in range(num_rows)]
+        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):
             for k in range(num_cols): 
                 c = cols[k]
                 min_v, max_v = -10, 10 
                 if c.num_elements == 1:
-                    rows[j][k] = random.uniform(min_v, max_v) 
+                    self.rows[j][k] = random.uniform(min_v, max_v) 
                 else:
                     n = c.num_elements
                     if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
                     v = tuple([random.uniform(min_v, max_v) for l in range(n)])
-                    rows[j][k] = v
-                rb.insert_elements(c, rows[j][k]) 
+                    self.rows[j][k] = v
+                rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
+
+    def test_random_float_retrieval(self):
+        num_rows = 500
+        cols = self._columns
+        num_cols = len(cols)
+        self.populate_randomly(num_rows)
         self.open_reading()
-        self.assertEqual(db.get_num_rows(), num_rows)
+        self.assertEqual(self._database.get_num_rows(), num_rows)
         for j in range(num_rows):
-            r = db.get_row(j)
+            r = self._database.get_row(j)
             for k in range(num_cols): 
                 c = cols[k]
                 if c.element_size == 8:
-                    self.assertEqual(rows[j][k], r[c.name])
+                    self.assertEqual(self.rows[j][k], r[c.name])
                 else:
                     #print(rows[j][k])
                     if c.num_elements == 1:
-                        self.assertAlmostEqual(rows[j][k], r[c.name], places=6)
+                        self.assertAlmostEqual(self.rows[j][k], r[c.name], places=6)
                     else:
-                        for u, v in zip(rows[j][k], r[c.name]):
+                        for u, v in zip(self.rows[j][k], r[c.name]):
                             self.assertAlmostEqual(u, v, places=6)
-                    
+
+
+
 class TestDatabaseCharIntegrity(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
@@ -384,7 +405,29 @@ class TestDatabaseCharIntegrity(TestDatabase):
         c = get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE)
         random.shuffle(columns)
         return [c] + columns
+    
+    def populate_randomly(self, num_rows):
+        """
+        Generates random values for the columns and inserts them
+        into database. Store these as lists in the instance variable
+        self.rows.
+        """
+        rb = self._row_buffer
+        db = self._database
+        cols = self._columns
+        num_cols = len(cols)
+        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = cols[k]
+                n = c.num_elements
+                if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                    n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                self.rows[j][k] = random_string(n).encode() 
+                rb.insert_elements(c, self.rows[j][k]) 
+            rb.commit_row()
 
+    
     def test_illegal_long_strings(self):
         """
         Test to ensure that long strings are trapped correctly.
@@ -444,28 +487,68 @@ class TestDatabaseCharIntegrity(TestDatabase):
                 c = cols[k]
                 self.assertEqual(rows[j][k], r[c.name])
     
-    
     def test_random_char_retrieval(self):
-        rb = self._row_buffer
-        db = self._database
-        cols = self._columns
         num_rows = 100
-        num_cols = len(cols)
-        rows = [[None for c in self._columns] for j in range(num_rows)]
-        for j in range(num_rows):
-            for k in range(num_cols): 
-                c = self._columns[k]
-                n = c.num_elements
-                if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                    n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
-                rows[j][k] = random_string(n).encode() 
-                rb.insert_elements(c, rows[j][k]) 
-            rb.commit_row()
+        self.populate_randomly(num_rows)
         self.open_reading()
-        self.assertEqual(db.get_num_rows(), num_rows)
+        cols = self._columns
+        num_cols = len(cols)
+        self.assertEqual(self._database.get_num_rows(), num_rows)
         for j in range(num_rows):
-            r = db.get_row(j)
+            r = self._database.get_row(j)
             for k in range(num_cols): 
                 c = cols[k]
-                self.assertEqual(rows[j][k], r[c.name])
+                self.assertEqual(self.rows[j][k], r[c.name])
+
+
+class TestIndexIntegrity(object):
+    """
+    Tests the integrity of indexes. Concrete test should subclass this and one of the 
+    Test classes above to get an implementation of populate_randomly.
+    """
+    def test_column_sort_order(self):
+        num_rows = 500
+        self.populate_randomly(num_rows)
+        self.open_reading()
+        cache_size = 64 * 1024
+        indexes = []
+        index_files = []
+        for c in self._columns:
+            fd, index_file = tempfile.mkstemp("-index-test.db") 
+            index = _vcfdb.Index(self._database, index_file.encode(), [c], 
+                    cache_size)
+            os.close(fd)
+            index.create()
+            index.close()
+            index_files.append(index_file)
+            indexes.append(index)
+        for j in range(len(self._columns)):
+            col = self._columns[j]
+            index = indexes[j]
+            index.open()
+            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            l = [row[0] for row in row_iter]
+            l2 = sorted(l)
+            self.assertEqual(l, l2)
+            index.close()
+
+
+        for f in index_files:
+            os.unlink(f)
+
+
+class TestDatabaseFloatIndexIntegrity(TestDatabaseFloatIntegrity, TestIndexIntegrity):
+    """
+    Test the integrity of float indexes.
+    """
+   
+class TestDatabaseIntegerIndexIntegrity(TestDatabaseIntegerIntegrity, TestIndexIntegrity):
+    """
+    Test the integrity of integer indexes.
+    """
+ 
+class TestDatabaseCharIndexIntegrity(TestDatabaseCharIntegrity, TestIndexIntegrity):
+    """
+    Test the integrity of char indexes.
+    """
  
