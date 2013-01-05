@@ -7,7 +7,7 @@ import test.coretests as coretests
 
 def main():
     # make random tests reproducable
-    random.seed(2)
+    random.seed(3)
     suite = unittest.TestLoader().loadTestsFromModule(coretests)
     unittest.TextTestRunner(verbosity=2).run(suite)
 

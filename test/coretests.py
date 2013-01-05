@@ -244,7 +244,7 @@ class TestDatabaseLimits(TestDatabase):
         self.assertRaises(ValueError, get_int_column, 1, -1)
         self.assertRaises(ValueError, get_float_column, 1, -100)
 
-class TestDatabaseIntegerIntegrity(TestDatabase):
+class TestDatabaseInteger(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
     to ensure they are retreived correctly.
@@ -265,25 +265,6 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
         # columns at the start.
         random.shuffle(columns)
         return columns
-
-    def test_small_int_retrieval(self):
-        rb = self._row_buffer
-        db = self._database
-        values = range(-20, 20)
-        for v in values:
-            for c in self._columns:
-                if c.num_elements == 1:
-                    rb.insert_elements(c, v)
-            rb.commit_row()
-        self.open_reading()
-        self.assertEqual(db.get_num_rows(), len(values))
-        j = 0
-        for v in values:
-            r = self._database.get_row(j)
-            for c in self._columns:
-                if c.num_elements == 1:
-                    self.assertEqual(v, r[c.name])
-            j += 1
 
     def populate_randomly(self, num_rows):
         """
@@ -311,6 +292,28 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
 
+class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
+
+    def test_small_int_retrieval(self):
+        rb = self._row_buffer
+        db = self._database
+        values = range(-20, 20)
+        for v in values:
+            for c in self._columns:
+                if c.num_elements == 1:
+                    rb.insert_elements(c, v)
+            rb.commit_row()
+        self.open_reading()
+        self.assertEqual(db.get_num_rows(), len(values))
+        j = 0
+        for v in values:
+            r = self._database.get_row(j)
+            for c in self._columns:
+                if c.num_elements == 1:
+                    self.assertEqual(v, r[c.name])
+            j += 1
+
+
     def test_random_int_retrieval(self):
         num_rows = 500
         self.populate_randomly(num_rows)
@@ -323,7 +326,7 @@ class TestDatabaseIntegerIntegrity(TestDatabase):
                 self.assertEqual(self.rows[j][k], r[c.name])
 
 
-class TestDatabaseFloatIntegrity(TestDatabase):
+class TestDatabaseFloat(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
     to ensure they are retreived correctly.
@@ -369,6 +372,8 @@ class TestDatabaseFloatIntegrity(TestDatabase):
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
 
+class TestDatabaseFloatIntegrity(TestDatabaseFloat):
+
     def test_random_float_retrieval(self):
         num_rows = 500
         cols = self._columns
@@ -392,7 +397,7 @@ class TestDatabaseFloatIntegrity(TestDatabase):
 
 
 
-class TestDatabaseCharIntegrity(TestDatabase):
+class TestDatabaseChar(TestDatabase):
     """
     Tests the integrity of the database by inserting values and testing 
     to ensure they are retreived correctly.
@@ -402,9 +407,8 @@ class TestDatabaseCharIntegrity(TestDatabase):
         columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
         columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
         columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
-        c = get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE)
         random.shuffle(columns)
-        return [c] + columns
+        return columns
     
     def populate_randomly(self, num_rows):
         """
@@ -427,6 +431,7 @@ class TestDatabaseCharIntegrity(TestDatabase):
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
 
+class TestDatabaseCharIntegrity(TestDatabaseChar):
     
     def test_illegal_long_strings(self):
         """
@@ -530,24 +535,126 @@ class TestIndexIntegrity(object):
             l = [row[0] for row in row_iter]
             l2 = sorted(l)
             self.assertEqual(l, l2)
+            # get the list from the original rows
+            l3 = [row[j] for row in self.rows]
+            l3.sort()
+            # TODO: push the comparison up into the superclass
+            if not (col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4):
+                self.assertEqual(l, l3)
+
+            
             index.close()
 
 
         for f in index_files:
             os.unlink(f)
 
+    def test_column_min_max(self):
+        num_rows = 500
+        self.populate_randomly(num_rows)
+        self.open_reading()
+        cache_size = 64 * 1024
+        indexes = []
+        index_files = []
+        for c in self._columns:
+            fd, index_file = tempfile.mkstemp("-index-test.db") 
+            index = _vcfdb.Index(self._database, index_file.encode(), [c], 
+                    cache_size)
+            os.close(fd)
+            index.create()
+            index.close()
+            index_files.append(index_file)
+            indexes.append(index)
+        for j in range(len(self._columns)):
+            col = self._columns[j]
+            index = indexes[j]
+            index.open()
+            original = [row[j] for row in self.rows] 
+            s = random.sample(original, 2)
+            min_val = min(s),
+            max_val = max(s),
+            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            row_iter.set_min(max_val)
+            row_iter.set_max(min_val)
+            l = [row[0] for row in row_iter]
+            if len(l) != 0:
+                print("TODO: fix this bug!")
+                print(min_val, max_val)
+            self.assertEqual(len(l), 0)
 
-class TestDatabaseFloatIndexIntegrity(TestDatabaseFloatIntegrity, TestIndexIntegrity):
+            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            row_iter.set_min(min_val)
+            row_iter.set_max(max_val)
+            l = [row[0] for row in row_iter]
+            l2 = sorted([v for v in original if min_val[0] <= v and v <= max_val[0]])
+            # TODO: push the comparison up into the superclass
+            if not (col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4):
+                self.assertEqual(l, l2)
+
+            
+            index.close()
+
+
+        for f in index_files:
+            os.unlink(f)
+
+    def test_two_column_sort_order(self):
+        num_rows = 500
+        self.populate_randomly(num_rows)
+        self.open_reading()
+        cache_size = 64 * 1024
+        indexes = []
+        index_files = []
+        original_values = []
+        n = len(self._columns)
+        for j in range(n):
+            for k in range(j + 1, n): 
+                c1 = self._columns[j]
+                c2 = self._columns[k]
+                # TODO: variable length columns don't sort the same way
+                # this might be a bug or it might not - this should be 
+                # verified and the correct sorting procedure used here.
+                if c1.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE and \
+                        c2.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE:
+                
+                    fd, index_file = tempfile.mkstemp("-index-test.db") 
+                    index = _vcfdb.Index(self._database, index_file.encode(), [c1, c2], 
+                            cache_size)
+                    os.close(fd)
+                    index.create()
+                    index.close()
+                    index_files.append(index_file)
+                    indexes.append(index)
+                    original_values.append([(row[j], row[k]) for row in self.rows])
+
+        for index, original in zip(indexes, original_values):
+            index.open()
+            row_iter = _vcfdb.RowIterator(self._database, index.columns, index)
+            l = [row for row in row_iter]
+            l2 = sorted(original) 
+            o = [col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4
+                for col in index.columns]
+            if not any(o):
+                self.assertEqual(l, l2)
+            index.close()
+
+        for f in index_files:
+            os.unlink(f)
+
+
+
+
+class TestDatabaseFloatIndexIntegrity(TestDatabaseFloat, TestIndexIntegrity):
     """
     Test the integrity of float indexes.
     """
    
-class TestDatabaseIntegerIndexIntegrity(TestDatabaseIntegerIntegrity, TestIndexIntegrity):
+class TestDatabaseIntegerIndexIntegrity(TestDatabaseInteger, TestIndexIntegrity):
     """
     Test the integrity of integer indexes.
     """
  
-class TestDatabaseCharIndexIntegrity(TestDatabaseCharIntegrity, TestIndexIntegrity):
+class TestDatabaseCharIndexIntegrity(TestDatabaseChar, TestIndexIntegrity):
     """
     Test the integrity of char indexes.
     """
