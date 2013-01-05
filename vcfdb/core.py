@@ -257,21 +257,26 @@ class Index(object):
         filename = os.path.join(table.get_homdir().encode(), name + b".db")        
         self._index = _vcfdb.Index(table.get_database(), filename, columns, 
                 DEFAULT_READ_CACHE_SIZE)
-        #self._index.create()
-        #self._index.close()
-        self._index.open()
-        for j in range(1):
-            row_iter = _vcfdb.RowIterator(table.get_database(), 
-                    table.get_schema().get_columns(), self._index)
-            row_iter.set_min((b"1", 1000.0))
-            row_iter.set_max((b"1", 2000.0))
-            rows = 0
-            t = 0
-            for row in row_iter:
-                print(row)
-                rows += 1 
-                t += row[1] 
-            print(t, rows)
         
+    def build(self, progress_callback=None, callback_interval=100):
+        if progress_callback is not None:
+            self._index.create(progress_callback, callback_interval)
+        else:
+            self._index.create()
         self._index.close()
 
+    def open(self):
+        self._index.open()
+    
+    def close(self):
+        self._index.close()
+
+    def get_rows(self, columns, min_val=None, max_val=None):
+        row_iter = _vcfdb.RowIterator(self._table.get_database(), columns, 
+                self._index)
+        if min_val is not None:
+            row_iter.set_min(min_val)
+        if max_val is not None:
+            row_iter.set_max(max_val)
+        for row in row_iter:
+            yield row

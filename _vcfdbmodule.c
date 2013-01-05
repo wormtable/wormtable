@@ -1798,18 +1798,37 @@ out:
 }
 
 static PyObject *
-Index_create(Index* self)
+Index_create(Index* self, PyObject *args)
 {
     int db_ret;
     u_int32_t flags = DB_CREATE|DB_TRUNCATE;
     PyObject *ret = NULL;
     PyObject *tmp = NULL;
+    PyObject *arglist, *result;
+    PyObject *progress_callback = NULL;
     DBC *cursor = NULL;
     DB *pdb, *sdb;
     DBT pkey, pdata, skey, sdata;
+    uint64_t callback_interval = 1000;
+    uint64_t records_processed = 0;
     void *buffer = PyMem_Malloc(MAX_ROW_SIZE);
     if (buffer == NULL) {
         PyErr_NoMemory();
+        goto out;
+    }
+    if (!PyArg_ParseTuple(args, "|OK", &progress_callback, 
+            &callback_interval)) { 
+        goto out;
+    }
+    Py_XINCREF(progress_callback);
+    if (progress_callback != NULL) {
+        if (!PyCallable_Check(progress_callback)) {
+            PyErr_SetString(PyExc_TypeError, "progress_callback must be callable");
+            goto out;
+        }
+    }
+    if (callback_interval == 0) {
+        PyErr_SetString(PyExc_ValueError, "callback interval cannot be 0");
         goto out;
     }
     tmp = Index_open_helper(self, flags);
@@ -1843,6 +1862,19 @@ Index_create(Index* self)
             handle_bdb_error(db_ret); 
             goto out;
         } 
+        /* Invoke the callback if necessary */
+        records_processed++;
+        if (records_processed % callback_interval == 0) {
+            if (progress_callback != NULL) {
+                arglist = Py_BuildValue("(K)", records_processed);
+                result = PyObject_CallObject(progress_callback, arglist);
+                Py_DECREF(arglist);
+                if (result == NULL) {
+                    goto out;
+                }
+                Py_DECREF(result);
+            }
+        }
     }
     if (db_ret != DB_NOTFOUND) {
         handle_bdb_error(db_ret);
@@ -1864,6 +1896,7 @@ out:
     if (buffer != NULL) {
         PyMem_Free(buffer);
     }
+    Py_XDECREF(progress_callback);
     return ret;
 }
 
@@ -1972,7 +2005,7 @@ out:
 
 
 static PyMethodDef Index_methods[] = {
-    {"create", (PyCFunction) Index_create, METH_NOARGS, "Create the index" },
+    {"create", (PyCFunction) Index_create, METH_VARARGS, "Create the index" },
     {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
     {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },

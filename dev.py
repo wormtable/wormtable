@@ -8,12 +8,22 @@ import sys
 
 import vcfdb
 
+def progress(processed_rows):
+    print("build callback:", processed_rows);
+
 def create_index(homedir, column_names):
     print("creating index", homedir, column_names)
     table = vcfdb.Table(homedir)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
     index = vcfdb.Index(table, columns)
+    index.build(progress, 1000)
+    read_cols = [schema.get_column(b"POS")] + columns
+    index.open()
+    for row in index.get_rows(read_cols, (b"1", 1000.0), (b"1", 1200.0)):
+        print(row)
+    index.close()
+
 
 def main():
 
