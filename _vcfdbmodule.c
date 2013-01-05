@@ -95,6 +95,19 @@ typedef struct {
     Py_ssize_t cache_size;
 } Index;
 
+typedef struct {
+    PyObject_HEAD
+    BerkeleyDatabase *database;
+    Index *index;
+    PyObject *columns;
+    DBC *cursor;
+    void *min_key;
+    uint32_t min_key_size;
+    void *max_key;
+    uint32_t max_key_size;
+
+} RowIterator;
+
 
 static void 
 handle_bdb_error(int err)
@@ -1095,6 +1108,7 @@ BerkeleyDatabase_init(BerkeleyDatabase *self, PyObject *args, PyObject *kwds)
     /* calculate the variable region offset by summing up the fixed 
      * region size from each column
      */
+    /* TODO there should be a function to verify columns */ 
     for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
         if (!PyObject_TypeCheck(col, &ColumnType)) {
@@ -1680,6 +1694,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     self->columns = columns;
     Py_INCREF(self->columns);
     
+    /* TODO there should be a function to verify columns */ 
     for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
         if (!PyObject_TypeCheck(col, &ColumnType)) {
@@ -2004,6 +2019,277 @@ static PyTypeObject IndexType = {
     (initproc)Index_init,      /* tp_init */
 };
    
+/*==========================================================
+ * RowIterator object 
+ *==========================================================
+ */
+
+static void
+RowIterator_dealloc(RowIterator* self)
+{
+    Py_XDECREF(self->database);
+    Py_XDECREF(self->index);
+    Py_XDECREF(self->columns);
+    /* This doesn't necessarily happen in the right order - need 
+     * to figure out a good way to do this.
+    if (self->cursor != NULL) {
+        self->cursor->close(self->cursor);
+    }
+    */
+    PyMem_Free(self->min_key);
+    PyMem_Free(self->max_key);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
+{
+    int j;
+    Column *col;
+    int ret = -1;
+    static char *kwlist[] = {"database", "columns", "index", NULL}; 
+    PyObject *columns = NULL;
+    BerkeleyDatabase *database = NULL;
+    Index *index = NULL;
+    self->database = NULL;
+    self->columns = NULL;
+    self->index = NULL;
+    self->cursor = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!", kwlist, 
+            &BerkeleyDatabaseType, &database, 
+            &PyList_Type, &columns, 
+            &IndexType, &index)) {
+        goto out;
+    }
+    self->database = database;
+    Py_INCREF(self->database);
+    self->columns = columns;
+    Py_INCREF(self->columns);
+    self->index = index;
+    Py_INCREF(self->index);
+    /* TODO there should be a function to verify columns */ 
+    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
+    }
+    /* TODO this is wasteful - work out how much we really need above */
+    self->min_key = PyMem_Malloc(MAX_ROW_SIZE);
+    self->max_key = PyMem_Malloc(MAX_ROW_SIZE);
+    self->min_key_size = 0;
+    self->max_key_size = 0;
+
+    ret = 0;
+out:
+
+    return ret;
+}
+
+
+
+static PyMemberDef RowIterator_members[] = {
+    {NULL}  /* Sentinel */
+};
+
+
+static PyObject *
+RowIterator_next(RowIterator *self)
+{
+    PyObject *ret = NULL;
+    PyObject *t = NULL;
+    PyObject *value;
+    Column *col;
+    int db_ret, j;
+    DB *db;
+    DBT key, data;
+    uint32_t flags, cmp_size;
+    int max_exceeded = 0;
+    int num_columns = PyList_GET_SIZE(self->columns);
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    
+    flags = DB_NEXT;
+    if (self->cursor == NULL) {
+        /* it's the first time through the loop, so set up the cursor */
+        db = self->index->secondary_db;
+        db_ret = db->cursor(db, NULL, &self->cursor, 0);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+        if (self->min_key_size != 0) {
+            key.data = self->min_key;
+            key.size = self->min_key_size;
+            flags = DB_SET_RANGE;
+        }
+    } 
+    db_ret = self->cursor->get(self->cursor, &key, &data, flags);
+    if (db_ret == 0) {
+        /* Now, check if we've gone past max_key */
+        if (self->max_key_size > 0) {
+            cmp_size = self->max_key_size;
+            if (key.size < cmp_size) {
+                cmp_size = self->max_key_size;
+            }
+            max_exceeded = memcmp(self->max_key, key.data, cmp_size) < 0;
+        }
+        if (!max_exceeded) { 
+            t = PyTuple_New(num_columns);
+            if (t == NULL) {
+                PyErr_NoMemory();
+                goto out;
+            }
+            for (j = 0; j < num_columns; j++) {
+                col = (Column *) PyList_GET_ITEM(self->columns, j);
+                if (!PyObject_TypeCheck(col, &ColumnType)) {
+                    PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+                    Py_DECREF(t);
+                    goto out;
+                }
+                if (Column_extract_elements(col, data.data) < 0) {
+                    Py_DECREF(t);
+                    goto out;
+                }
+                value = Column_get_python_elements(col); 
+                if (value == NULL) {
+                    Py_DECREF(t);
+                    goto out;
+                }
+                PyTuple_SET_ITEM(t, j, value);
+            }
+            ret = t;
+        }
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    if (ret == NULL) {
+        /* Iteration is finished - free the cursor */
+        self->cursor->close(self->cursor);
+        self->cursor = NULL;
+    }
+out:
+    return ret;
+}
+
+
+/* 
+ * Reads the arguments and sets a key in the specified buffer, returning 
+ * its length.
+ */
+static int 
+RowIterator_set_key(RowIterator *self, PyObject *args, void *buffer)
+{
+    int j, m;
+    int size = 0;
+    int ret = -1;
+    Column *col = NULL;
+    PyObject *elements = NULL;
+    PyObject *v = NULL;
+    void *dest = buffer; 
+    if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
+        goto out;
+    }
+    /* TODO add a field for max_key length and test for this here */
+    for (j = 0; j < PyList_GET_SIZE(self->index->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->index->columns, j);
+        v = PyTuple_GetItem(elements, j);
+        if (v == NULL) {
+            goto out;
+        }
+        if (col->python_to_native(col, v) < 0) {
+            goto out;   
+        }
+        if (col->verify_elements(col) < 0) {
+            goto out;
+        }
+        m = col->num_buffered_elements * col->element_size;
+        col->pack_elements(col, dest);
+        dest += m;
+        size += m;
+    }
+    ret = size;
+out:
+    return ret;
+}
+
+static PyObject *
+RowIterator_set_min(RowIterator *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    int size = RowIterator_set_key(self, args, self->min_key);
+    if (size < 0) {
+        goto out;
+    }
+    self->min_key_size = size;
+    ret = Py_BuildValue("");
+out:
+    return ret;
+}
+
+static PyObject *
+RowIterator_set_max(RowIterator *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    int size = RowIterator_set_key(self, args, self->max_key);
+    if (size < 0) {
+        goto out;
+    }
+    self->max_key_size = size;
+    ret = Py_BuildValue("");
+out:
+    return ret;
+}
+
+
+static PyMethodDef RowIterator_methods[] = {
+    {"set_min", (PyCFunction) RowIterator_set_min, METH_VARARGS, "Set the minimum key" },
+    {"set_max", (PyCFunction) RowIterator_set_max, METH_VARARGS, "Set the maximum key" },
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject RowIteratorType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_vcfdb.RowIterator",             /* tp_name */
+    sizeof(RowIterator),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)RowIterator_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "RowIterator objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    PyObject_SelfIter,               /* tp_iter */
+    (iternextfunc) RowIterator_next, /* tp_iternext */
+    RowIterator_methods,             /* tp_methods */
+    RowIterator_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)RowIterator_init,      /* tp_init */
+};
+
 
 
 
@@ -2065,6 +2351,14 @@ init_vcfdb(void)
     }
     Py_INCREF(&IndexType);
     PyModule_AddObject(module, "Index", (PyObject *) &IndexType);
+    /* RowIterator */
+    RowIteratorType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&RowIteratorType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&RowIteratorType);
+    PyModule_AddObject(module, "RowIterator", (PyObject *) &RowIteratorType);
+    
     /* WriteBuffer */
     WriteBufferType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriteBufferType) < 0) {
