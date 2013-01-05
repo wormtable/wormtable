@@ -226,7 +226,7 @@ pack_double(double value, void *dest)
 {
     int64_t double_bits;
     memcpy(&double_bits, &value, sizeof(double));
-    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffL: 0x8000000000000000L;
+    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
     bigendian_copy(dest, &double_bits, sizeof(double)); 
 }
 
@@ -236,7 +236,7 @@ unpack_double(void *src)
     int64_t double_bits;
     double value;
     bigendian_copy(&double_bits, src, sizeof(double));
-    double_bits ^= (double_bits < 0) ? 0x8000000000000000L: 0xffffffffffffffffL;
+    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
     memcpy(&value, &double_bits, sizeof(double));
     return (double) value;
 }
@@ -259,6 +259,9 @@ Column_unpack_elements_int(Column *self, void *source)
     for (j = 0; j < self->num_buffered_elements; j++) {
         bigendian_copy(&tmp, v, self->element_size);
         v += self->element_size;
+        /* flip the sign bit */
+        tmp ^= 1LL << (self->element_size * 8 - 1);
+        
         /* TODO fix this to work for all int sizes */
         switch (self->element_size) {
             case 1:
@@ -330,9 +333,13 @@ Column_pack_elements_int(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t u;
     for (j = 0; j < self->num_buffered_elements; j++) {
         //printf("\npacking :%ld\n", elements[j]); 
-        bigendian_copy(v, &elements[j], self->element_size);
+        u = elements[j];
+        /* flip the sign bit */
+        u ^= 1LL << (self->element_size * 8 - 1);
+        bigendian_copy(v, &u, self->element_size);
         v += self->element_size;
     }
     ret = 0;
