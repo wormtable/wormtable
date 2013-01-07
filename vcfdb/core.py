@@ -250,13 +250,13 @@ class Index(object):
     """
     Class representing an index over a set of columns in a table.
     """
-    def __init__(self, table, columns):
+    def __init__(self, table, columns, cache_size):
         self._table = table
         self._columns = columns
         name = b"+".join(c.name for c in columns)
         filename = os.path.join(table.get_homdir().encode(), name + b".db")        
         self._index = _vcfdb.Index(table.get_database(), filename, columns, 
-                DEFAULT_READ_CACHE_SIZE)
+                cache_size)
         
     def build(self, progress_callback=None, callback_interval=100):
         if progress_callback is not None:

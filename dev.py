@@ -16,7 +16,8 @@ def create_index(homedir, column_names):
     table = vcfdb.Table(homedir)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
-    index = vcfdb.Index(table, columns)
+    cache_size = 8 * 2**30
+    index = vcfdb.Index(table, columns, cache_size)
     index.build(progress, 1000)
     read_cols = [schema.get_column(b"POS")] + columns
     index.open()
