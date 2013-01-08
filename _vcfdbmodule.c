@@ -499,6 +499,13 @@ Column_python_to_native_int(Column *self, PyObject *elements)
          * This should be the only place that we _have_ to work around
          * the difference between integers in Python 2 and 3.
          */
+
+        /* TODO There is a bug here in the handling of integer values in the 
+         * 64 bit range. This needs to be rewrittent to think this through.
+         * Possibly the best thing to do is use the number protocol and 
+         * check the ranges there. This will avoid fiddling around with trying
+         * to detect overflows and stuff.
+         */
 #if PY_MAJOR_VERSION >= 3
         if (!PyLong_Check(v)) {
             PyErr_SetString(PyExc_TypeError, "Must be integer");
@@ -507,7 +514,7 @@ Column_python_to_native_int(Column *self, PyObject *elements)
         native[j] = (int64_t) PyLong_AsLongLong(v);
 #else
         if (!PyInt_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be integer");
+            PyErr_SetString(PyExc_TypeError, "x Must be integer");
             goto out;
         }
         native[j] = (int64_t) PyInt_AsLong(v);

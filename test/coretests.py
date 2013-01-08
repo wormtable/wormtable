@@ -84,7 +84,9 @@ class TestDatabase(unittest.TestCase):
         os.close(fd)
         buffer_size = 64 * 1024
         self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
-    
+        
+        self.num_random_test_rows = 2
+
     def open_reading(self):
         """
         Flushes any records and opens the database for reading.
@@ -120,40 +122,7 @@ class TestElementParsers(TestDatabase):
         for c in self._columns:
             for v in values:
                 self.assertRaises(TypeError, f, c, v)
-
-    def test_good_integer_values(self):
-        rb = self._row_buffer
-        values = ["\t-1 ", "   -2  ", "0   ", "\n4\n\n", " 14 ", "100"]
-        for c in self._int_columns.values():
-            for v in values:
-                self.assertIsNone(rb.insert_elements(c, int(v)))
-        # try some values inside of the acceptable range.
-        for j in range(1, 9):
-            min_v, max_v = get_int_range(j)
-            c = self._int_columns[j]
-            for k in range(10):
-                v = random.randint(min_v, max_v)
-                b = str(v).encode()
-                self.assertIsNone(rb.insert_elements(c, v))
-             
-    def FIX_test_bad_integer_values(self):
-        rb = self._row_buffer
-        # try some values outside of the acceptable range.
-        for j in range(1, 9):
-            min_v, max_v = get_int_range(j)
-            c = self._int_columns[j]
-            b = str(min_v - 1).encode()
-            self.assertRaises(ValueError, rb.insert_encoded_elements, c, b)
-            b = str(max_v + 1).encode()
-            self.assertRaises(ValueError, rb.insert_encoded_elements, c, b)
-            for k in range(10):
-                v = random.randint(2 * min_v, min_v - 1)
-                b = str(v).encode()
-                self.assertRaises(ValueError, rb.insert_encoded_elements, c, b)
-                v = random.randint(max_v, 2 * max_v - 1)
-                b = str(v).encode()
-                self.assertRaises(ValueError, rb.insert_encoded_elements, c, b)
-
+    
     def FIX_test_good_float_values(self):
         rb = self._row_buffer
         values = ["-1", "-2", "0", "4", "14", "100",
@@ -265,6 +234,36 @@ class TestDatabaseInteger(TestDatabase):
         # columns at the start.
         random.shuffle(columns)
         return columns
+    
+    def populate_boundary_values(self):
+        """
+        Populate with boundary values. 
+        """
+        rb = self._row_buffer
+        db = self._database
+        cols = self._columns
+        num_cols = len(cols)
+        num_rows = 2
+        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
+        for j in range(num_rows):
+            for k in range(num_cols): 
+                c = cols[k]
+                min_v, max_v = get_int_range(c.element_size)
+                v = min_v
+                if j == 1:
+                    v = max_v
+                if c.num_elements == 1:
+                    self.rows[j][k] = v 
+                else:
+                    n = c.num_elements
+                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
+                    v = tuple([v for l in range(n)])
+                    self.rows[j][k] = v
+                rb.insert_elements(c, self.rows[j][k]) 
+            rb.commit_row()
+
+
 
     def populate_randomly(self, num_rows):
         """
@@ -292,6 +291,56 @@ class TestDatabaseInteger(TestDatabase):
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
 
+class TestDatabaseIntegerLimits(TestDatabaseInteger):
+    """
+    Tests the limits of integer columns to see if they are dealt with 
+    correctly.
+    """
+    def insert_bad_value(self, column, value):
+        rb = self._row_buffer
+        v = value
+        if column.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE:
+            v = [value]
+        elif column.num_elements != 1:
+            v = [value for j in range(column.num_elements)]
+        def f():
+            #if column.element_size != 8:
+            #print("inserting ", v, "numelements = ", column.num_elements,
+            #       column.element_size)
+            rb.insert_elements(column, v)
+        self.assertRaises(ValueError, f)
+
+    def insert_good_value(self, column, value):
+        rb = self._row_buffer
+        v = value
+        if column.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE:
+            v = [value]
+        elif column.num_elements != 1:
+            v = [value for j in range(column.num_elements)]
+        self.assertIsNone(rb.insert_elements(column, v))
+
+
+    def test_outside_range(self):
+        for c in self._columns:
+            min_v, max_v = get_int_range(c.element_size)
+            for j in range(1, 5):
+                v = min_v - j
+                self.insert_bad_value(c, v) 
+                v = max_v + j
+                self.insert_bad_value(c, v) 
+
+    def test_inside_range(self):
+        for c in self._columns:
+            min_v, max_v = get_int_range(c.element_size)
+            for j in range(0, 5):
+                v = min_v + j
+                self.insert_good_value(c, v) 
+                v = max_v - j
+                self.insert_good_value(c, v) 
+
+
+
+
 class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
 
     def test_small_int_retrieval(self):
@@ -313,9 +362,18 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
                     self.assertEqual(v, r[c.name])
             j += 1
 
+    def test_boundary_int_retrieval(self):
+        self.populate_boundary_values()
+        self.open_reading()
+        for j in range(len(self.rows)):
+            r = self._database.get_row(j)
+            for k in range(len(self._columns)): 
+                c = self._columns[k]
+                self.assertEqual(self.rows[j][k], r[c.name])
+
 
     def test_random_int_retrieval(self):
-        num_rows = 500
+        num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         self.assertEqual(self._database.get_num_rows(), num_rows)
@@ -375,7 +433,7 @@ class TestDatabaseFloat(TestDatabase):
 class TestDatabaseFloatIntegrity(TestDatabaseFloat):
 
     def test_random_float_retrieval(self):
-        num_rows = 500
+        num_rows = self.num_random_test_rows 
         cols = self._columns
         num_cols = len(cols)
         self.populate_randomly(num_rows)
@@ -453,7 +511,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         cols = [c for c in self._columns if 
                 c.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE]
         num_cols = len(cols)
-        num_rows = 100
+        num_rows = self.num_random_test_rows 
         rows = [[None for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):
             for k in range(num_cols): 
@@ -475,7 +533,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         cols = [c for c in self._columns if 
                 c.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE]
         num_cols = len(cols)
-        num_rows = 100
+        num_rows = self.num_random_test_rows 
         rows = [[None for c in self._columns] for j in range(num_rows)]
         for j in range(num_rows):
             for k in range(num_cols): 
@@ -493,7 +551,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
                 self.assertEqual(rows[j][k], r[c.name])
     
     def test_random_char_retrieval(self):
-        num_rows = 100
+        num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         cols = self._columns
@@ -512,7 +570,7 @@ class TestIndexIntegrity(object):
     Test classes above to get an implementation of populate_randomly.
     """
     def test_column_sort_order(self):
-        num_rows = 500
+        num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         cache_size = 64 * 1024
@@ -550,7 +608,7 @@ class TestIndexIntegrity(object):
             os.unlink(f)
 
     def test_column_min_max(self):
-        num_rows = 500
+        num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         cache_size = 64 * 1024
@@ -599,7 +657,7 @@ class TestIndexIntegrity(object):
             os.unlink(f)
 
     def test_two_column_sort_order(self):
-        num_rows = 500
+        num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         cache_size = 64 * 1024
