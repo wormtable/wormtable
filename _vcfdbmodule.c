@@ -153,9 +153,15 @@ Column_native_to_python_int(Column *self, int index)
 {
     PyObject *ret = NULL;
     int64_t *elements = (int64_t *) self->element_buffer;
-    ret = PyLong_FromLongLong((long long) elements[index]);
-    if (ret == NULL) {
-        PyErr_NoMemory();
+    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
+    if (elements[index] == missing_value) {
+        Py_INCREF(Py_None);
+        ret = Py_None;
+    } else {
+        ret = PyLong_FromLongLong((long long) elements[index]);
+        if (ret == NULL) {
+            PyErr_NoMemory();
+        }
     }
     return ret;
 }
@@ -165,9 +171,15 @@ Column_native_to_python_float(Column *self, int index)
 {
     PyObject *ret = NULL;
     double *elements = (double *) self->element_buffer;
-    ret = PyFloat_FromDouble(elements[index]);
-    if (ret == NULL) {
-        PyErr_NoMemory();
+    /* TODO figure out if this is portable */ 
+    if (isnan(elements[index])) {
+        Py_INCREF(Py_None);
+        ret = Py_None;
+    } else {
+        ret = PyFloat_FromDouble(elements[index]);
+        if (ret == NULL) {
+            PyErr_NoMemory();
+        }
     }
     return ret;
 }
@@ -400,7 +412,7 @@ Column_verify_elements_int(Column *self)
     int64_t *elements = (int64_t *) self->element_buffer;
     /* TODO check this - probably not totally right */
     /* This seems to be wrong - must get the correct formula */
-    int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1)) + 1;
     int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
     for (j = 0; j < self->num_buffered_elements; j++) {
         if (elements[j] < min_value || elements[j] > max_value) {
@@ -789,7 +801,7 @@ out:
 
 /*
  * Extracts elements from the specified row and inserts them into the 
- * element buffer.
+ * element buffer. 
  */
 static int 
 Column_extract_elements(Column *self, void *row)
@@ -862,27 +874,40 @@ Column_get_python_elements(Column *self)
     PyObject *ret = NULL;
     PyObject *u, *t;
     Py_ssize_t j;
-    if (self->num_elements == 1 || self->element_type == ELEMENT_TYPE_CHAR) {
+    /* TODO Missing value handling is a mess FIXME!!! */
+    if (self->element_type == ELEMENT_TYPE_CHAR) {
         ret = self->native_to_python(self, 0);
         if (ret == NULL) {
             goto out;
         }
     } else {
-        t = PyTuple_New(self->num_buffered_elements);
-        if (t == NULL) {
-            PyErr_NoMemory();
-            goto out;
-        }
-        for (j = 0; j < self->num_buffered_elements; j++) {
-            u = self->native_to_python(self, j);
-            if (u == NULL) {
-                Py_DECREF(t);
-                PyErr_NoMemory();
-                goto out;
+        if (self->num_buffered_elements == 0) {
+            Py_INCREF(Py_None);
+            ret = Py_None;
+        } else {
+            if (self->num_elements == 1) {
+                ret = self->native_to_python(self, 0);
+                if (ret == NULL) {
+                    goto out;
+                }
+            } else {
+                t = PyTuple_New(self->num_buffered_elements);
+                if (t == NULL) {
+                    PyErr_NoMemory();
+                    goto out;
+                }
+                for (j = 0; j < self->num_buffered_elements; j++) {
+                    u = self->native_to_python(self, j);
+                    if (u == NULL) {
+                        Py_DECREF(t);
+                        PyErr_NoMemory();
+                        goto out;
+                    }
+                    PyTuple_SET_ITEM(t, j, u);
+                }
+                ret = t;
             }
-            PyTuple_SET_ITEM(t, j, u);
         }
-        ret = t;
     }
 out:
     return ret;

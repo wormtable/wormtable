@@ -57,8 +57,8 @@ def get_int_range(element_size):
     Returns the tuple min, max defining the acceptable bounds for an
     integer of the specified size.
     """
-    min_v = -2**(8 * element_size - 1)
-    max_v = 2**(8 * element_size - 1) - 1
+    min_v = -2**(8 * element_size - 1) + 1
+    max_v = 2**(8 * element_size - 1) - 2
     return min_v, max_v
 
 def random_string(n):
@@ -100,6 +100,25 @@ class TestDatabase(unittest.TestCase):
         self._database.close()
         os.unlink(self._db_file)
 
+
+class TestEmptyDatabase(TestDatabase):
+    """
+    Tests to see if an empty database is correctly handled.
+    
+    TODO: there is some nasty bug lurking here somewhere - it caused a crash
+    when looking for another bug.
+    """
+   
+    def get_columns(self):
+        return []
+
+    def test_empty_rows(self):
+        self._row_buffer.commit_row()
+        self.open_reading()
+        self.assertEqual(self._database.get_num_rows(), 1)
+        
+
+  
 class TestElementParsers(TestDatabase):
     """
     Test the element parsers to ensure they accept and reject 
@@ -234,7 +253,7 @@ class TestDatabaseInteger(TestDatabase):
         # columns at the start.
         random.shuffle(columns)
         return columns
-    
+   
     def populate_boundary_values(self):
         """
         Populate with boundary values. 
@@ -339,9 +358,8 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
                 self.insert_good_value(c, v) 
 
 
-
-
 class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
+
 
     def test_small_int_retrieval(self):
         rb = self._row_buffer
@@ -716,4 +734,38 @@ class TestDatabaseCharIndexIntegrity(TestDatabaseChar, TestIndexIntegrity):
     """
     Test the integrity of char indexes.
     """
- 
+
+class TestMissingValues(object):
+    def test_missing_values(self):
+        self._row_buffer.commit_row()
+        self.open_reading()
+        r = self._database.get_row(0)
+        for c in self._columns:
+            if c.num_elements < 2:
+                self.assertIsNone(r[c.name])
+            else:
+                v = [None for j in range(c.num_elements)]
+                self.assertEqual(tuple(v), r[c.name])
+
+
+class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
+    pass
+
+class TestFloatMissingValues(TestMissingValues, TestDatabaseFloat):
+    pass
+    
+class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
+   
+   
+    def test_missing_values(self):
+        self._row_buffer.commit_row()
+        self.open_reading()
+        r = self._database.get_row(0)
+        for c in self._columns:
+            self.assertEqual(b"", r[c.name])
+
+
+
+
+
+
