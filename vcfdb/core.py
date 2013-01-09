@@ -18,7 +18,7 @@ import _vcfdb
 
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
-SCHEMA_VERSION = "0.3-dev"
+SCHEMA_VERSION = "0.4-dev"
 
 class Schema(object):
     """
