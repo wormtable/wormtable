@@ -519,6 +519,7 @@ static int
 Column_python_to_native_int(Column *self, PyObject *elements)
 {
     int ret = -1;
+    int overflow;
     int64_t *native= (int64_t *) self->element_buffer; 
     PyObject *v;
     int j;
@@ -527,30 +528,21 @@ Column_python_to_native_int(Column *self, PyObject *elements)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
-        /* 
-         * This should be the only place that we _have_ to work around
-         * the difference between integers in Python 2 and 3.
+        if (!PyNumber_Check(v)) {
+            PyErr_SetString(PyExc_TypeError, "Must be numeric");
+            goto out;
+        }
+        /* TODO there are a number of potential problems with this 
+         * protocol. (1) the silent conversion to integer might be
+         * unexpected; (2) We might have problems on 32 bit platforms
+         * as a long might not be big enough. 
          */
+        native[j] = (int64_t) PyLong_AsLongAndOverflow(v, &overflow);
+        if (overflow != 0) {
+            PyErr_SetString(PyExc_ValueError, "Integer overflow");
+            goto out;
 
-        /* TODO There is a bug here in the handling of integer values in the 
-         * 64 bit range. This needs to be rewrittent to think this through.
-         * Possibly the best thing to do is use the number protocol and 
-         * check the ranges there. This will avoid fiddling around with trying
-         * to detect overflows and stuff.
-         */
-#if PY_MAJOR_VERSION >= 3
-        if (!PyLong_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be integer");
-            goto out;
         }
-        native[j] = (int64_t) PyLong_AsLongLong(v);
-#else
-        if (!PyInt_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "x Must be integer");
-            goto out;
-        }
-        native[j] = (int64_t) PyInt_AsLong(v);
-#endif
     }
     ret = 0;
 out:
@@ -569,7 +561,7 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
-        if (!PyFloat_Check(v)) {
+        if (!PyNumber_Check(v)) {
             PyErr_SetString(PyExc_TypeError, "Must be float");
             goto out;
         }
