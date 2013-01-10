@@ -117,23 +117,19 @@ handle_bdb_error(int err)
 
 /* 
  * Copies n bytes of source into destination, swapping the order of the 
- * bytes if necessary.
+ * bytes.
  *
+ * TODO rename to byteswap_copy
  */
 static void
 bigendian_copy(void* dest, void *source, size_t n)
 {
-#ifdef WORDS_BIGENDIAN
-    printf("bigendian systems not supported\n");
-    abort();
-#else
     size_t j = 0;
     unsigned char *dest_c = (unsigned char *) dest;
     unsigned char *source_c = (unsigned char *) source;
     for (j = 0; j < n; j++) {
         dest_c[j] = source_c[n - j - 1];
     }
-#endif
 }
 
 
@@ -219,7 +215,11 @@ pack_float(float value, void *dest)
     int32_t float_bits;
     memcpy(&float_bits, &value, sizeof(float));
     float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &float_bits, sizeof(float)); 
+#else    
     bigendian_copy(dest, &float_bits, sizeof(float)); 
+#endif
 }
 
 static double  
@@ -227,7 +227,11 @@ unpack_float(void *src)
 {
     int32_t float_bits;
     float value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&float_bits, src, sizeof(float));
+#else
     bigendian_copy(&float_bits, src, sizeof(float));
+#endif
     float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
     memcpy(&value, &float_bits, sizeof(float));
     return (double) value;
@@ -239,7 +243,11 @@ pack_double(double value, void *dest)
     int64_t double_bits;
     memcpy(&double_bits, &value, sizeof(double));
     double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &double_bits, sizeof(double)); 
+#else
     bigendian_copy(dest, &double_bits, sizeof(double)); 
+#endif
 }
 
 static double  
@@ -247,7 +255,11 @@ unpack_double(void *src)
 {
     int64_t double_bits;
     double value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&double_bits, src, sizeof(double));
+#else
     bigendian_copy(&double_bits, src, sizeof(double));
+#endif
     double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
     memcpy(&value, &double_bits, sizeof(double));
     return (double) value;
@@ -269,7 +281,11 @@ Column_unpack_elements_int(Column *self, void *source)
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t tmp;
     for (j = 0; j < self->num_buffered_elements; j++) {
+#ifdef WORDS_BIGENDIAN
+        memcpy(&tmp, v + (8 - self->element_size), self->element_size);
+#else
         bigendian_copy(&tmp, v, self->element_size);
+#endif
         v += self->element_size;
         /* flip the sign bit */
         tmp ^= 1LL << (self->element_size * 8 - 1);
@@ -351,7 +367,11 @@ Column_pack_elements_int(Column *self, void *dest)
         u = elements[j];
         /* flip the sign bit */
         u ^= 1LL << (self->element_size * 8 - 1);
+#ifdef WORDS_BIGENDIAN
+        memcpy(v, &u + (8 - self->element_size), self->element_size);
+#else
         bigendian_copy(v, &u, self->element_size);
+#endif
         v += self->element_size;
     }
     ret = 0;
@@ -756,12 +776,96 @@ Column_string_to_native_enum(Column *self, char *string)
         }
         value = PyLong_AsUnsignedLong(v); 
     }
+#ifdef WORDS_BIGENDIAN
+    printf("bigendian enums not supported\n");
+    abort();
+#else
     bigendian_copy(self->element_buffer, &value, self->element_size);
+#endif
     //printf("%s -> %ld\n", string, value);
     ret = 1;
 out:
     return ret;
 }
+
+
+/*
+ * Packs the address and number of elements in a variable length column at the
+ * specified pointer.
+ * 
+ * TODO Error checking here - this is a major opportunity for buffer overflows.
+ */
+static int 
+Column_pack_variable_elements_address(Column *self, void *dest, 
+        uint32_t offset, uint32_t num_elements)
+{
+    int ret = -1;
+    uint16_t off = (uint16_t) offset;
+    uint8_t n = (uint8_t) num_elements;
+    void *v = dest;
+    /* TODO these are internal errors so should have a different 
+     * exception
+     */
+    if (offset >= MAX_ROW_SIZE) {
+        PyErr_SetString(PyExc_ValueError, "Row overflow");
+        goto out;
+    }
+    if (num_elements > MAX_NUM_ELEMENTS) {
+        PyErr_SetString(PyExc_ValueError, "too many elements");
+        goto out;
+    }
+#if WORDS_BIGENDIAN
+    memcpy(v, &off, sizeof(off)); 
+    memcpy(v + sizeof(off), &n, sizeof(n)); 
+#else
+    bigendian_copy(v, &off, sizeof(off)); 
+    bigendian_copy(v + sizeof(off), &n, sizeof(n)); 
+#endif
+    ret = 0;
+out:
+    return ret;
+}   
+
+/*
+ * Unpacks the address and number of elements in a variable length column at the
+ * specified pointer.
+ * 
+ * TODO Error checking here - this is a major opportunity for buffer overflows.
+ */
+static int 
+Column_unpack_variable_elements_address(Column *self, void *src, 
+        uint32_t *offset, uint32_t *num_elements)
+{
+    int ret = -1;
+    void *v = src;
+    uint16_t off = 0;
+    uint8_t n = 0;
+#if WORDS_BIGENDIAN
+    memcpy(&off, v, sizeof(off)); 
+    memcpy(&n, v + sizeof(off), sizeof(n)); 
+#else
+    bigendian_copy(&off, v, sizeof(off)); 
+    bigendian_copy(&n, v + sizeof(off), sizeof(n)); 
+#endif
+    /* These should really be considered to be internal 
+     * fatal errors, as they should only happen on database
+     * corruption
+     */
+    if (off >= MAX_ROW_SIZE) {
+        PyErr_SetString(PyExc_ValueError, "Row overflow");
+        goto out;
+    }
+    if (n > MAX_NUM_ELEMENTS) {
+        PyErr_SetString(PyExc_ValueError, "too many elements");
+        goto out;
+    }
+    *offset = (uint32_t) off;
+    *num_elements = (uint32_t) n;
+    ret = 0;
+out: 
+    return ret;
+}   
+
 
 /*
  * Inserts the values in the element buffer into the specified row which 
@@ -770,12 +874,12 @@ out:
  * the appropriate Python exception set.
  */
 static int 
-Column_update_row(Column *self, void *row, u_int32_t row_size)
+Column_update_row(Column *self, void *row, uint32_t row_size)
 {
     int ret = -1;
     void *dest;
     int bytes_added = 0;
-    int num_elements = self->num_buffered_elements;
+    uint32_t num_elements = (uint32_t) self->num_buffered_elements;
     int data_size = num_elements * self->element_size;
     if (self->verify_elements(self) < 0) {
         goto out;
@@ -787,9 +891,10 @@ Column_update_row(Column *self, void *row, u_int32_t row_size)
             PyErr_SetString(PyExc_ValueError, "Row overflow");
             goto out;
         }
-        bigendian_copy(dest, &row_size, 2); // FIXME
-        dest += 2; // FIXME
-        bigendian_copy(dest, &num_elements, 1); // FIXME
+        if (Column_pack_variable_elements_address(self, dest, row_size, 
+                num_elements) < 0) {
+            goto out;
+        }
         //printf("set to offset %d, with %d bytes\n", row_size, num_elements);
         dest = row + row_size; 
     }
@@ -807,33 +912,19 @@ static int
 Column_extract_elements(Column *self, void *row)
 {
     int ret = -1;
-    void *dest;
-    int offset, num_elements;
-    dest = row + self->fixed_region_offset; 
+    void *src;
+    uint32_t offset, num_elements;
+    src = row + self->fixed_region_offset; 
     num_elements = self->num_elements;
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        offset = 0;
-        num_elements = 0;
-        bigendian_copy(&offset, dest, 2); // FIXME
-        dest += 2; // FIXME
-        bigendian_copy(&num_elements, dest, 1); // FIXME
-        dest = row + offset;
-        //printf("read %d * %d @ %d\n", offset, num_elements, self->fixed_region_offset);
-        /* These should really be considered to be internal 
-         * fatal errors, as they should only happen on database
-         * corruption
-         */
-        if (offset < 0 || offset >= MAX_ROW_SIZE) {
-            PyErr_SetString(PyExc_ValueError, "Row overflow");
+        if (Column_unpack_variable_elements_address(self, src, &offset, 
+                &num_elements) < 0) {
             goto out;
         }
-        if (num_elements > MAX_NUM_ELEMENTS) {
-            PyErr_SetString(PyExc_ValueError, "too many elements");
-            goto out;
-        }
+        src = row + offset;
     }
     self->num_buffered_elements = num_elements;
-    ret = self->unpack_elements(self, dest);
+    ret = self->unpack_elements(self, src);
 out:
     return ret;
 }
@@ -847,19 +938,19 @@ Column_copy_row(Column *self, void *dest, void *src)
     int ret = -1;
     uint32_t len, num_elements, offset;
     void *v = src + self->fixed_region_offset;
+    offset = 0;
     num_elements = self->num_elements;
-    // TODO test for DB corruption - this could segfault.
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
-        offset = 0;
-        num_elements = 0;
-        bigendian_copy(&offset, v, 2); // FIXME
-        v += 2; // FIXME
-        bigendian_copy(&num_elements, v, 1); // FIXME
+        if (Column_unpack_variable_elements_address(self, v, &offset, 
+                &num_elements) < 0) {
+            goto out;
+        }
         v = src + offset;
     }
     len = self->element_size * num_elements;
     memcpy(dest, v, len); 
     ret = len;
+out:
     return ret;
 }
 
@@ -1229,6 +1320,31 @@ BerkeleyDatabase_open(BerkeleyDatabase* self)
     return BerkeleyDatabase_open_helper(self, flags);
 }
 
+static void 
+BerkeleyDatabase_write_key(BerkeleyDatabase *self, void *dest, uint64_t row_id)
+{
+#ifdef WORDS_BIGENDIAN
+    ptrdiff_t diff = 8 - self->key_size;
+    memcpy(dest, &row_id + diff, self->key_size);
+#else
+    bigendian_copy(dest, &row_id, self->key_size);
+#endif
+}
+
+static uint64_t 
+BerkeleyDatabase_read_key(BerkeleyDatabase *self, void *src)
+{
+    uint64_t row_id = 0LL;
+#ifdef WORDS_BIGENDIAN
+    ptrdiff_t diff = 8 - self->key_size;
+    memcpy(&row_id + diff, src, self->key_size);
+#else
+    bigendian_copy(&row_id, src, self->key_size);
+#endif
+    return row_id;
+}
+
+
 static PyObject *
 BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
 {
@@ -1252,7 +1368,7 @@ BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
     memset(&data, 0, sizeof(DBT));  
     db_ret = cursor->get(cursor, &key, &data, DB_PREV);
     if (db_ret == 0) {
-        bigendian_copy(&max_key, key.data, self->key_size);
+        max_key = BerkeleyDatabase_read_key(self, key.data);
         max_key++;
     } else if (db_ret != DB_NOTFOUND) {
         handle_bdb_error(db_ret);
@@ -1296,7 +1412,7 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
     }
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));  
-    bigendian_copy(key_buff, &record_id, self->key_size);
+    BerkeleyDatabase_write_key(self, key_buff, record_id);    
     key.size = self->key_size;
     key.data = key_buff;
     db_ret = db->get(db, NULL, &key, &data, 0);
@@ -1602,7 +1718,7 @@ WriteBuffer_commit_row(WriteBuffer* self, PyObject *args)
     void *dest;
     int barrier = self->data_buffer_size - MAX_ROW_SIZE;
     dest = self->key_buffer + self->current_key_offset;
-    bigendian_copy(dest, &self->record_id, self->database->key_size);
+    BerkeleyDatabase_write_key(self->database, dest, self->record_id);
     /*
     int j;
     printf("Commit:%llu %d \n", key_val, self->current_record_size);

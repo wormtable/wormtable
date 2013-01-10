@@ -58,7 +58,7 @@ def get_int_range(element_size):
     integer of the specified size.
     """
     min_v = -2**(8 * element_size - 1) + 1
-    max_v = 2**(8 * element_size - 1) - 2
+    max_v = 2**(8 * element_size - 1) - 1
     return min_v, max_v
 
 def random_string(n):
@@ -85,7 +85,7 @@ class TestDatabase(unittest.TestCase):
         buffer_size = 64 * 1024
         self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
         
-        self.num_random_test_rows = 2
+        self.num_random_test_rows = 1000 
 
     def open_reading(self):
         """
@@ -276,7 +276,7 @@ class TestDatabaseInteger(TestDatabase):
                 else:
                     n = c.num_elements
                     if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                        n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
+                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
                     v = tuple([v for l in range(n)])
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
@@ -304,7 +304,7 @@ class TestDatabaseInteger(TestDatabase):
                 else:
                     n = c.num_elements
                     if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                        n = random.randint(0, _vcfdb.MAX_NUM_ELEMENTS)
+                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
@@ -534,7 +534,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         for j in range(num_rows):
             for k in range(num_cols): 
                 c = cols[k]
-                rows[j][k] = random_string(j).encode() 
+                rows[j][k] = random_string(min(j, 50)).encode() 
                 rb.insert_elements(c, rows[j][k]) 
             rb.commit_row()
         self.open_reading()
