@@ -327,7 +327,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
             #print("inserting ", v, "numelements = ", column.num_elements,
             #       column.element_size)
             rb.insert_elements(column, v)
-        self.assertRaises(ValueError, f)
+        self.assertRaises(OverflowError, f)
 
     def insert_good_value(self, column, value):
         rb = self._row_buffer
