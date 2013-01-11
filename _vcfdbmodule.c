@@ -115,6 +115,7 @@ handle_bdb_error(int err)
     PyErr_SetString(BerkeleyDatabaseError, db_strerror(err));
 }
 
+#ifndef WORDS_BIGENDIAN
 /* 
  * Copies n bytes of source into destination, swapping the order of the 
  * bytes.
@@ -131,7 +132,7 @@ bigendian_copy(void* dest, void *source, size_t n)
         dest_c[j] = source_c[n - j - 1];
     }
 }
-
+#endif
 
 /*==========================================================
  * Column object 
@@ -278,13 +279,16 @@ Column_unpack_elements_int(Column *self, void *source)
     int j;
     int ret = -1;
     void *v = source;
+    void *dest;
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t tmp;
     for (j = 0; j < self->num_buffered_elements; j++) {
+        dest = &tmp;
 #ifdef WORDS_BIGENDIAN
-        memcpy(&tmp, v + (8 - self->element_size), self->element_size);
+        dest += 8 - self->element_size;
+        memcpy(dest, v, self->element_size);
 #else
-        bigendian_copy(&tmp, v, self->element_size);
+        bigendian_copy(dest, v, self->element_size);
 #endif
         v += self->element_size;
         /* flip the sign bit */
@@ -360,6 +364,7 @@ Column_pack_elements_int(Column *self, void *dest)
     int j;
     int ret = -1;
     void *v = dest;
+    void *src;
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t u;
     for (j = 0; j < self->num_buffered_elements; j++) {
@@ -367,10 +372,11 @@ Column_pack_elements_int(Column *self, void *dest)
         u = elements[j];
         /* flip the sign bit */
         u ^= 1LL << (self->element_size * 8 - 1);
+        src = &u;
 #ifdef WORDS_BIGENDIAN
-        memcpy(v, &u + (8 - self->element_size), self->element_size);
+        memcpy(v, src + (8 - self->element_size), self->element_size);
 #else
-        bigendian_copy(v, &u, self->element_size);
+        bigendian_copy(v, src, self->element_size);
 #endif
         v += self->element_size;
     }
@@ -1312,30 +1318,32 @@ BerkeleyDatabase_open(BerkeleyDatabase* self)
     return BerkeleyDatabase_open_helper(self, flags);
 }
 
-static void 
-BerkeleyDatabase_write_key(BerkeleyDatabase *self, void *dest, uint64_t row_id)
-{
-#ifdef WORDS_BIGENDIAN
-    ptrdiff_t diff = 8 - self->key_size;
-    memcpy(dest, &row_id + diff, self->key_size);
-#else
-    bigendian_copy(dest, &row_id, self->key_size);
-#endif
-}
-
 static uint64_t 
 BerkeleyDatabase_read_key(BerkeleyDatabase *self, void *src)
 {
     uint64_t row_id = 0LL;
 #ifdef WORDS_BIGENDIAN
-    ptrdiff_t diff = 8 - self->key_size;
-    memcpy(&row_id + diff, src, self->key_size);
+    void *dest = &row_id;
+    dest += 8 - self->key_size;
+    memcpy(dest, src, self->key_size);
 #else
     bigendian_copy(&row_id, src, self->key_size);
 #endif
     return row_id;
 }
 
+
+static void 
+BerkeleyDatabase_write_key(BerkeleyDatabase *self, void *dest, uint64_t row_id)
+{
+#ifdef WORDS_BIGENDIAN
+    void *src = &row_id;
+    src += 8 - self->key_size;
+    memcpy(dest, src, self->key_size);
+#else
+    bigendian_copy(dest, &row_id, self->key_size);
+#endif
+}
 
 static PyObject *
 BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
