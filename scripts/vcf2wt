@@ -1,7 +1,6 @@
 #!python
-
 """
-VCF processing for wormtable. 
+Convert VCF data to wormtable.
 
 TODO:document.
 
@@ -17,8 +16,7 @@ effort.
 from __future__ import print_function
 from __future__ import division 
 
-import _wormtable
-import wormtable
+import wormtable as wt
 
 import os
 import sys
@@ -34,6 +32,17 @@ QUAL = b"QUAL"
 FILTER = b"FILTER"
 INFO = b"INFO"
 
+CHROM_DESC = b"CHROM"
+POS_DESC = b"POS"
+ID_DESC = b"ID"
+REF_DESC = b"REF"
+ALT_DESC = b"ALT"
+QUAL_DESC = b"QUAL"
+FILTER_DESC = b"FILTER"
+INFO_DESC = b"INFO"
+
+
+
 # Special values in VCF
 MISSING_VALUE = b"."
 
@@ -48,7 +57,7 @@ FLAG = b"Flag"
 CHARACTER = b"Character"
 STRING = b"String"
 
-def vcf_column_factory(line):
+def vcf_column_factory(line, prefix=None):
     """
     Returns a column object suitable for encoding a vcf column described by the 
     specified meta-information line.
@@ -63,130 +72,113 @@ def vcf_column_factory(line):
     tokens = s.split(b"=", 1)
     d[tokens[0]] = tokens[1]
     name = d[ID]
+    if prefix is not None:
+        name = prefix + b"_" + d[ID]
     description = d[DESCRIPTION].strip(b"\"")
     number = d[NUMBER]
     if number == b".":
-        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
+        num_elements = 0 # 0 means variable 
     else:
         num_elements = int(number) 
     st = d[TYPE]
     if st == INTEGER:
-        element_type = _wormtable.ELEMENT_TYPE_INT
+        c = wt.IntegerColumn
         element_size = 2
     elif st == FLOAT: 
-        element_type = _wormtable.ELEMENT_TYPE_FLOAT
+        c = wt.FloatColumn
         element_size = 4
     elif st == FLAG: 
-        element_type = _wormtable.ELEMENT_TYPE_INT
+        c = wt.IntegerColumn
         element_size = 1
+        # There's an oddity here - the VCF file can specifiy that 
+        # there's an unspecified number of flag values, but surely
+        # it's 1. This is a possible source of problems.
+        num_elements = 1
     elif st == CHARACTER: 
-        element_type = _wormtable.ELEMENT_TYPE_CHAR
+        c = wt.StringColumn
         element_size = 1
     elif st == STRING: 
-        #element_type = _wormtable.ELEMENT_TYPE_ENUM
-        # TMP while we're fixing ENUMs
-        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
-        element_type = _wormtable.ELEMENT_TYPE_CHAR
+        c = wt.StringColumn
+        num_elements = 0 
         element_size = 1
     else:
         raise ValueError("Unknown VFC type:", st)
-    col = _wormtable.Column(name, description, element_type, 
-            element_size, num_elements)
+    col = c(name, description, num_elements, element_size)
     return col
    
-def copy_column(col, prefix):
-    """
-    Returns a copy of the specified column with the specified prefix 
-    appended to its name.
-    """
-    new_name = prefix + b"_" + col.name
-    new_col = _wormtable.Column(name=new_name, description=col.description, 
-            element_type=col.element_type, element_size=col.element_size, 
-            num_elements=col.num_elements)
-    return new_col
-
 class VCFSchemaGenerator(object):
     """
     Class that generates a database schema for a VCF file by parsing 
     the header.
     """
     def __init__(self, vcf_file):
-        self._file = vcf_file
-        self._info_columns = [] 
-        self._genotype_columns = []
+        self.__version = -1.0
+        self.__file = vcf_file
+        self.__info_lines = [] 
+        self.__genotype_lines = []
+        self.__genotypes = None 
     
-    def _parse_version(self, s):
+    def __parse_version(self, s):
         """
         Parse the VCF version number from the specified string.
         """
-        self._version = -1.0
         tokens = s.split(b"v")
         if len(tokens) == 2:
-            self._version = float(tokens[1])
+            self.__version = float(tokens[1])
 
-    def _parse_meta_information(self, line):
+    def __parse_meta_information(self, line):
         """
         Processes the specified meta information line to obtain the values 
         of the various columns and their types.
         """
         if line.startswith(b"##INFO"):
-            col = vcf_column_factory(line)
-            self._info_columns.append(col)
+            self.__info_lines.append(line)
         elif line.startswith(b"##FORMAT"):
-            col = vcf_column_factory(line)
-            self._genotype_columns.append(col)
+            self.__genotype_lines.append(line)
         else:
             pass
             # Should we parse the FILTER values and make a proper enum 
             # column? Probably.
 
-    def _parse_header_line(self, s):
+    def __parse_header_line(self, s):
         """
         Processes the specified header string to get the genotype labels.
         """
-        self._genotypes = s.split()[9:]
+        self.__genotypes = s.split()[9:]
 
     def generate_schema(self):
         """
         Reads the header for this VCF file, constructing the database 
         schema and returning it. 
         """
-        f = self._file 
+        f = self.__file 
         s = f.readline()
-        self._parse_version(s)
-        if self._version < 4.0:
+        self.__parse_version(s)
+        if self.__version < 4.0:
             raise ValueError("VCF versions < 4.0 not supported")
         while s.startswith(b"##"):
-            self._parse_meta_information(s)
+            self.__parse_meta_information(s)
             s = f.readline()
-        self._parse_header_line(s)
-        int_type = _wormtable.ELEMENT_TYPE_INT
-        char_type = _wormtable.ELEMENT_TYPE_CHAR
-        float_type = _wormtable.ELEMENT_TYPE_FLOAT
-        #enum_type = _wormtable.ELEMENT_TYPE_ENUM
-        # TMP while we're fixing enums
-        enum_type = _wormtable.ELEMENT_TYPE_CHAR
-        variable = _wormtable.NUM_ELEMENTS_VARIABLE
+        self.__parse_header_line(s)
         # Get the fixed columns
-        # TODO Add string constants at the top of the file for the descriptions 
-        # of these columns.
-        # TODO These sizes have been changed until some bugs are fixed - they 
-        # need to be gone through again.
+        # TODO put in more realistic sizes and enums here.
         columns = [
-            _wormtable.Column(CHROM, b"Chromosome", enum_type, 1, variable),
-            _wormtable.Column(POS, b"position", int_type, 8, 1),
-            _wormtable.Column(ID, b"ID", char_type, 1, variable),  
-            _wormtable.Column(REF, b"Reference allele", enum_type, 1, 1),
-            _wormtable.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
-            _wormtable.Column(QUAL, b"Quality", float_type, 4, 1),
-            _wormtable.Column(FILTER, b"Filter", char_type, 1, variable),
+            wt.StringColumn(CHROM, CHROM_DESC),
+            wt.IntegerColumn(POS, POS_DESC, 1, 8),
+            wt.StringColumn(ID, ID_DESC),
+            wt.StringColumn(REF, REF_DESC, 1),
+            wt.StringColumn(ALT, ALT_DESC),
+            wt.FloatColumn(QUAL, QUAL_DESC, 1, 4),
+            wt.StringColumn(FILTER, FILTER_DESC),
         ]
-        for col in self._info_columns:
-            columns.append(copy_column(col, INFO))
-        for genotype in self._genotypes:
-            for col in self._genotype_columns:
-                columns.append(copy_column(col, genotype))
-        schema = wormtable.Schema(columns)
+        for line in self.__info_lines:
+            col = vcf_column_factory(line, INFO)
+            columns.append(col)
+        for genotype in self.__genotypes:
+            for line in self.__genotype_lines:
+                col = vcf_column_factory(line, genotype)
+                columns.append(col)
+        schema = wt.Schema(columns)
         return schema
 
 def vcf_schema_factory(vcf_file):
@@ -199,7 +191,7 @@ def vcf_schema_factory(vcf_file):
     return schema
 
 
-class VCFTableBuilder(wormtable.TableBuilder):
+class VCFTableWriter(wt.TableWriter):
     """
     Class responsible for parsing a VCF file and creating a database. 
     """
@@ -208,32 +200,94 @@ class VCFTableBuilder(wormtable.TableBuilder):
         """
         Builds the table.
         """
-        self.open_database()
         # TODO add support for gzips and progress callbacks
         with open(vcf_file, "rb") as f:
             self._source_file = f 
-            self._prepare()
-            self._insert_rows()
-        self.close_database()
+            self.prepare()
+            for line in self._source_file:
+                self.process_line(line)
         self.finalise()
         
     
-    def _prepare(self):
+    def get_insertion_function(self, column, index):
+        """
+        Returns an insertion function for the specified column and index.
+        """
+        f = None
+        if isinstance(column, wt.StringColumn):
+            def f(encoded):
+                self.update_row(index, encoded)
+        elif isinstance(column, wt.IntegerColumn):
+            if column.get_num_elements() == 1:
+                def f(encoded):
+                    v = int(encoded)
+                    self.update_row(index, v)
+            else:
+                def f(encoded):
+                    v = [int(s) for s in encoded.split(b",")]
+                    self.update_row(index, v) 
+        elif isinstance(column, wt.FloatColumn):
+            if column.get_num_elements() == 1:
+                def f(encoded):
+                    self.update_row(index, float(encoded))
+            else:
+                def f(encoded):
+                    v = [float(s) for s in encoded.split(b",")]
+                    self.update_row(index, v)
+        else:
+            assert(False) 
+        return f
+
+
+    def prepare(self):
         """
         Prepares for parsing records by getting the database columns 
         ready and skipping the file header.
         """
-        f = self._source_file
         # Skip the header
+        f = self._source_file
         s = f.readline()
         while s.startswith(b"##"):
             s = f.readline()
         # Get the genotypes from the header
         genotypes = s.split()[9:] 
+        # Set up the insertion functions and name mappings.
+        column_names = [c.get_name() for c in self._schema.get_columns()]
+        self.__insertion_functions = [None for c in column_names] 
+        all_fixed_columns = [CHROM, POS, ID, REF, ALT, QUAL, FILTER]
+        j = 0
+        self.__fixed_columns = []
+        for name in all_fixed_columns: 
+            if name in column_names:
+                c = self._schema.get_column(name)
+                f = self.get_insertion_function(c, j)
+                self.__fixed_columns.append((j, f))
+            j += 1
+        self.__info_columns = {}
+        self.__genotype_columns = [{} for g in genotypes]
+        for name in column_names: 
+            if b"_" in name:
+                split = name.split(b"_")
+                if split[0] == INFO:
+                    c = self._schema.get_column(name)
+                    j = column_names.index(name)
+                    f = self.get_insertion_function(c, j)
+                    info_name = split[1]
+                    self.__info_columns[info_name] = f 
+                else:
+                    index = genotypes.index(split[0])
+                    c = self._schema.get_column(name)
+                    j = column_names.index(name)
+                    f = self.get_insertion_function(c, j)
+                    self.__genotype_columns[index][split[1]] = f 
+    
+
+
+        """
         # In the interest of efficiency, we want to split the columns 
         # up into the smallest possible lists so we don't have to 
         # put in as much effort searching for them.
-        all_columns = dict((c.name, c) for c in self._schema.get_columns())
+        all_columns = dict((c.get_name(), c) for c in self._schema.get_columns())
         all_fixed_columns = [CHROM, POS, ID, REF, ALT, QUAL, FILTER]
         self._fixed_columns = []
         for j in range(len(all_fixed_columns)):
@@ -243,8 +297,8 @@ class VCFTableBuilder(wormtable.TableBuilder):
         self._info_columns = {}
         self._genotype_columns = [{} for g in genotypes]
         for c in self._schema.get_columns():
-            if b"_" in c.name:
-                split = c.name.split(b"_")
+            if b"_" in c.get_name():
+                split = c.get_name().split(b"_")
                 if split[0] == INFO:
                     name = split[1]
                     self._info_columns[name] = c
@@ -252,40 +306,55 @@ class VCFTableBuilder(wormtable.TableBuilder):
                     index = genotypes.index(split[0])
                     self._genotype_columns[index][split[1]] = c
     
+        """
 
-    def _insert_elements(self, col, encoded):
+
+
+    def process_line(self, line):
         """
-        Insert the elements into the table after converting to the correct
-        types.
+        Processes the specified VCF record and inserts the appropriate row.
         """
-        rb = self._row_buffer
-        if col.element_type == _wormtable.ELEMENT_TYPE_CHAR:
-            rb.insert_elements(col, encoded)
-        else:
-            f = int
-            if col.element_type == _wormtable.ELEMENT_TYPE_FLOAT:
-                f = float
-            if col.num_elements == 1:
-                rb.insert_elements(col, f(encoded))
-            else:
-                l = [f(s) for s in encoded.split(b",")]
-                rb.insert_elements(col, l)
-                    
-                
+        l = line.split()
+        for column_index, f in self.__fixed_columns:
+            if l[column_index] != MISSING_VALUE:
+                f(l[column_index])
+        # Now process the info columns.
+        for mapping in l[7].split(b";"):
+            tokens = mapping.split(b"=")
+            name = tokens[0]
+            if name in self.__info_columns:
+                f = self.__info_columns[name]
+                #print("setting ", name, tokens)
+                if len(tokens) == 2:
+                    f(tokens[1])
+                else:
+                    f(1) # This is a Flag column.
+        # Process the genotype columns. 
+        j = 0
+        fmt = l[8].split(b":")
+        for genotype_values in l[9:]:
+            tokens = genotype_values.split(b":")
+            if len(tokens) == len(fmt):
+                for k in range(len(fmt)):
+                    if fmt[k] in self.__genotype_columns[j]:
+                        f = self.__genotype_columns[j][fmt[k]]
+                        #print("setting", fmt[k], ":", tokens[k])
+                        f(tokens[k])
+            elif len(tokens) > 1:
+                # We can treat a genotype value on its own as missing values.
+                # We can have skipped columns at the end though, which we 
+                # should deal with properly. So, put in a loud complaint 
+                # here and fix later.
+                print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
+            j += 1
+    
+        #print("commiting row")
+        self.commit_row()
 
     def _insert_rows(self):
         """
         Builds the database in opened file.
         """
-        
-        # This was originally written with the idea that the element 
-        # parsing would be done in the C layer. This worked out to 
-        # be more trouble that it was worth, so was quickly 
-        # updated to use the _insert_elements method above. This 
-        # is a quick hack and will be revised again later. This 
-        # function is so time-critical that it will probably be 
-        # 
-        
         fixed_columns = self._fixed_columns
         info_columns = self._info_columns
         genotype_columns = self._genotype_columns
@@ -295,6 +364,7 @@ class VCFTableBuilder(wormtable.TableBuilder):
             for col, index in fixed_columns:
                 if l[index] != MISSING_VALUE:
                     self._insert_elements(col, l[index])
+            """
             # Now process the info columns.
             for mapping in l[7].split(b";"):
                 tokens = mapping.split(b"=")
@@ -323,8 +393,9 @@ class VCFTableBuilder(wormtable.TableBuilder):
                     # here and fix later.
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
+            """
             # Finally, commit the record.
-            self._row_buffer.commit_row()
+            self.commit_row()
 
 def main():
 
@@ -333,14 +404,14 @@ def main():
         vcf_file = sys.argv[2]
         input_schema = os.path.join(homedir, "input_schema.xml")
         schema = vcf_schema_factory(vcf_file)
+        #schema.show()
         schema.write_xml(input_schema)
         # In the command line tool we'll optionally stop here 
         # and allow the user to edit the schema. This means 
         # we don't have to generate the 'perfect' vcf schema.
-        dbb = VCFTableBuilder(homedir, input_schema)
-        dbb.set_cache_size(8 * 2**30) # 8 gigs - bigger is better
-        dbb.set_buffer_size(64 * 2**20) # 64 megs
-        dbb.build(vcf_file)
+        tw = VCFTableWriter(homedir, input_schema)
+        #tw.set_cache_size(8 * 2**30) # 8 gigs - bigger is better
+        tw.build(vcf_file)
         
     elif len(sys.argv) == 2:
         table = wormtable.Table(sys.argv[1])

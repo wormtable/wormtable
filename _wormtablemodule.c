@@ -487,6 +487,14 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
         self->input_elements[0] = elements;
         num_elements = 1;
     } else {
+        if (PySequence_Check(elements) == 0) {
+            PyErr_SetString(PyExc_TypeError, "Sequence required");
+            goto out;
+        }
+        /* According to the docs we shouldn't need the PySequence_Check
+         * as PySequence_Fast should check the types. It doesn't seem 
+         * to however, so we must keep this check.
+         */
         seq = PySequence_Fast(elements, "Sequence required");
         if (seq == NULL) {
             goto out;
