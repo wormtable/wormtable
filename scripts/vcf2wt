@@ -212,6 +212,12 @@ class VCFTableWriter(wt.TableWriter):
     def get_insertion_function(self, column, index):
         """
         Returns an insertion function for the specified column and index.
+        
+        The idea of this if to minimise the about of work done when we're
+        going through the VCF. Probably doesn't make much difference.
+
+        This is ugly in any case; we should use the column object to 
+        parse the lists.
         """
         f = None
         if isinstance(column, wt.StringColumn):
@@ -265,51 +271,23 @@ class VCFTableWriter(wt.TableWriter):
             j += 1
         self.__info_columns = {}
         self.__genotype_columns = [{} for g in genotypes]
+        j = 0
         for name in column_names: 
             if b"_" in name:
                 split = name.split(b"_")
                 if split[0] == INFO:
                     c = self._schema.get_column(name)
-                    j = column_names.index(name)
                     f = self.get_insertion_function(c, j)
                     info_name = split[1]
                     self.__info_columns[info_name] = f 
                 else:
                     index = genotypes.index(split[0])
                     c = self._schema.get_column(name)
-                    j = column_names.index(name)
                     f = self.get_insertion_function(c, j)
                     self.__genotype_columns[index][split[1]] = f 
+            j += 1
+
     
-
-
-        """
-        # In the interest of efficiency, we want to split the columns 
-        # up into the smallest possible lists so we don't have to 
-        # put in as much effort searching for them.
-        all_columns = dict((c.get_name(), c) for c in self._schema.get_columns())
-        all_fixed_columns = [CHROM, POS, ID, REF, ALT, QUAL, FILTER]
-        self._fixed_columns = []
-        for j in range(len(all_fixed_columns)):
-            name = all_fixed_columns[j]
-            if name in all_columns:
-                self._fixed_columns.append((all_columns[name], j))
-        self._info_columns = {}
-        self._genotype_columns = [{} for g in genotypes]
-        for c in self._schema.get_columns():
-            if b"_" in c.get_name():
-                split = c.get_name().split(b"_")
-                if split[0] == INFO:
-                    name = split[1]
-                    self._info_columns[name] = c
-                else:
-                    index = genotypes.index(split[0])
-                    self._genotype_columns[index][split[1]] = c
-    
-        """
-
-
-
     def process_line(self, line):
         """
         Processes the specified VCF record and inserts the appropriate row.
@@ -347,55 +325,7 @@ class VCFTableWriter(wt.TableWriter):
                 # here and fix later.
                 print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
             j += 1
-    
-        #print("commiting row")
         self.commit_row()
-
-    def _insert_rows(self):
-        """
-        Builds the database in opened file.
-        """
-        fixed_columns = self._fixed_columns
-        info_columns = self._info_columns
-        genotype_columns = self._genotype_columns
-        for s in self._source_file:
-            l = s.split()
-            # Read in the fixed columns
-            for col, index in fixed_columns:
-                if l[index] != MISSING_VALUE:
-                    self._insert_elements(col, l[index])
-            """
-            # Now process the info columns.
-            for mapping in l[7].split(b";"):
-                tokens = mapping.split(b"=")
-                name = tokens[0]
-                if name in info_columns:
-                    col = info_columns[name]
-                    if len(tokens) == 2:
-                        self._insert_elements(col, tokens[1])
-                    else:
-                        # This is a Flag column.
-                        self._row_buffer.insert_elements(col, [1])
-            # Process the genotype columns. 
-            j = 0
-            fmt = l[8].split(b":")
-            for genotype_values in l[9:]:
-                tokens = genotype_values.split(b":")
-                if len(tokens) == len(fmt):
-                    for k in range(len(fmt)):
-                        if fmt[k] in genotype_columns[j]:
-                            col = genotype_columns[j][fmt[k]]
-                            self._insert_elements(col, tokens[k])
-                elif len(tokens) > 1:
-                    # We can treat a genotype value on its own as missing values.
-                    # We can have skipped columns at the end though, which we 
-                    # should deal with properly. So, put in a loud complaint 
-                    # here and fix later.
-                    print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
-                j += 1
-            """
-            # Finally, commit the record.
-            self.commit_row()
 
 def main():
 
@@ -414,7 +344,7 @@ def main():
         tw.build(vcf_file)
         
     elif len(sys.argv) == 2:
-        table = wormtable.Table(sys.argv[1])
+        table = wt.Table(sys.argv[1])
         print("num rows = ", table.get_num_rows())
         v = 0
         for j in range(table.get_num_rows()):
