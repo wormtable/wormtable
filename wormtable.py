@@ -1,11 +1,11 @@
-from __future__ import print_function
-from __future__ import division 
 
 """
-Core facilities in the vcfdb package.
+Core facilities in the wormtable package.
    
 TODO: document.
 """
+from __future__ import print_function
+from __future__ import division 
 
 import os
 import sys
@@ -14,11 +14,14 @@ import gzip
 from xml.etree import ElementTree
 from xml.dom import minidom
 
-import _vcfdb
+import _wormtable
+
+# Must be single quotes for parsing in setup.py
+__version__ = '0.0.1dev'
+SCHEMA_VERSION = "0.4-dev"
 
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
-SCHEMA_VERSION = "0.4-dev"
 
 class Schema(object):
     """
@@ -26,10 +29,10 @@ class Schema(object):
     Column objects.
     """
     ELEMENT_TYPE_STRING_MAP = {
-        _vcfdb.ELEMENT_TYPE_INT: "int",
-        _vcfdb.ELEMENT_TYPE_CHAR: "char",
-        _vcfdb.ELEMENT_TYPE_FLOAT: "float",
-        _vcfdb.ELEMENT_TYPE_ENUM: "enum"
+        _wormtable.ELEMENT_TYPE_INT: "int",
+        _wormtable.ELEMENT_TYPE_CHAR: "char",
+        _wormtable.ELEMENT_TYPE_FLOAT: "float",
+        _wormtable.ELEMENT_TYPE_ENUM: "enum"
     }
 
     def __init__(self, columns):
@@ -59,7 +62,7 @@ class Schema(object):
         for c in self.__columns:
             t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             print(s.format(c.name, t, c.element_size, c.num_elements))
-            if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+            if c.element_type == _wormtable.ELEMENT_TYPE_ENUM:
                 for k, v in c.enum_values.items():
                     print("\t\t", k, "\t", v)
 
@@ -82,7 +85,7 @@ class Schema(object):
             }
             element = ElementTree.Element("column", d)
             columns.append(element)
-            if c.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+            if c.element_type == _wormtable.ELEMENT_TYPE_ENUM:
                 enumeration_values = ElementTree.Element("enum_values")
                 element.append(enumeration_values)
                 for k, v in c.enum_values.items():
@@ -128,10 +131,10 @@ class Schema(object):
             element_size = int(xmlcol.get("element_size"))
             num_elements = int(xmlcol.get("num_elements"))
             element_type = reverse[xmlcol.get("element_type")]
-            col = _vcfdb.Column(name, description, element_type, element_size,
+            col = _wormtable.Column(name, description, element_type, element_size,
                     num_elements)
             columns.append(col)
-            if col.element_type == _vcfdb.ELEMENT_TYPE_ENUM:
+            if col.element_type == _wormtable.ELEMENT_TYPE_ENUM:
                 d = {}    
                 xml_enum_values = xmlcol.find("enum_values")
                 for xmlvalue in xml_enum_values.getchildren():
@@ -176,11 +179,11 @@ class TableBuilder(object):
         """
         Opens the database and gets ready for writing row.
         """
-        self._database = _vcfdb.BerkeleyDatabase(self._build_db_name.encode(), 
+        self._database = _wormtable.BerkeleyDatabase(self._build_db_name.encode(), 
             self._schema.get_columns(), self._cache_size)
         self._database.create()
         max_rows = self._buffer_size // 256 
-        self._row_buffer = _vcfdb.WriteBuffer(self._database, self._buffer_size, 
+        self._row_buffer = _wormtable.WriteBuffer(self._database, self._buffer_size, 
                 max_rows)
 
     def close_database(self):
@@ -210,7 +213,7 @@ class Table(object):
         self._schema_file = os.path.join(homedir, "schema.xml") 
         self._schema = Schema.read_xml(self._schema_file)
         self._cache_size = cache_size 
-        self._database = _vcfdb.BerkeleyDatabase(
+        self._database = _wormtable.BerkeleyDatabase(
                 self._primary_db_file.encode(), 
                 self._schema.get_columns(), self._cache_size)
         self._database.open()
@@ -255,7 +258,7 @@ class Index(object):
         self._columns = columns
         name = b"+".join(c.name for c in columns)
         filename = os.path.join(table.get_homdir().encode(), name + b".db")        
-        self._index = _vcfdb.Index(table.get_database(), filename, columns, 
+        self._index = _wormtable.Index(table.get_database(), filename, columns, 
                 cache_size)
         
     def build(self, progress_callback=None, callback_interval=100):
@@ -272,7 +275,7 @@ class Index(object):
         self._index.close()
 
     def get_rows(self, columns, min_val=None, max_val=None):
-        row_iter = _vcfdb.RowIterator(self._table.get_database(), columns, 
+        row_iter = _wormtable.RowIterator(self._table.get_database(), columns, 
                 self._index)
         if min_val is not None:
             row_iter.set_min(min_val)

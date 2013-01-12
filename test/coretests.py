@@ -7,15 +7,15 @@ import unittest
 import random
 import string
 
-import vcfdb
-import _vcfdb
+import wormtable
+import _wormtable
 
 __column_id = 0
 
 # TODO add proper bounds checking tests for strings and numbers.
 
 
-def get_int_column(element_size, num_elements=_vcfdb.NUM_ELEMENTS_VARIABLE):
+def get_int_column(element_size, num_elements=_wormtable.NUM_ELEMENTS_VARIABLE):
     """
     Returns an integer column with the specified element size and 
     number of elements.
@@ -23,7 +23,7 @@ def get_int_column(element_size, num_elements=_vcfdb.NUM_ELEMENTS_VARIABLE):
     global __column_id
     __column_id += 1
     name = "int_{0}_{1}_{2}".format(element_size, num_elements, __column_id)
-    return _vcfdb.Column(name.encode(), b"", _vcfdb.ELEMENT_TYPE_INT, 
+    return _wormtable.Column(name.encode(), b"", _wormtable.ELEMENT_TYPE_INT, 
             element_size, num_elements)
 
 def get_float_column(element_size, num_elements):
@@ -34,7 +34,7 @@ def get_float_column(element_size, num_elements):
     global __column_id
     __column_id += 1
     name = "float_{0}_{1}_{2}".format(element_size, num_elements, __column_id)
-    return _vcfdb.Column(name.encode(), b"", _vcfdb.ELEMENT_TYPE_FLOAT, 
+    return _wormtable.Column(name.encode(), b"", _wormtable.ELEMENT_TYPE_FLOAT, 
             element_size, num_elements)
 
 def get_char_column(num_elements):
@@ -44,7 +44,7 @@ def get_char_column(num_elements):
     global __column_id
     __column_id += 1
     name = "char_{0}_{1}".format(num_elements, __column_id)
-    return _vcfdb.Column(name.encode(), b"", _vcfdb.ELEMENT_TYPE_CHAR, 1, 
+    return _wormtable.Column(name.encode(), b"", _wormtable.ELEMENT_TYPE_CHAR, 1, 
             num_elements)
 
 
@@ -77,13 +77,13 @@ class TestDatabase(unittest.TestCase):
     def setUp(self):
         fd, self._db_file = tempfile.mkstemp("-test.db") 
         self._columns = self.get_columns()
-        self._database = _vcfdb.BerkeleyDatabase(self._db_file.encode(), 
+        self._database = _wormtable.BerkeleyDatabase(self._db_file.encode(), 
                 self._columns, cache_size=1024)
         self._database.create()
         # We can close the open fd now that db has opened it.
         os.close(fd)
         buffer_size = 64 * 1024
-        self._row_buffer = _vcfdb.WriteBuffer(self._database, buffer_size, 1)
+        self._row_buffer = _wormtable.WriteBuffer(self._database, buffer_size, 1)
         
         self.num_random_test_rows = 10 
 
@@ -198,8 +198,8 @@ class TestDatabaseLimits(TestDatabase):
     are flagged correctly.
     """ 
     def get_columns(self):
-        n = _vcfdb.MAX_ROW_SIZE // (_vcfdb.MAX_NUM_ELEMENTS * 8 
-                + _vcfdb.NUM_ELEMENTS_VARIABLE_OVERHEAD)
+        n = _wormtable.MAX_ROW_SIZE // (_wormtable.MAX_NUM_ELEMENTS * 8 
+                + _wormtable.NUM_ELEMENTS_VARIABLE_OVERHEAD)
         columns = [get_int_column(8) for j in range(n + 1)]
         return columns
     
@@ -209,7 +209,7 @@ class TestDatabaseLimits(TestDatabase):
         it should overflow whatever we do.
         """
         rb = self._row_buffer
-        v = [j for j in range(_vcfdb.MAX_NUM_ELEMENTS)]
+        v = [j for j in range(_wormtable.MAX_NUM_ELEMENTS)]
         n = len(self._columns)
         for k in range(n - 1):
             rb.insert_elements(self._columns[k], v) 
@@ -238,7 +238,7 @@ class TestDatabaseInteger(TestDatabase):
     to ensure they are retreived correctly.
     """ 
     def get_columns(self):
-        q = _vcfdb.NUM_ELEMENTS_VARIABLE
+        q = _wormtable.NUM_ELEMENTS_VARIABLE
         columns = [
                 get_int_column(1, q), get_int_column(2, q), 
                 get_int_column(4, q), get_int_column(8, q),
@@ -275,8 +275,8 @@ class TestDatabaseInteger(TestDatabase):
                     self.rows[j][k] = v 
                 else:
                     n = c.num_elements
-                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                    if n == _wormtable.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([v for l in range(n)])
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
@@ -303,8 +303,8 @@ class TestDatabaseInteger(TestDatabase):
                     self.rows[j][k] = random.randint(min_v, max_v) 
                 else:
                     n = c.num_elements
-                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                    if n == _wormtable.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
@@ -318,7 +318,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_bad_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE:
+        if column.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -332,7 +332,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_good_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE:
+        if column.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -412,7 +412,7 @@ class TestDatabaseFloat(TestDatabase):
     to ensure they are retreived correctly.
     """ 
     def get_columns(self):
-        q = _vcfdb.NUM_ELEMENTS_VARIABLE
+        q = _wormtable.NUM_ELEMENTS_VARIABLE
         columns = [
                 get_float_column(4, q), get_float_column(8, q), 
                 get_float_column(4, 1), get_float_column(8, 1), 
@@ -445,8 +445,8 @@ class TestDatabaseFloat(TestDatabase):
                     self.rows[j][k] = random.uniform(min_v, max_v) 
                 else:
                     n = c.num_elements
-                    if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                        n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                    if n == _wormtable.NUM_ELEMENTS_VARIABLE:
+                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.uniform(min_v, max_v) for l in range(n)])
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
@@ -484,9 +484,9 @@ class TestDatabaseChar(TestDatabase):
     """ 
     def get_columns(self):
         columns = [get_char_column(j) for j in range(1, 20)]
-        columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
-        columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
-        columns.append(get_char_column(_vcfdb.NUM_ELEMENTS_VARIABLE))
+        columns.append(get_char_column(_wormtable.NUM_ELEMENTS_VARIABLE))
+        columns.append(get_char_column(_wormtable.NUM_ELEMENTS_VARIABLE))
+        columns.append(get_char_column(_wormtable.NUM_ELEMENTS_VARIABLE))
         random.shuffle(columns)
         return columns
     
@@ -505,8 +505,8 @@ class TestDatabaseChar(TestDatabase):
             for k in range(num_cols): 
                 c = cols[k]
                 n = c.num_elements
-                if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                    n = random.randint(1, _vcfdb.MAX_NUM_ELEMENTS)
+                if n == _wormtable.NUM_ELEMENTS_VARIABLE:
+                    n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                 self.rows[j][k] = random_string(n).encode() 
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
@@ -520,8 +520,8 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         rb = self._row_buffer
         for c in self._columns:
             n = c.num_elements
-            if n == _vcfdb.NUM_ELEMENTS_VARIABLE:
-                n = _vcfdb.MAX_NUM_ELEMENTS
+            if n == _wormtable.NUM_ELEMENTS_VARIABLE:
+                n = _wormtable.MAX_NUM_ELEMENTS
             for j in [1, 2, 3, 10, 500, 1000]:
                 s = random_string(n + j).encode() 
                 self.assertRaises(ValueError, rb.insert_elements, c, s)
@@ -531,7 +531,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         rb = self._row_buffer
         db = self._database
         cols = [c for c in self._columns if 
-                c.num_elements == _vcfdb.NUM_ELEMENTS_VARIABLE]
+                c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE]
         num_cols = len(cols)
         num_rows = self.num_random_test_rows 
         rows = [[None for c in self._columns] for j in range(num_rows)]
@@ -553,7 +553,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         rb = self._row_buffer
         db = self._database
         cols = [c for c in self._columns if 
-                c.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE]
+                c.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE]
         num_cols = len(cols)
         num_rows = self.num_random_test_rows 
         rows = [[None for c in self._columns] for j in range(num_rows)]
@@ -600,7 +600,7 @@ class TestIndexIntegrity(object):
         index_files = []
         for c in self._columns:
             fd, index_file = tempfile.mkstemp("-index-test.db") 
-            index = _vcfdb.Index(self._database, index_file.encode(), [c], 
+            index = _wormtable.Index(self._database, index_file.encode(), [c], 
                     cache_size)
             os.close(fd)
             index.create()
@@ -611,7 +611,7 @@ class TestIndexIntegrity(object):
             col = self._columns[j]
             index = indexes[j]
             index.open()
-            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(self._database, [col], index)
             l = [row[0] for row in row_iter]
             l2 = sorted(l)
             self.assertEqual(l, l2)
@@ -619,7 +619,7 @@ class TestIndexIntegrity(object):
             l3 = [row[j] for row in self.rows]
             l3.sort()
             # TODO: push the comparison up into the superclass
-            if not (col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4):
+            if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
                 self.assertEqual(l, l3)
 
             
@@ -638,7 +638,7 @@ class TestIndexIntegrity(object):
         index_files = []
         for c in self._columns:
             fd, index_file = tempfile.mkstemp("-index-test.db") 
-            index = _vcfdb.Index(self._database, index_file.encode(), [c], 
+            index = _wormtable.Index(self._database, index_file.encode(), [c], 
                     cache_size)
             os.close(fd)
             index.create()
@@ -653,7 +653,7 @@ class TestIndexIntegrity(object):
             s = random.sample(original, 2)
             min_val = min(s),
             max_val = max(s),
-            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(self._database, [col], index)
             row_iter.set_min(max_val)
             row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
@@ -662,13 +662,13 @@ class TestIndexIntegrity(object):
                 print(min_val, max_val)
             self.assertEqual(len(l), 0)
 
-            row_iter = _vcfdb.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(self._database, [col], index)
             row_iter.set_min(min_val)
             row_iter.set_max(max_val)
             l = [row[0] for row in row_iter]
             l2 = sorted([v for v in original if min_val[0] <= v and v <= max_val[0]])
             # TODO: push the comparison up into the superclass
-            if not (col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4):
+            if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
                 self.assertEqual(l, l2)
 
             
@@ -694,11 +694,11 @@ class TestIndexIntegrity(object):
                 # TODO: variable length columns don't sort the same way
                 # this might be a bug or it might not - this should be 
                 # verified and the correct sorting procedure used here.
-                if c1.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE and \
-                        c2.num_elements != _vcfdb.NUM_ELEMENTS_VARIABLE:
+                if c1.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE and \
+                        c2.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE:
                 
                     fd, index_file = tempfile.mkstemp("-index-test.db") 
-                    index = _vcfdb.Index(self._database, index_file.encode(), [c1, c2], 
+                    index = _wormtable.Index(self._database, index_file.encode(), [c1, c2], 
                             cache_size)
                     os.close(fd)
                     index.create()
@@ -709,10 +709,10 @@ class TestIndexIntegrity(object):
 
         for index, original in zip(indexes, original_values):
             index.open()
-            row_iter = _vcfdb.RowIterator(self._database, index.columns, index)
+            row_iter = _wormtable.RowIterator(self._database, index.columns, index)
             l = [row for row in row_iter]
             l2 = sorted(original) 
-            o = [col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT and col.element_size == 4
+            o = [col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4
                 for col in index.columns]
             if not any(o):
                 self.assertEqual(l, l2)
