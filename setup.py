@@ -50,7 +50,7 @@ setup(
     ],
     long_description = vcfdb_readme,
     ext_modules = [_vcfdb_module],
-    py_modules = ['vcfdb']
+    packages = ['vcfdb']
 )
 
     
