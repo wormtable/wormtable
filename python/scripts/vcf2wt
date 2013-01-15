@@ -205,9 +205,8 @@ class VCFTableWriter(wt.TableWriter):
             self._source_file = f 
             self.prepare()
             for line in self._source_file:
-                self.process_line(line)
-        self.finalise()
-        
+                self.process_line(line) 
+            self.finalise()
     
     def get_insertion_function(self, column, index):
         """
@@ -215,35 +214,18 @@ class VCFTableWriter(wt.TableWriter):
         
         The idea of this if to minimise the about of work done when we're
         going through the VCF. Probably doesn't make much difference.
-
-        This is ugly in any case; we should use the column object to 
-        parse the lists.
         """
-        f = None
-        if isinstance(column, wt.StringColumn):
-            def f(encoded):
-                self.update_row(index, encoded)
-        elif isinstance(column, wt.IntegerColumn):
-            if column.get_num_elements() == 1:
-                def f(encoded):
-                    v = int(encoded)
-                    self.update_row(index, v)
-            else:
-                def f(encoded):
-                    v = [int(s) for s in encoded.split(b",")]
-                    self.update_row(index, v) 
-        elif isinstance(column, wt.FloatColumn):
-            if column.get_num_elements() == 1:
-                def f(encoded):
-                    self.update_row(index, float(encoded))
-            else:
-                def f(encoded):
-                    v = [float(s) for s in encoded.split(b",")]
-                    self.update_row(index, v)
+        f = column.get_element_parser()
+        if column.get_num_elements() == 1 or type(column) == wt.StringColumn:
+            parser = f
         else:
-            assert(False) 
-        return f
-
+            def multiple(encoded):
+                return [f(s) for s in encoded.split(b",")]
+            parser = multiple
+        def insertion_f(encoded):
+            v = parser(encoded)
+            self.update_row(index, parser(encoded))
+        return insertion_f
 
     def prepare(self):
         """
@@ -286,7 +268,6 @@ class VCFTableWriter(wt.TableWriter):
                     f = self.get_insertion_function(c, j)
                     self.__genotype_columns[index][split[1]] = f 
             j += 1
-
     
     def process_line(self, line):
         """
@@ -306,7 +287,7 @@ class VCFTableWriter(wt.TableWriter):
                 if len(tokens) == 2:
                     f(tokens[1])
                 else:
-                    f(1) # This is a Flag column.
+                    f("1") # This is a Flag column.
         # Process the genotype columns. 
         j = 0
         fmt = l[8].split(b":")
@@ -326,7 +307,6 @@ class VCFTableWriter(wt.TableWriter):
                 print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
             j += 1
         self.commit_row()
-
 def main():
 
     if len(sys.argv) == 3: 
@@ -358,6 +338,10 @@ def main():
 
 
 if __name__ == "__main__":
-   main() 
+    import pstats
+    import cProfile
+    cProfile.run("main()", "mainprof")
+    p = pstats.Stats("mainprof")
+    p.sort_stats('cumulative').print_stats(25)
 
 
