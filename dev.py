@@ -1,10 +1,9 @@
-from __future__ import print_function
-
 """
 This is an example file get started with building a wormtable for 
 a VCF file, dumping out the values, and making and reading 
 indexes.
 """
+from __future__ import print_function
 import os
 import sys
 
@@ -39,11 +38,17 @@ class ProgressMonitor(object):
         s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
             ' ' * spaces, complete * 100, rate, bar)
         print(s, end="")
-
+    
+    def finish(self):
+        """
+        Completes the progress monitor.
+        """
+        print()
 
 def build_index(homedir, column_names):
     print("building index on ", column_names)
-    table = vcfdb.Table(homedir)
+    cache_size = 1 * 2**30
+    table = vcfdb.Table(homedir, cache_size)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
     cache_size = 8 * 2**30
@@ -53,20 +58,24 @@ def build_index(homedir, column_names):
     def progress(processed_rows):
         monitor.update(processed_rows)
     index.build(progress, int(n / 1000))
-    
+    monitor.finish()
+
 def read_index(homedir, column_names):
     cache_size = 4 * 2**30
     table = vcfdb.Table(homedir, cache_size)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
-    cache_size = 1 * 2**30
+    cache_size = 4 * 2**30
     index = vcfdb.Index(table, columns, cache_size)
-    read_cols = [schema.get_column(c) for c in [b"CHROM", b"POS"]] + columns
+    cols = [b"CHROM", b"POS", b"H15_GQ", b"H24_GQ"]
+    read_cols = [schema.get_column(c) for c in cols] + columns
     index.open()
-    min_val = (b"0/1", b"0/1", 50.0) 
-    max_val = (b"0/1", b"0/1", 10000.0) 
+    min_val = (b"0/1", b"0/1") 
+    max_val = (b"0/1", b"0/1") 
+    min_qual = 50.0
     for row in index.get_rows(read_cols, min_val, max_val): 
-        print(row)
+        if row[2] >= min_qual and row[3] >= min_qual:
+            print(row)
     index.close()
 
 def build_vcf(homedir, vcf_file):
@@ -101,9 +110,9 @@ def main():
     elif len(sys.argv) == 2:
         homedir = sys.argv[1]
         #print_table(homedir)
-        indexed_columns = [b'H15_GT', b'H24_GT', b"H15_GQ"]
-        #build_index(homedir, indexed_columns) 
-        read_index(homedir, indexed_columns)
+        indexed_columns = [b'H15_GT', b'H24_GT']
+        build_index(homedir, indexed_columns) 
+        #read_index(homedir, indexed_columns)
        
 if __name__ == "__main__":
     main()
