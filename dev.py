@@ -11,29 +11,59 @@ import sys
 import vcfdb
 
 
+import time
+
+class ProgressMonitor(object):
+    """
+    Class representing a progress monitor for a terminal based interface.
+    """
+    def __init__(self, total):
+        self.__total = total
+        self.__progress_width = 40
+        self.__bar_index = 0
+        self.__bars = "/-\\|"
+        self.__start_time = time.clock()
+
+    def update(self, processed):
+        """
+        Updates this progress monitor to display the specified number 
+        of processed items.
+        """
+        complete = processed / self.__total
+        filled = int(complete * self.__progress_width)
+        spaces = self.__progress_width - filled 
+        bar = self.__bars[self.__bar_index]
+        self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
+        elapsed = time.clock() - self.__start_time
+        rate = processed / elapsed
+        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
+            ' ' * spaces, complete * 100, rate, bar)
+        print(s, end="")
+
+
 def build_index(homedir, column_names):
+    print("building index on ", column_names)
     table = vcfdb.Table(homedir)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
     cache_size = 8 * 2**30
     index = vcfdb.Index(table, columns, cache_size)
     n = table.get_num_rows()
-    # Something snazzier than this will be used for the admin tool
-    # but this gives you an idea of how things are going anyway.
+    monitor = ProgressMonitor(n)
     def progress(processed_rows):
-        print("index built: {0:.2f}%".format(100 * processed_rows / n));
-    # emit progress as percentage
-    index.build(progress, int(n / 100))
+        monitor.update(processed_rows)
+    index.build(progress, int(n / 1000))
     
 def read_index(homedir, column_names):
-    table = vcfdb.Table(homedir)
+    cache_size = 4 * 2**30
+    table = vcfdb.Table(homedir, cache_size)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
     cache_size = 1 * 2**30
     index = vcfdb.Index(table, columns, cache_size)
     read_cols = [schema.get_column(c) for c in [b"CHROM", b"POS"]] + columns
     index.open()
-    min_val = (b"0/1", b"0/1", 10.0) 
+    min_val = (b"0/1", b"0/1", 50.0) 
     max_val = (b"0/1", b"0/1", 10000.0) 
     for row in index.get_rows(read_cols, min_val, max_val): 
         print(row)
