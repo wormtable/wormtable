@@ -1,5 +1,13 @@
+.. _introduction-index:
+
+=============
 Introduction
 =============
+
+:Release: |version|
+:Date: |today|
+
+
 Wormtable is a write-once-read-many datastructure to hold large scale 
 tabular data. It is designed to provide an efficient means of storing,
 searching and retreiving static data.
