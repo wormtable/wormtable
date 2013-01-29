@@ -1,14 +1,20 @@
 #include <db.h>
 
+#define WT_WRITE    0
+#define WT_READ     1
 
-#define WT_WRITE 0
-#define WT_READ 1
+#define WT_PRIMARY_DB_FILE          "primary.db"
+#define WT_BUILD_PRIMARY_DB_FILE    "__build_primary.db"
 
-#define WT_PRIMARY_DB_FILE "primary.db"
+#define WT_COL_TYPE_UINT    0
+#define WT_COL_TYPE_INT     1
+#define WT_COL_TYPE_FLOAT   2
+#define WT_COL_TYPE_CHAR    3
+
 
 typedef struct {
-    const char *name;
-    const char *description;
+    char *name;
+    char *description;
     u_int32_t element_type;
     u_int32_t element_size;
     u_int32_t num_elements;
@@ -38,3 +44,6 @@ typedef struct {
 
 char * wt_strerror(int err);
 int wt_table_create(wt_table_t **wttp);
+
+
+
