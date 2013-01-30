@@ -25,12 +25,17 @@ main(void)
         handle_error(wt_ret);
     }
     
-    wt_ret = wtt->open(wtt, "test_table/", WT_READ);
+    //wt_ret = wtt->open(wtt, "test_table/", WT_READ);
+    wt_ret = wtt->open(wtt, "test_table/", WT_WRITE);
     if (wt_ret != 0) {
         handle_error(wt_ret);
     }
-    //wtt->add_column(wtt, "test_int", "testing", 0, 0, 0);
-    //wtt->add_column(wtt, "test_float", "testing", 0, 0, 0);
-    wtt->close(wtt);
+    wtt->add_column(wtt, "test_int", "testing", WT_INT, 1, 1);
+    wtt->add_column(wtt, "test_float", "testing", WT_FLOAT, 4, 1);
+     
+    wt_ret = wtt->close(wtt);
+    if (wt_ret != 0) {
+        handle_error(wt_ret);
+    }
     return 0;
 }

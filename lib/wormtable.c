@@ -44,24 +44,6 @@ out:
     return ret;
 }
 
-/* TODO replace this function, which is too specific with the one 
- * above 
- */
-static int
-wt_table_set_db_filename(wt_table_t *self, const char *filename)
-{
-    int ret = 0;
-    size_t length = strlen(self->homedir); 
-    self->db_filename = malloc(1 + length + strlen(filename));
-    if (self->db_filename == NULL) {
-        ret = ENOMEM;
-    }
-    strncpy(self->db_filename, self->homedir, length);
-    strcpy(self->db_filename + length, filename);
-    return ret;
-}
-
-
 static int
 wt_table_add_column(wt_table_t *self, const char *name, 
     const char *description, u_int32_t element_type, u_int32_t element_size,
@@ -90,6 +72,18 @@ wt_table_add_column(wt_table_t *self, const char *name,
     col->element_type = element_type;
     col->element_size = element_size;
     col->num_elements = num_elements;
+    if (element_type == WT_UINT) {
+
+    } else if (element_type == WT_INT) {
+
+    } else if (element_type == WT_FLOAT) {
+
+    } else if (element_type == WT_CHAR) {
+
+    } else {
+        ret = EINVAL;
+        goto out;
+    }
 out:
     return ret;
 }
@@ -114,9 +108,9 @@ static int
 wt_table_open_writer(wt_table_t *self)
 {
     int ret = 0;
-    
-    ret = wt_table_set_db_filename(self, WT_BUILD_PRIMARY_DB_FILE);
-    if (ret != 0) {
+    char *db_filename = get_filename(self->homedir, WT_BUILD_PRIMARY_DB_FILE); 
+    if (db_filename == NULL) {
+        ret = ENOMEM;
         goto out;
     }
     printf("opening table %s for writing\n", self->homedir);   
@@ -127,23 +121,36 @@ wt_table_open_writer(wt_table_t *self)
         errno = 0;
         goto out;
     }
-    ret = self->db->open(self->db, NULL, self->db_filename, NULL, 
+    ret = self->db->open(self->db, NULL, db_filename, NULL, 
             DB_BTREE, DB_CREATE|DB_EXCL, 0);
     if (ret != 0) {
         goto out;
     }
+    /* add the key column */
+    wt_table_add_column(self, "row_id", "key column", WT_UINT, self->keysize, 1);
+
 out:
+    if (db_filename != NULL) {
+        free(db_filename);
+    }
     return ret;
 }
 
 static int 
 wt_table_write_schema(wt_table_t *self)
 {
+    int ret = 0;
     unsigned int j;
     wt_column_t *col;
     FILE *f;
-    char *schema_file = get_filename(self->homedir, "schema.xml");
+    char *schema_file = get_filename(self->homedir, WT_SCHEMA_FILE);
     f = fopen(schema_file, "w");
+    if (f == NULL) {
+        ret = errno;
+        errno = 0;
+        goto out;
+    }
+    
     fprintf(f, "<?xml version=\"1.0\" ?>\n");
     fprintf(f, "<schema version=\"0.4-dev\">\n");
     fprintf(f, "\t<columns>\n");
@@ -154,9 +161,19 @@ wt_table_write_schema(wt_table_t *self)
     }
     fprintf(f, "\t</columns>\n");
     fprintf(f, "</schema>\n");
-    
-    fclose(f);
-    return 0;
+
+out:
+    if (f != NULL) {
+        if (fclose(f) != 0) {
+            ret = errno;
+            errno = 0;
+        }
+    } 
+    if (schema_file != NULL) {
+        free(schema_file);
+    }
+
+    return ret;
 }
 
 static int 
@@ -289,15 +306,13 @@ wt_table_close_writer(wt_table_t *self)
 {
     DB *tmp;
     int ret = 0;
-    char *current_filename = self->db_filename;
-    /* rename the DB file to it's final value */
-    self->db_filename = NULL;
-    ret = wt_table_write_schema(self);
-    if (ret != 0) {
+    char *old_name = get_filename(self->homedir, WT_BUILD_PRIMARY_DB_FILE);
+    char *new_name = get_filename(self->homedir, WT_PRIMARY_DB_FILE);
+    if (old_name == NULL || new_name == NULL) {
+        ret = ENOMEM;
         goto out;
     }
-    /* TODO get rid of this and use local variables instead */
-    ret = wt_table_set_db_filename(self, WT_PRIMARY_DB_FILE);
+    ret = wt_table_write_schema(self);
     if (ret != 0) {
         goto out;
     }
@@ -306,13 +321,19 @@ wt_table_close_writer(wt_table_t *self)
     if (ret != 0) {
         goto out;
     }
-    ret = tmp->rename(tmp, current_filename, NULL, self->db_filename, 0);
+    ret = tmp->rename(tmp, old_name, NULL, new_name, 0);
     if (ret != 0) {
         goto out;
     }
-    printf("renamed %s to %s\n", current_filename, self->db_filename);
+    printf("renamed %s to %s\n", old_name, new_name);
 out:
-    free(current_filename);
+    if (old_name != NULL) {
+        free(old_name);
+    }
+    if (new_name != NULL) {
+        free(new_name);
+    }
+    
     return ret;
 }
 
@@ -360,6 +381,12 @@ wt_table_open(wt_table_t *self, const char *homedir, u_int32_t flags)
     return ret;
 }
 
+/* TODO these functions should check the state to make sure we 
+ * are in the just-opened state. Check the DB source code to 
+ * see how they manage this. We should have a simple state 
+ * machine for the table.
+ */
+
 static int 
 wt_table_set_cachesize(wt_table_t *self, u_int64_t bytes)
 {
@@ -369,6 +396,18 @@ wt_table_set_cachesize(wt_table_t *self, u_int64_t bytes)
     return ret;
 }
 
+static int 
+wt_table_set_keysize(wt_table_t *self, u_int32_t keysize)
+{
+    int ret = 0;
+    if (keysize < 1 || keysize > 8) {
+        ret = EINVAL;
+        goto out;
+    }
+    self->keysize = keysize;
+out:
+    return ret;
+}
 
 
 static void
@@ -376,9 +415,6 @@ wt_table_free(wt_table_t *self)
 {
     unsigned int j;
     wt_column_t *col;
-    if (self->db_filename != NULL) {
-        free(self->db_filename);
-    }
     if (self->db != NULL) {
         self->db->close(self->db, 0);
     }
@@ -431,9 +467,11 @@ wt_table_create(wt_table_t **wtp)
     if (ret != 0) {
         goto out;
     }
+    self->keysize = WT_DEFAULT_KEYSIZE;
     self->open = wt_table_open;
     self->add_column = wt_table_add_column_write_mode;
     self->set_cachesize = wt_table_set_cachesize;
+    self->set_keysize = wt_table_set_keysize;
     self->close = wt_table_close;
     *wtp = self;
 out:
