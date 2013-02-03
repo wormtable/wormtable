@@ -1,5 +1,7 @@
 #include <db.h>
 
+#define WT_SCHEMA_VERSION           "0.5-dev"
+
 #define WT_WRITE    0
 #define WT_READ     1
 
@@ -13,6 +15,8 @@
 #define WT_CHAR    3
 
 #define WT_DEFAULT_KEYSIZE  4
+
+#define WT_ERR_FATAL -1
 
 
 typedef struct {

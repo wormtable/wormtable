@@ -10,20 +10,20 @@
 #include "wormtable.h"
 
 /* 
- * Returns a new string with the specified directory and filename 
- * concatenated together. Note directory must be '/' terminated.
+ * Returns a new string with the specified prefix and suffix 
+ * concatenated together and copied to the new buffer.
  */
 static char * 
-get_filename(const char *directory, const char *filename)
+strconcat(const char *prefix, const char *suffix)
 {
     char *ret = NULL;
-    size_t length = strlen(directory);
-    ret = malloc(1 + length + strlen(filename));
+    size_t length = strlen(prefix);
+    ret = malloc(1 + length + strlen(suffix));
     if (ret == NULL) {
         goto out; 
     }
-    strncpy(ret, directory, length);
-    strcpy(ret + length, filename);
+    strncpy(ret, prefix, length);
+    strcpy(ret + length, suffix);
 out:
     return ret;
 }
@@ -43,6 +43,37 @@ copy_string(const char *string)
 out:
     return ret;
 }
+
+static const char *element_type_strings[] = { "uint", "int", "float", "char" };
+
+static int 
+element_type_to_str(u_int32_t element_type, const char **type_string)
+{
+    int ret = -1;
+    if (element_type < sizeof(element_type_strings) / sizeof(char *)) {
+        *type_string = element_type_strings[element_type];
+        ret = 0;
+    }
+    return ret;
+}
+
+static int 
+str_to_element_type(const char *type_string, u_int32_t *element_type)
+{
+    int ret = -1;
+    u_int32_t num_types = sizeof(element_type_strings) / sizeof(char *);
+    u_int32_t j;
+    for (j = 0; j < num_types; j++) {
+        if (strcmp(type_string, element_type_strings[j]) == 0) {
+            *element_type = j; 
+            ret = 0;
+        }
+    }
+    return ret;
+}
+
+
+
 
 static int
 wt_table_add_column(wt_table_t *self, const char *name, 
@@ -108,7 +139,7 @@ static int
 wt_table_open_writer(wt_table_t *self)
 {
     int ret = 0;
-    char *db_filename = get_filename(self->homedir, WT_BUILD_PRIMARY_DB_FILE); 
+    char *db_filename = strconcat(self->homedir, WT_BUILD_PRIMARY_DB_FILE); 
     if (db_filename == NULL) {
         ret = ENOMEM;
         goto out;
@@ -141,23 +172,32 @@ wt_table_write_schema(wt_table_t *self)
 {
     int ret = 0;
     unsigned int j;
+    const char *type_str = NULL;
     wt_column_t *col;
     FILE *f;
-    char *schema_file = get_filename(self->homedir, WT_SCHEMA_FILE);
+    char *schema_file = strconcat(self->homedir, WT_SCHEMA_FILE);
     f = fopen(schema_file, "w");
     if (f == NULL) {
         ret = errno;
         errno = 0;
         goto out;
     }
-    
     fprintf(f, "<?xml version=\"1.0\" ?>\n");
-    fprintf(f, "<schema version=\"0.4-dev\">\n");
+    fprintf(f, "<schema version=\"%s\">\n", WT_SCHEMA_VERSION);
     fprintf(f, "\t<columns>\n");
 
     for (j = 0; j < self->num_columns; j++) {
         col = &self->columns[j];
-        fprintf(f, "\t\t<column name=\"%s\"/>\n", col->name); 
+        if (element_type_to_str(col->element_type, &type_str)) {
+            ret = WT_ERR_FATAL;
+        } 
+        fprintf(f, "\t\t<column ");
+        fprintf(f, "name=\"%s\" ", col->name); 
+        fprintf(f, "element_type=\"%s\" ", type_str); 
+        fprintf(f, "element_size=\"%d\" ", col->element_size); 
+        fprintf(f, "num_elements=\"%d\" ", col->num_elements); 
+        fprintf(f, "description =\"%s\" ", col->description); 
+        fprintf(f, "/>\n");
     }
     fprintf(f, "\t</columns>\n");
     fprintf(f, "</schema>\n");
@@ -187,7 +227,8 @@ wt_table_add_xml_column(wt_table_t *self, xmlNode *node)
     xmlChar *xml_element_type = NULL;
     xmlChar *xml_element_size = NULL;
     const char *name, *description;
-    int num_elements, element_type, element_size;
+    u_int32_t element_type;
+    int num_elements, element_size;
     for (attr = node->properties; attr != NULL; attr = attr->next) {
         if (xmlStrEqual(attr->name, (const xmlChar *) "name")) {
             xml_name = attr->children->content;
@@ -208,9 +249,13 @@ wt_table_add_xml_column(wt_table_t *self, xmlNode *node)
             || xml_element_size == NULL) {
         goto out;
     }
+    /* TODO: must do some error checking - atoi is useless. */
     num_elements = atoi((const char *) xml_num_elements);
     element_size = atoi((const char *) xml_element_size);
-    element_type = 0; 
+    ret = str_to_element_type((const char *) xml_element_type, &element_type);
+    if (ret != 0) {
+        goto out;
+    }
     name = (const char *) xml_name;
     description = (const char *) xml_description;
     ret = wt_table_add_column(self, name, description, element_type, 
@@ -228,7 +273,7 @@ wt_table_read_schema(wt_table_t *self)
     xmlDocPtr doc = NULL; 
     xmlNode *schema,  *columns, *node;
     char *schema_file = NULL;
-    schema_file = get_filename(self->homedir, "schema.xml");
+    schema_file = strconcat(self->homedir, "schema.xml");
     if (schema_file == NULL) {
         ret = ENOMEM;
         goto out;
@@ -306,8 +351,8 @@ wt_table_close_writer(wt_table_t *self)
 {
     DB *tmp;
     int ret = 0;
-    char *old_name = get_filename(self->homedir, WT_BUILD_PRIMARY_DB_FILE);
-    char *new_name = get_filename(self->homedir, WT_PRIMARY_DB_FILE);
+    char *old_name = strconcat(self->homedir, WT_BUILD_PRIMARY_DB_FILE);
+    char *new_name = strconcat(self->homedir, WT_PRIMARY_DB_FILE);
     if (old_name == NULL || new_name == NULL) {
         ret = ENOMEM;
         goto out;
@@ -343,7 +388,7 @@ wt_table_open_reader(wt_table_t *self)
 {
     int ret;
     char *db_filename = NULL;
-    db_filename = get_filename(self->homedir, WT_PRIMARY_DB_FILE);
+    db_filename = strconcat(self->homedir, WT_PRIMARY_DB_FILE);
     if (db_filename == NULL) {
         ret = ENOMEM;
         goto out;
