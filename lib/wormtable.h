@@ -39,6 +39,8 @@ typedef struct wt_column_t_t {
     u_int32_t fixed_region_size;
     int (*pack_elements)(struct wt_column_t_t *self, void *dest, void *elements,
             u_int32_t num_elements);
+    int (*unpack_elements)(struct wt_column_t_t *self, void *elements, void *src,
+            u_int32_t num_elements);
 } wt_column_t;
 
 typedef struct wt_row_t_t {
@@ -72,8 +74,8 @@ typedef struct wt_table_t_t {
     int (*alloc_row)(struct wt_table_t_t *wtc, wt_row_t **row);
     int (*free_row)(struct wt_table_t_t *wtc, wt_row_t *row);
     int (*add_row)(struct wt_table_t_t *wtt, wt_row_t *row);
-    /* not implemented */
     int (*get_num_rows)(struct wt_table_t_t *wtt, u_int64_t *num_rows);
+    /* not implemented */
     int (*get_row)(struct wt_table_t_t *wtt, u_int64_t row_id, wt_row_t *row);
 } wt_table_t;
 
