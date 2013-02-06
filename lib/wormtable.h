@@ -49,9 +49,9 @@ typedef struct wt_row_t_t {
     u_int32_t fixed_region_size;
     int (*set_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
             u_int32_t num_elements);
+    int (*get_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
+            u_int32_t *num_elements);
     int (*clear)(struct wt_row_t_t *wtr);
-    /* not implemented */
-    //int (*get_value)(struct wt_row_t_t *wtr, wt_column_t *col, wt_value_t *val);
 } wt_row_t;
 
 typedef struct wt_table_t_t {

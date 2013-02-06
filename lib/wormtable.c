@@ -170,7 +170,59 @@ unpack_uint(u_int64_t *element, void *src, u_int8_t size)
     return ret;
 }
 
+static int 
+unpack_int(int64_t *element, void *src, u_int8_t size) 
+{
+    int ret = 0;
+    int64_t dest = 0;
+    const int64_t m = 1LL << (size * 8 - 1);
+#ifdef WORDS_BIGENDIAN
+    memcpy(&dest + 8 - size, src, size);
+#else
+    byteswap_copy(&dest, src, size);
+#endif
+    /* flip the sign bit */
+    dest ^= m;
+    /* sign extend and return */
+    *element = (dest ^ m) - m;
+    printf("unpack int %ld\n", *element);
+    return ret;
+}
 
+static int 
+unpack_float4(double *element, void *src, u_int8_t size) 
+{
+    int32_t float_bits;
+    float dest;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&float_bits, src, sizeof(float));
+#else
+    byteswap_copy(&float_bits, src, sizeof(float));
+#endif
+    float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
+    memcpy(&dest, &float_bits, sizeof(float));
+    *element = (double) dest;
+    printf("FIXME!!! unpacked float %f\n", dest);
+    
+    return 0;
+}
+   
+static int 
+unpack_float8(double *element, void *src, u_int8_t size) 
+{
+    int64_t double_bits;
+    double dest;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&double_bits, src, sizeof(double));
+#else
+    byteswap_copy(&double_bits, src, sizeof(double));
+#endif
+    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
+    memcpy(&dest, &double_bits, sizeof(double));
+    *element = dest;
+    return 0;
+}
+ 
 
 /* value packing */
 
@@ -260,7 +312,59 @@ wt_column_unpack_elements_uint(wt_column_t *self, void *elements, void *src,
     return ret;
 }
 
+static int
+wt_column_unpack_elements_int(wt_column_t *self, void *elements, void *src, 
+        u_int32_t num_elements)
+{
+    int ret = 0;
+    void *p = src;
+    u_int32_t j;
+    int64_t *e = (int64_t *) elements;
+    for (j = 0; j < num_elements; j++) {
+        ret = unpack_int(&e[j], p, self->element_size);
+        p += self->element_size; 
+    }
+    return ret;
+}
 
+static int
+wt_column_unpack_elements_float4(wt_column_t *self, void *elements, void *src, 
+        u_int32_t num_elements)
+{
+    int ret = 0;
+    void *p = src;
+    u_int32_t j;
+    double *e = (double *) elements;
+    for (j = 0; j < num_elements; j++) {
+        ret = unpack_float4(&e[j], p, self->element_size);
+        p += self->element_size; 
+    }
+    return ret;
+}
+
+static int
+wt_column_unpack_elements_float8(wt_column_t *self, void *elements, void *src, 
+        u_int32_t num_elements)
+{
+    int ret = 0;
+    void *p = src;
+    u_int32_t j;
+    double *e = (double *) elements;
+    for (j = 0; j < num_elements; j++) {
+        ret = unpack_float8(&e[j], p, self->element_size);
+        p += self->element_size; 
+    }
+    return ret;
+}
+
+static int
+wt_column_unpack_elements_char(wt_column_t *self, void *elements, void *src,
+        u_int32_t num_elements)
+{
+    int ret = 0;
+    memcpy(elements, src, num_elements);
+    return ret;
+}
 
 
 /* 
@@ -292,6 +396,30 @@ out:
 }
 
 static int 
+wt_row_unpack_address(wt_row_t *self, wt_column_t *col, u_int32_t *offset, 
+        u_int32_t *num_elements)
+{
+    int ret = 0;
+    void *p = self->data + col->fixed_region_offset;
+    u_int64_t o = 0; 
+    u_int64_t n = 0; 
+    ret = unpack_uint(&o, p, WT_VARIABLE_OFFSET_SIZE);
+    if (ret != 0) {
+        goto out;
+    }
+    p += WT_VARIABLE_OFFSET_SIZE;
+    ret = unpack_uint(&n, p, WT_VARIABLE_COUNT_SIZE);
+    if (ret != 0) {
+        goto out;
+    }
+    *offset = (u_int32_t) o;
+    *num_elements = (u_int32_t) n;
+out:
+    return ret;
+}
+
+
+static int 
 wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements, 
         u_int32_t num_elements)
 {
@@ -316,6 +444,38 @@ wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements,
 out:
     return ret;
 }
+
+static int 
+wt_row_get_value(wt_row_t *self, wt_column_t *col, void *elements, 
+        u_int32_t *num_elements)
+{
+    int ret = 0;
+    void *p;
+    u_int32_t offset;
+    u_int32_t n;
+    if (col->num_elements == WT_VARIABLE) {
+        ret = wt_row_unpack_address(self, col, &offset, &n);
+        if (ret != 0) {
+            goto out;
+        }  
+        if (offset > WT_MAX_ROW_SIZE) {
+            ret = EINVAL;
+            goto out;
+        }
+        p = self->data + offset;
+    } else {
+        p = self->data + col->fixed_region_offset;
+        n = col->num_elements;
+    }
+    col->unpack_elements(col, elements, p, n);
+    *num_elements = n;
+    printf("Getting elements for column '%s'@%p\n", col->name, p);
+out:
+    return ret;
+}
+
+
+
 
 static int 
 wt_row_clear(wt_row_t *self)
@@ -357,14 +517,18 @@ wt_table_add_column(wt_table_t *self, const char *name,
         col->unpack_elements = wt_column_unpack_elements_uint;
     } else if (element_type == WT_INT) {
         col->pack_elements = wt_column_pack_elements_int;
+        col->unpack_elements = wt_column_unpack_elements_int;
     } else if (element_type == WT_FLOAT) {
         if (col->element_size == 4) {
             col->pack_elements = wt_column_pack_elements_float4;   
+            col->unpack_elements = wt_column_unpack_elements_float4;
         } else {
             col->pack_elements = wt_column_pack_elements_float8;   
+            col->unpack_elements = wt_column_unpack_elements_float8;
         }
     } else if (element_type == WT_CHAR) {
         col->pack_elements = wt_column_pack_elements_char;
+        col->unpack_elements = wt_column_unpack_elements_char;
     } else {
         ret = EINVAL;
         goto out;
@@ -828,6 +992,7 @@ wt_table_alloc_row(wt_table_t *self, wt_row_t **row)
     r->size = r->fixed_region_size; 
     r->data = p;
     r->set_value = wt_row_set_value;
+    r->get_value = wt_row_get_value;
     r->clear = wt_row_clear;
     *row = r;
 out:

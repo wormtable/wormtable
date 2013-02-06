@@ -31,7 +31,7 @@ generate_table(const char *table_name)
         handle_error(wt_ret);
     }
     wtt->add_column(wtt, "test_uint", "testing", WT_UINT, 1, 1);
-    wtt->add_column(wtt, "test_int", "testing", WT_INT, 1, 1);
+    wtt->add_column(wtt, "test_int", "testing", WT_INT, 4, 1);
     wtt->add_column(wtt, "test_float", "testing", WT_FLOAT, 4, 1);
     wtt->add_column(wtt, "test_str", "testing", WT_CHAR, 1, 0);
     wtt->alloc_row(wtt, &row);
@@ -48,7 +48,19 @@ generate_table(const char *table_name)
         row->set_value(row, float_col, &float_val, 1);
         char_val = "TESTING";
         row->set_value(row, char_col, char_val, strlen(char_val));
-        
+        {
+            u_int32_t tmp;
+            char buff[1024];
+            row->get_value(row, uint_col, &uint_val, &tmp);
+            printf("got uint value: %lu\n", uint_val);
+            row->get_value(row, int_col, &int_val, &tmp);
+            printf("got int value: %ld\n", int_val);
+            row->get_value(row, float_col, &float_val, &tmp);
+            printf("ERROR:: got float value: %f\n", float_val);
+            row->get_value(row, char_col, buff, &tmp);
+            buff[tmp] = '\0';
+            printf("got char  value '%s'\n", buff);
+        }
         wt_ret = wtt->add_row(wtt, row); 
         if (wt_ret != 0) {
             handle_error(wt_ret);
