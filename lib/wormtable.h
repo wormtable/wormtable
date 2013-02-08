@@ -75,7 +75,6 @@ typedef struct wt_table_t_t {
     int (*free_row)(struct wt_table_t_t *wtc, wt_row_t *row);
     int (*add_row)(struct wt_table_t_t *wtt, wt_row_t *row);
     int (*get_num_rows)(struct wt_table_t_t *wtt, u_int64_t *num_rows);
-    /* not implemented */
     int (*get_row)(struct wt_table_t_t *wtt, u_int64_t row_id, wt_row_t *row);
 } wt_table_t;
 

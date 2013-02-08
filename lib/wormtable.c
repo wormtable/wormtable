@@ -101,7 +101,6 @@ pack_uint(void *dest, u_int64_t element, u_int8_t size)
 #else
     byteswap_copy(dest, src, size);
 #endif
-    printf("pack uint %lu\n", element);
     return ret;
 }
 
@@ -118,7 +117,6 @@ pack_int(void *dest, int64_t element, u_int8_t size)
 #else
     byteswap_copy(dest, src, size);
 #endif
-    printf("pack int %ld\n", element);
     return ret;
 }
 
@@ -127,14 +125,14 @@ pack_float4(void *dest, double element, u_int8_t size)
 {
     int ret = 0;
     int32_t bits;
-    memcpy(&bits, &element, sizeof(float));
+    float v = (float) element;
+    memcpy(&bits, &v, sizeof(float));
     bits ^= (bits < 0) ? 0xffffffff: 0x80000000;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &bits, sizeof(float)); 
 #else    
     byteswap_copy(dest, &bits, sizeof(float)); 
 #endif
-    printf("pack float 4 %f\n", element);
     return ret;
 }
 
@@ -158,7 +156,6 @@ pack_float8(void *dest, double element, u_int8_t size)
 static int 
 unpack_uint(u_int64_t *element, void *src, u_int8_t size) 
 {
-    int ret = 0;
     u_int64_t dest = 0;
 #ifdef WORDS_BIGENDIAN
     memcpy(&dest + 8 - size, src, size);
@@ -166,14 +163,12 @@ unpack_uint(u_int64_t *element, void *src, u_int8_t size)
     byteswap_copy(&dest, src, size);
 #endif
     *element = dest;
-    printf("unpack uint %lu\n", dest);
-    return ret;
+    return 0;
 }
 
 static int 
 unpack_int(int64_t *element, void *src, u_int8_t size) 
 {
-    int ret = 0;
     int64_t dest = 0;
     const int64_t m = 1LL << (size * 8 - 1);
 #ifdef WORDS_BIGENDIAN
@@ -185,8 +180,7 @@ unpack_int(int64_t *element, void *src, u_int8_t size)
     dest ^= m;
     /* sign extend and return */
     *element = (dest ^ m) - m;
-    printf("unpack int %ld\n", *element);
-    return ret;
+    return 0;
 }
 
 static int 
@@ -202,8 +196,6 @@ unpack_float4(double *element, void *src, u_int8_t size)
     float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
     memcpy(&dest, &float_bits, sizeof(float));
     *element = (double) dest;
-    printf("FIXME!!! unpacked float %f\n", dest);
-    
     return 0;
 }
    
@@ -440,7 +432,7 @@ wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements,
     }
     col->pack_elements(col, p, elements, num_elements);
 
-    printf("Setting elements for column '%s'@%p\n", col->name, p);
+    //printf("Setting elements for column '%s'@%p\n", col->name, p);
 out:
     return ret;
 }
@@ -469,7 +461,7 @@ wt_row_get_value(wt_row_t *self, wt_column_t *col, void *elements,
     }
     col->unpack_elements(col, elements, p, n);
     *num_elements = n;
-    printf("Getting elements for column '%s'@%p\n", col->name, p);
+    //printf("Getting elements for column '%s'@%p\n", col->name, p);
 out:
     return ret;
 }
@@ -1043,12 +1035,36 @@ out:
     return ret;
 }
 
+static int
+wt_table_get_row(wt_table_t *self, u_int64_t row_id, wt_row_t *row)
+{
+    int ret = 0;
+    DBT key, data;
+    wt_column_t *id_col = &self->columns[0];
+    row->clear(row);
+    ret = row->set_value(row, id_col, &row_id, 1);
+    if (ret != 0) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));  
+    key.size = self->keysize;
+    key.data = row->data;
+    data.data = row->data + self->keysize;
+    data.ulen = WT_MAX_ROW_SIZE - self->keysize;
+    data.flags = DB_DBT_USERMEM;
+    ret = self->db->get(self->db, NULL, &key, &data, 0);
+out:
+    return ret;
+}
+
 static int 
 wt_table_get_num_rows(wt_table_t *self, u_int64_t *num_rows)
 {
     *num_rows = self->num_rows;
     return 0;
 }
+
 
 int 
 wt_table_create(wt_table_t **wtp)
@@ -1075,6 +1091,7 @@ wt_table_create(wt_table_t **wtp)
     self->free_row = wt_table_free_row;
     self->add_row = wt_table_add_row;
     self->get_num_rows = wt_table_get_num_rows;
+    self->get_row = wt_table_get_row;
     *wtp = self;
 out:
     if (ret != 0) {
