@@ -723,6 +723,7 @@ wt_table_read_schema(wt_table_t *self)
         goto out;
     }
     attr = schema->properties;
+    version = NULL;
     while (attr != NULL) {
         //printf("attr:%s = %s\n", attr->name, attr->children->content);
         if (xmlStrEqual(attr->name, (const xmlChar *) "version")) {
@@ -735,6 +736,7 @@ wt_table_read_schema(wt_table_t *self)
         ret = EINVAL;
         goto out;
     }
+    columns = NULL;
     node = schema->xmlChildrenNode;
     for (node = schema->xmlChildrenNode; node != NULL; node = node->next) {
         if (node->type == XML_ELEMENT_NODE) {
@@ -843,6 +845,7 @@ wt_table_open_reader(wt_table_t *self)
 {
     int ret;
     char *db_filename = NULL;
+    u_int32_t flags = DB_RDONLY|DB_NOMMAP;
     db_filename = strconcat(self->homedir, WT_PRIMARY_DB_FILE);
     if (db_filename == NULL) {
         ret = ENOMEM;
@@ -851,7 +854,7 @@ wt_table_open_reader(wt_table_t *self)
     printf("opening table %s for reading\n", self->homedir);   
     self->mode = WT_READ;
     ret = self->db->open(self->db, NULL, db_filename, NULL, 
-            DB_BTREE, DB_RDONLY, 0);
+            DB_BTREE, flags, 0);
     if (ret != 0) {
         goto out;
     }

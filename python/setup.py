@@ -23,8 +23,9 @@ def parse_version(module_file):
 wormtable_version = parse_version("wormtable.py") 
 
 _wormtable_module = Extension('_wormtable', 
-    sources = ["_wormtablemodule.c"],
-    libraries = ["db"])
+    sources = ["_wormtablemodule.c", "../lib/wormtable.c"],
+    include_dirs = ["../lib", "/usr/include/libxml2",],
+    libraries = ["db", "xml2"])
 
 setup(
     name = "wormtable",
