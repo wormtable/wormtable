@@ -37,11 +37,11 @@ generate_table(const char *table_name)
     wtt->add_column(wtt, "float_8_2", "testing", WT_FLOAT, 8, 2);
     wtt->add_column(wtt, "str_1_0", "testing", WT_CHAR, 1, 0);
     wtt->alloc_row(wtt, &row);
-    wtt->get_column(wtt, 1, &uint_col);
-    wtt->get_column(wtt, 2, &int_col);
-    wtt->get_column(wtt, 3, &float_col);
-    wtt->get_column(wtt, 4, &double_2_col);
-    wtt->get_column(wtt, 5, &char_col);
+    wtt->get_column_by_index(wtt, 1, &uint_col);
+    wtt->get_column_by_index(wtt, 2, &int_col);
+    wtt->get_column_by_index(wtt, 3, &float_col);
+    wtt->get_column_by_index(wtt, 4, &double_2_col);
+    wtt->get_column_by_index(wtt, 5, &char_col);
     for (j = 0; j < 500; j++) { 
         uint_val = j;
         row->set_value(row, uint_col, &uint_val, 1);
@@ -91,11 +91,11 @@ dump_table(const char *table_name)
         handle_error(wt_ret);
     }
     wtt->alloc_row(wtt, &row);
-    wtt->get_column(wtt, 1, &uint_col);
-    wtt->get_column(wtt, 2, &int_col);
-    wtt->get_column(wtt, 3, &float_col);
-    wtt->get_column(wtt, 4, &double_2_col);
-    wtt->get_column(wtt, 5, &char_col);
+    wtt->get_column_by_name(wtt, "uint_1_1", &uint_col);
+    wtt->get_column_by_name(wtt, "int_1_1", &int_col);
+    wtt->get_column_by_index(wtt, 3, &float_col);
+    wtt->get_column_by_index(wtt, 4, &double_2_col);
+    wtt->get_column_by_index(wtt, 5, &char_col);
     wt_ret = wtt->get_num_rows(wtt, &num_rows);
     if (wt_ret != 0) {
         handle_error(wt_ret);

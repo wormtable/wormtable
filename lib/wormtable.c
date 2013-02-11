@@ -917,13 +917,29 @@ out:
 }
 
 static int
-wt_table_get_column(wt_table_t *self, u_int32_t column_id, wt_column_t **col) 
+wt_table_get_column_by_index(wt_table_t *self, u_int32_t index, 
+        wt_column_t **col) 
 {
-    int ret = -EINVAL;
-    if (column_id < self->num_columns) {
-        *col = &self->columns[column_id];
+    int ret = EINVAL;
+    if (index < self->num_columns) {
+        *col = &self->columns[index];
+        ret = 0;
     }
+    return ret;
+}
 
+static int
+wt_table_get_column_by_name(wt_table_t *self, const char *name, 
+        wt_column_t **col) 
+{
+    int ret = EINVAL;
+    u_int32_t index;
+    for (index = 0; index < self->num_columns && ret != 0; index++) {
+        if (strcmp(name, self->columns[index].name) == 0) {
+            *col = &self->columns[index];
+            ret = 0;
+        }
+    }
     return ret;
 }
 static void
@@ -1088,7 +1104,8 @@ wt_table_create(wt_table_t **wtp)
     self->add_column = wt_table_add_column_write_mode;
     self->set_cachesize = wt_table_set_cachesize;
     self->set_keysize = wt_table_set_keysize;
-    self->get_column = wt_table_get_column;
+    self->get_column_by_index = wt_table_get_column_by_index;
+    self->get_column_by_name = wt_table_get_column_by_name;
     self->close = wt_table_close;
     self->alloc_row = wt_table_alloc_row;
     self->free_row = wt_table_free_row;

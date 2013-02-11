@@ -7,6 +7,15 @@
 
 #define WT_VARIABLE 0
 
+#define WT_UINT    0
+#define WT_INT     1
+#define WT_FLOAT   2
+#define WT_CHAR    3
+
+#define WT_DEFAULT_KEYSIZE  4
+
+#define WT_ERR_FATAL -1
+
 /* These are linked to each other, and will probably change in favour 
  * of a more flexible addressing system in future versions.
  */
@@ -18,15 +27,6 @@
 #define WT_SCHEMA_FILE              "schema.xml"
 #define WT_PRIMARY_DB_FILE          "primary.db"
 #define WT_BUILD_PRIMARY_DB_FILE    "__build_primary.db"
-
-#define WT_UINT    0
-#define WT_INT     1
-#define WT_FLOAT   2
-#define WT_CHAR    3
-
-#define WT_DEFAULT_KEYSIZE  4
-
-#define WT_ERR_FATAL -1
 
 
 typedef struct wt_column_t_t {
@@ -69,7 +69,9 @@ typedef struct wt_table_t_t {
             u_int32_t element_size, u_int32_t num_elements);
     int (*set_keysize)(struct wt_table_t_t *wtt, u_int32_t keysize); 
     int (*set_cachesize)(struct wt_table_t_t *wtt, u_int64_t bytes);
-    int (*get_column)(struct wt_table_t_t *wtt, u_int32_t col_id, 
+    int (*get_column_by_index)(struct wt_table_t_t *wtt, u_int32_t index, 
+            wt_column_t **column);
+    int (*get_column_by_name)(struct wt_table_t_t *wtt, const char *name, 
             wt_column_t **column);
     int (*alloc_row)(struct wt_table_t_t *wtc, wt_row_t **row);
     int (*free_row)(struct wt_table_t_t *wtc, wt_row_t *row);
