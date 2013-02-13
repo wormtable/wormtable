@@ -8,7 +8,7 @@ import os
 import sys
 
 import vcfdb
-
+import collections
 
 import time
 
@@ -45,6 +45,40 @@ class ProgressMonitor(object):
         """
         print()
 
+class IndexReader(object):
+    """
+    Temporary class used to abstract away messy details of 
+    the current implementation of index reading.
+    """
+    def __init__(self, homedir, column_names):
+        cache_size = 6 * 2**30
+        self.__table = vcfdb.Table(homedir, cache_size)
+        schema = self.__table.get_schema()
+        columns = [schema.get_column(name.encode()) for name in column_names] 
+        cache_size = 2 * 2**30
+        self.__index = vcfdb.Index(self.__table, columns, cache_size)
+        self.__index.open()
+
+    def get_rows(self, columns, min_val=None, max_val=None, row_type=tuple):
+        """
+        Iterates over the rows in the index starting at min_val
+        and ending at max_val.
+        """
+        schema = self.__table.get_schema()
+        read_cols = [schema.get_column(name.encode()) for name in columns] 
+        nt = collections.namedtuple("Row", columns)
+        for row in self.__index.get_rows(read_cols, min_val, max_val): 
+            if row_type == tuple:
+                yield row
+            elif row_type == dict:
+                yield dict(zip(columns, row))
+            else:
+                yield nt(*row)
+                
+    def close(self):
+        self.__index.close()
+        self.__table.close()
+
 def build_index(homedir, column_names):
     print("building index on ", column_names)
     cache_size = 1 * 2**30
@@ -60,23 +94,45 @@ def build_index(homedir, column_names):
     index.build(progress, int(n / 1000))
     monitor.finish()
 
-def read_index(homedir, column_names):
-    cache_size = 4 * 2**30
-    table = vcfdb.Table(homedir, cache_size)
-    schema = table.get_schema()
-    columns = [schema.get_column(name) for name in column_names] 
-    cache_size = 4 * 2**30
-    index = vcfdb.Index(table, columns, cache_size)
-    cols = [b"CHROM", b"POS", b"H15_GQ", b"H24_GQ"]
-    read_cols = [schema.get_column(c) for c in cols] + columns
-    index.open()
-    min_val = (b"0/1", b"0/1") 
-    max_val = (b"0/1", b"0/1") 
+def read_position_index(homedir, chromosome, position):
+    indexed_columns = ['CHROM', 'POS']
+    ir = IndexReader(homedir, indexed_columns)
+    min_val = (chromosome, position)
+    total_rows = 0
+    read_cols = indexed_columns + ["FILTER"]
+    for row in ir.get_rows(read_cols, min_val, row_type=collections.namedtuple): 
+    #for row in ir.get_rows(read_cols, min_val, row_type=dict): 
+        #print(row.FILTER)
+        print(row)
+        total_rows += 1
+        if total_rows > 10:
+            break
+    ir.close()
+
+def read_genotype_index(homedir, genotypes):
+    indexed_columns = [s + "_GT" for s in genotypes]
+    ir = IndexReader(homedir, indexed_columns) 
+    num_genotypes = len(genotypes)
+    read_cols = [s + "_GQ" for s in genotypes] 
+    min_val = tuple(b"0/1" for s in genotypes)
+    max_val = min_val 
     min_qual = 50.0
-    for row in index.get_rows(read_cols, min_val, max_val): 
-        if row[2] >= min_qual and row[3] >= min_qual:
-            print(row)
-    index.close()
+    total_rows = 0
+    filtered_rows = 0
+    before = time.time()
+    for row in ir.get_rows(read_cols + ["CHROM", "POS"], min_val, max_val): 
+        total_rows += 1
+        #print(row[num_genotypes:]) 
+        #print(row) 
+        if all(row[j] >= min_qual for j in range(num_genotypes)):
+            filtered_rows += 1
+    ir.close()
+    duration = time.time() - before
+    print("read rows = ", total_rows)
+    print("filtered rows = ", filtered_rows)
+    if duration > 0.0:
+        print("processed rows at ", total_rows / duration, " rows/sec")
+    
 
 def build_vcf(homedir, vcf_file):
     input_schema = os.path.join(homedir, "input_schema.xml")
@@ -110,9 +166,16 @@ def main():
     elif len(sys.argv) == 2:
         homedir = sys.argv[1]
         #print_table(homedir)
-        indexed_columns = [b'H15_GT', b'H24_GT']
-        build_index(homedir, indexed_columns) 
-        #read_index(homedir, indexed_columns)
+        # Standard CHROM/POS index example
+        #indexed_columns = [b'CHROM', b'POS']
+        #build_index(homedir, indexed_columns) 
+        #read_position_index(homedir, b"8", 3000920)
+        # Genotype index example
+        genotypes = ['Fam', 'H12', 'H14', 'H15', 'H24', 'H26', 'H27', 
+                'H28', 'H30', 'H34', 'H36']
+        #indexed_columns = [s.encode() + b"_GT" for s in genotypes]
+        # build_index(homedir, indexed_columns) 
+        read_genotype_index(homedir, genotypes)
        
 if __name__ == "__main__":
     main()
