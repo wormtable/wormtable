@@ -417,8 +417,7 @@ wt_row_pack_address(wt_row_t *self, wt_column_t *col, u_int32_t num_elements)
     int ret = 0;
     void *p = self->data + col->fixed_region_offset;
     u_int32_t new_size = self->size + num_elements * col->element_size;
-    printf("self->size = %d\n", self->size);
-    if (new_size > WT_MAX_ROW_SIZE) {
+    if (new_size > self->max_size) {
         ret = EINVAL;
         goto out;
     }
@@ -503,7 +502,7 @@ wt_row_get_value(wt_row_t *self, wt_column_t *col, void *elements,
         if (ret != 0) {
             goto out;
         }  
-        if (offset > WT_MAX_ROW_SIZE) {
+        if (offset >= self->max_size) {
             ret = EINVAL;
             goto out;
         }
@@ -565,100 +564,125 @@ out:
     return ret;
 }
 
+int 
+wt_column_free(wt_column_t *self)
+{
+    if (self != NULL) {
+        if (self->name != NULL) {
+            free(self->name);
+        }
+        if (self->description != NULL) {
+            free(self->description);
+        }
+        free(self);
+    }
+    return 0;
+}
+
+int
+wt_column_alloc(wt_column_t **wtcp, const char *name, const char *description, 
+        u_int32_t element_type, u_int32_t element_size,
+        u_int32_t num_elements)
+{
+    int ret = 0;
+    wt_column_t *self = malloc(sizeof(wt_column_t));
+    if (self == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    self->name = copy_string(name);
+    self->description = copy_string(description);
+    if (self->name == NULL || self->description == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    self->element_type = element_type;
+    self->element_size = element_size;
+    self->num_elements = num_elements;
+    if (element_type == WT_UINT) {
+        self->pack_elements = wt_column_pack_elements_uint;
+        self->unpack_elements = wt_column_unpack_elements_uint;
+    } else if (element_type == WT_INT) {
+        self->pack_elements = wt_column_pack_elements_int;
+        self->unpack_elements = wt_column_unpack_elements_int;
+    } else if (element_type == WT_FLOAT) {
+        if (self->element_size == 4) {
+            self->pack_elements = wt_column_pack_elements_float4;   
+            self->unpack_elements = wt_column_unpack_elements_float4;
+        } else {
+            self->pack_elements = wt_column_pack_elements_float8;   
+            self->unpack_elements = wt_column_unpack_elements_float8;
+        }
+    } else if (element_type == WT_CHAR) {
+        self->pack_elements = wt_column_pack_elements_char;
+        self->unpack_elements = wt_column_unpack_elements_char;
+    } else {
+        ret = EINVAL;
+        goto out;
+    }
+    self->fixed_region_size = self->num_elements * self->element_size;
+    if (self->num_elements == WT_VARIABLE) {
+        self->fixed_region_size = WT_VARIABLE_OFFSET_SIZE 
+            + WT_VARIABLE_COUNT_SIZE;
+    }
+    self->get_name = wt_column_get_name;
+    self->get_description = wt_column_get_description;
+    self->get_element_type = wt_column_get_element_type;
+    self->get_element_size = wt_column_get_element_size;
+    self->get_num_elements = wt_column_get_num_elements;
+    self->free = wt_column_free; 
+    *wtcp = self;
+out:
+    return ret;
+
+}
+
 /*==========================================================
  * Table object 
  *==========================================================
  */
 
 static int
-wt_table_add_column(wt_table_t *self, const char *name, 
-        const char *description, u_int32_t element_type, u_int32_t element_size,
-        u_int32_t num_elements)
+wt_table_add_column(wt_table_t *self, wt_column_t *col)
 {
     int ret = 0;
-    wt_column_t *col, *last_col;
-    /* make some space for the new column */
-    self->num_columns++;
-    col = realloc(self->columns, self->num_columns * sizeof(wt_column_t));
-    if (col == NULL) {
-        ret = ENOMEM;
-        goto out;
-    }
-    self->columns = col;
-    /* Now fill it in */
-    col = &self->columns[self->num_columns - 1];
-    col->name = copy_string(name);
-    col->description = copy_string(description);
-    if (col->name == NULL || col->description == NULL) {
-        ret = ENOMEM;
-        goto out;
-    }
-    col->element_type = element_type;
-    col->element_size = element_size;
-    col->num_elements = num_elements;
-    if (element_type == WT_UINT) {
-        col->pack_elements = wt_column_pack_elements_uint;
-        col->unpack_elements = wt_column_unpack_elements_uint;
-    } else if (element_type == WT_INT) {
-        col->pack_elements = wt_column_pack_elements_int;
-        col->unpack_elements = wt_column_unpack_elements_int;
-    } else if (element_type == WT_FLOAT) {
-        if (col->element_size == 4) {
-            col->pack_elements = wt_column_pack_elements_float4;   
-            col->unpack_elements = wt_column_unpack_elements_float4;
-        } else {
-            col->pack_elements = wt_column_pack_elements_float8;   
-            col->unpack_elements = wt_column_unpack_elements_float8;
-        }
-    } else if (element_type == WT_CHAR) {
-        col->pack_elements = wt_column_pack_elements_char;
-        col->unpack_elements = wt_column_unpack_elements_char;
-    } else {
+    wt_column_t *last_col, **cols, *search;
+    /* duplicate names are not permitted */
+    if (self->get_column_by_name(self, col->name, &search) == 0) {
         ret = EINVAL;
         goto out;
     }
-    col->fixed_region_size = col->num_elements * col->element_size;
-    if (col->num_elements == WT_VARIABLE) {
-        col->fixed_region_size = WT_VARIABLE_OFFSET_SIZE 
-            + WT_VARIABLE_COUNT_SIZE;
+    /* make some space for the new column */
+    self->num_columns++;
+    cols = realloc(self->columns, self->num_columns * sizeof(wt_column_t *));
+    if (cols == NULL) {
+        ret = ENOMEM;
+        goto out;
     }
+    self->columns = cols;
+    self->columns[self->num_columns - 1] = col;
+    /* There is a slight blurring of the object boundaries here */ 
     if (self->num_columns == 1) {
         col->fixed_region_offset = 0;
     } else {
-        last_col = &self->columns[self->num_columns - 2];
+        last_col = self->columns[self->num_columns - 2];
         col->fixed_region_offset = last_col->fixed_region_offset 
                 + last_col->fixed_region_size;
     }
-    col->get_name = wt_column_get_name;
-    col->get_description = wt_column_get_description;
-    col->get_element_type = wt_column_get_element_type;
-    col->get_element_size = wt_column_get_element_size;
-    col->get_num_elements = wt_column_get_num_elements;
-    
     self->fixed_region_size += col->fixed_region_size;
-
-    /*
-    printf("adding column: '%s' :%d %d %d\n", name,
-            element_type, element_size, num_elements);
-    printf("offset = %d, size = %d\n", col->fixed_region_offset,
-            col->fixed_region_size);
-    */
 out:
     return ret;
 }
 
 static int
-wt_table_add_column_write_mode(wt_table_t *self, const char *name, 
-    const char *description, u_int32_t element_type, u_int32_t element_size,
-    u_int32_t num_elements)
+wt_table_add_column_write_mode(wt_table_t *self, wt_column_t *col) 
 {
     int ret = 0;
     if (self->mode != WT_WRITE) {
         ret = EINVAL;
         goto out;
     }
-    ret = wt_table_add_column(self, name, description, element_type, 
-            element_size, num_elements);
+    ret = wt_table_add_column(self, col);
 out:
     return ret;
 }
@@ -668,6 +692,7 @@ wt_table_open_writer(wt_table_t *self)
 {
     int ret = 0;
     char *db_filename = strconcat(self->homedir, WT_BUILD_PRIMARY_DB_FILE); 
+    wt_column_t *col;
     if (db_filename == NULL) {
         ret = ENOMEM;
         goto out;
@@ -687,7 +712,10 @@ wt_table_open_writer(wt_table_t *self)
     }
     self->num_rows = 0;
     /* add the key column */
-    wt_table_add_column(self, "row_id", "key column", WT_UINT, self->keysize, 1);
+    // TODO add #defs for these constants.
+    ret = wt_column_alloc(&col, WT_KEY_COL_NAME, WT_KEY_COL_DESCRIPTION, 
+            WT_UINT, self->keysize, 1);
+    wt_table_add_column(self, col); 
 
 out:
     if (db_filename != NULL) {
@@ -716,7 +744,7 @@ wt_table_write_schema(wt_table_t *self)
     fprintf(f, "\t<columns>\n");
 
     for (j = 0; j < self->num_columns; j++) {
-        col = &self->columns[j];
+        col = self->columns[j];
         if (element_type_to_str(col->element_type, &type_str)) {
             ret = WT_ERR_FATAL;
         } 
@@ -749,6 +777,7 @@ static int
 wt_table_add_xml_column(wt_table_t *self, xmlNode *node)
 {
     int ret = EINVAL;
+    wt_column_t *col;
     xmlAttr *attr;
     xmlChar *xml_name = NULL;
     xmlChar *xml_description = NULL;
@@ -787,8 +816,12 @@ wt_table_add_xml_column(wt_table_t *self, xmlNode *node)
     }
     name = (const char *) xml_name;
     description = (const char *) xml_description;
-    ret = wt_table_add_column(self, name, description, element_type, 
+    ret = wt_column_alloc(&col, name, description, element_type, 
             element_size, num_elements);
+    if (ret != 0) {
+        goto out;
+    }
+    ret = wt_table_add_column(self, col);
 out:
     return ret;
 }
@@ -880,7 +913,7 @@ static int
 wt_table_read_num_rows(wt_table_t *self)
 {
     int ret = 0;
-    wt_column_t *id_col = &self->columns[0];
+    wt_column_t *id_col = self->columns[0];
     u_int64_t max_key = 0;
     DBC *cursor = NULL;
     DBT key, data;
@@ -1024,7 +1057,7 @@ wt_table_get_column_by_index(wt_table_t *self, u_int32_t index,
 {
     int ret = EINVAL;
     if (index < self->num_columns) {
-        *col = &self->columns[index];
+        *col = self->columns[index];
         ret = 0;
     }
     return ret;
@@ -1037,38 +1070,13 @@ wt_table_get_column_by_name(wt_table_t *self, const char *name,
     int ret = EINVAL;
     u_int32_t index;
     for (index = 0; index < self->num_columns && ret != 0; index++) {
-        if (strcmp(name, self->columns[index].name) == 0) {
-            *col = &self->columns[index];
+        if (strcmp(name, self->columns[index]->name) == 0) {
+            *col = self->columns[index];
             ret = 0;
         }
     }
     return ret;
 }
-static void
-wt_table_free(wt_table_t *self)
-{
-    unsigned int j;
-    wt_column_t *col;
-    if (self->db != NULL) {
-        self->db->close(self->db, 0);
-    }
-    if (self->columns != NULL) {
-        for (j = 0; j < self->num_columns; j++) {
-            col = &self->columns[j];
-            if (col->name != NULL) {
-                free(col->name);
-            }
-            if (col->description != NULL) {
-                free(col->description);
-            }
-        }
-        
-        free(self->columns);
-    }
-    free(self);
-}
-
-
 
 static int 
 wt_table_close(wt_table_t *self)
@@ -1082,7 +1090,6 @@ wt_table_close(wt_table_t *self)
         ret = wt_table_close_writer(self);
     }
     
-    wt_table_free(self);
      
     return ret;
 }
@@ -1091,7 +1098,7 @@ static int
 wt_table_add_row(wt_table_t *self, wt_row_t *row)
 {
     int ret = 0;
-    wt_column_t *id_col = &self->columns[0];
+    wt_column_t *id_col = self->columns[0];
     DBT key, data;
     ret = row->set_value(row, id_col, &self->num_rows, 1);
     if (ret != 0) {
@@ -1127,7 +1134,7 @@ wt_table_get_row(wt_table_t *self, u_int64_t row_id, wt_row_t *row)
 {
     int ret = 0;
     DBT key, data;
-    wt_column_t *id_col = &self->columns[0];
+    wt_column_t *id_col = self->columns[0];
     row->clear(row);
     ret = row->set_value(row, id_col, &row_id, 1);
     if (ret != 0) {
@@ -1138,7 +1145,7 @@ wt_table_get_row(wt_table_t *self, u_int64_t row_id, wt_row_t *row)
     key.size = self->keysize;
     key.data = row->data;
     data.data = row->data + self->keysize;
-    data.ulen = WT_MAX_ROW_SIZE - self->keysize;
+    data.ulen = row->max_size - self->keysize;
     data.flags = DB_DBT_USERMEM;
     ret = self->db->get(self->db, NULL, &key, &data, 0);
 out:
@@ -1152,9 +1159,29 @@ wt_table_get_num_rows(wt_table_t *self, u_int64_t *num_rows)
     return 0;
 }
 
+static int 
+wt_table_free(wt_table_t *self)
+{
+    unsigned int j;
+    if (self != NULL) {
+        if (self->db != NULL) {
+            self->db->close(self->db, 0);
+        }
+        if (self->columns != NULL) {
+            for (j = 0; j < self->num_columns; j++) {
+                if (self->columns[j] != NULL) {
+                    self->columns[j]->free(self->columns[j]);
+                }
+            }
+            free(self->columns);
+        }
+        free(self);
+    }
+    return 0;
+}
 
 int 
-wt_table_create(wt_table_t **wtp)
+wt_table_alloc(wt_table_t **wtp)
 {
     int ret = 0;
     wt_table_t *self = malloc(sizeof(wt_table_t));
@@ -1179,6 +1206,7 @@ wt_table_create(wt_table_t **wtp)
     self->add_row = wt_table_add_row;
     self->get_num_rows = wt_table_get_num_rows;
     self->get_row = wt_table_get_row;
+    self->free = wt_table_free;
     *wtp = self;
 out:
     if (ret != 0) {

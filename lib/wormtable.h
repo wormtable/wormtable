@@ -28,6 +28,8 @@
 #define WT_PRIMARY_DB_FILE          "primary.db"
 #define WT_BUILD_PRIMARY_DB_FILE    "__build_primary.db"
 
+#define WT_KEY_COL_NAME             "row_id"
+#define WT_KEY_COL_DESCRIPTION      "key column"
 
 typedef struct wt_column_t_t {
     char *name;
@@ -35,8 +37,8 @@ typedef struct wt_column_t_t {
     u_int32_t element_type;
     u_int32_t element_size;
     u_int32_t num_elements;
-    u_int32_t fixed_region_offset;
     u_int32_t fixed_region_size;
+    u_int32_t fixed_region_offset;
     int (*pack_elements)(struct wt_column_t_t *self, void *dest, void *elements,
             u_int32_t num_elements);
     int (*unpack_elements)(struct wt_column_t_t *self, void *elements, void *src,
@@ -47,6 +49,7 @@ typedef struct wt_column_t_t {
     int (*get_element_type)(struct wt_column_t_t *self, u_int32_t *element_type); 
     int (*get_element_size)(struct wt_column_t_t *self, u_int32_t *element_size); 
     int (*get_num_elements)(struct wt_column_t_t *self, u_int32_t *num_elements); 
+    int (*free)(struct wt_column_t_t *self);
 } wt_column_t;
 
 typedef struct wt_row_t_t {
@@ -66,16 +69,14 @@ typedef struct wt_table_t_t {
     const char *homedir;
     u_int32_t num_columns;
     u_int64_t num_rows;
-    wt_column_t *columns;
+    wt_column_t **columns;
     DB *db;
     u_int32_t mode;
     u_int32_t keysize;
     u_int32_t fixed_region_size;
     int (*open)(struct wt_table_t_t *wtt, const char *homedir, u_int32_t flags);
     int (*close)(struct wt_table_t_t *wtt);
-    int (*add_column)(struct wt_table_t_t *wtt, const char *name, 
-            const char *description, u_int32_t element_type, 
-            u_int32_t element_size, u_int32_t num_elements);
+    int (*add_column)(struct wt_table_t_t *wtt, wt_column_t *col);
     int (*set_keysize)(struct wt_table_t_t *wtt, u_int32_t keysize); 
     int (*set_cachesize)(struct wt_table_t_t *wtt, u_int64_t bytes);
     int (*get_column_by_index)(struct wt_table_t_t *wtt, u_int32_t index, 
@@ -85,6 +86,7 @@ typedef struct wt_table_t_t {
     int (*add_row)(struct wt_table_t_t *wtt, wt_row_t *row);
     int (*get_num_rows)(struct wt_table_t_t *wtt, u_int64_t *num_rows);
     int (*get_row)(struct wt_table_t_t *wtt, u_int64_t row_id, wt_row_t *row);
+    int (*free)(struct wt_table_t_t *wtt);
 } wt_table_t;
 
 typedef struct {
@@ -95,8 +97,11 @@ typedef struct {
 
 
 char * wt_strerror(int err);
-int wt_table_create(wt_table_t **wttp);
-
+int wt_table_alloc(wt_table_t **wttp);
+int wt_column_alloc(wt_column_t **wtcp, const char *name, 
+        const char *description, u_int32_t element_type, 
+        u_int32_t element_size, u_int32_t num_elements);
 int wt_row_alloc(wt_row_t **wtrp, wt_table_t *wtt, u_int32_t size);
+
 
 
