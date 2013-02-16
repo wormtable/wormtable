@@ -41,17 +41,25 @@ typedef struct wt_column_t_t {
             u_int32_t num_elements);
     int (*unpack_elements)(struct wt_column_t_t *self, void *elements, void *src,
             u_int32_t num_elements);
+    /* Public API */
+    int (*get_name)(struct wt_column_t_t *self, const char **name);
+    int (*get_description)(struct wt_column_t_t *self, const char **description);
+    int (*get_element_type)(struct wt_column_t_t *self, u_int32_t *element_type); 
+    int (*get_element_size)(struct wt_column_t_t *self, u_int32_t *element_size); 
+    int (*get_num_elements)(struct wt_column_t_t *self, u_int32_t *num_elements); 
 } wt_column_t;
 
 typedef struct wt_row_t_t {
     void *data;
     u_int32_t size;
-    u_int32_t fixed_region_size;
+    u_int32_t max_size;
+    struct wt_table_t_t *table;
     int (*set_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
             u_int32_t num_elements);
     int (*get_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
             u_int32_t *num_elements);
     int (*clear)(struct wt_row_t_t *wtr);
+    int (*free)(struct wt_row_t_t *wtr);
 } wt_row_t;
 
 typedef struct wt_table_t_t {
@@ -62,6 +70,7 @@ typedef struct wt_table_t_t {
     DB *db;
     u_int32_t mode;
     u_int32_t keysize;
+    u_int32_t fixed_region_size;
     int (*open)(struct wt_table_t_t *wtt, const char *homedir, u_int32_t flags);
     int (*close)(struct wt_table_t_t *wtt);
     int (*add_column)(struct wt_table_t_t *wtt, const char *name, 
@@ -73,8 +82,6 @@ typedef struct wt_table_t_t {
             wt_column_t **column);
     int (*get_column_by_name)(struct wt_table_t_t *wtt, const char *name, 
             wt_column_t **column);
-    int (*alloc_row)(struct wt_table_t_t *wtc, wt_row_t **row);
-    int (*free_row)(struct wt_table_t_t *wtc, wt_row_t *row);
     int (*add_row)(struct wt_table_t_t *wtt, wt_row_t *row);
     int (*get_num_rows)(struct wt_table_t_t *wtt, u_int64_t *num_rows);
     int (*get_row)(struct wt_table_t_t *wtt, u_int64_t row_id, wt_row_t *row);
@@ -90,5 +97,6 @@ typedef struct {
 char * wt_strerror(int err);
 int wt_table_create(wt_table_t **wttp);
 
+int wt_row_alloc(wt_row_t **wtrp, wt_table_t *wtt, u_int32_t size);
 
 

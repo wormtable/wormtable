@@ -215,6 +215,10 @@ unpack_float8(double *element, void *src, u_int8_t size)
     return 0;
 }
  
+/*==========================================================
+ * Column object 
+ *==========================================================
+ */
 
 /* value packing */
 
@@ -358,6 +362,50 @@ wt_column_unpack_elements_char(wt_column_t *self, void *elements, void *src,
     return ret;
 }
 
+static int 
+wt_column_get_name(wt_column_t *self, const char **name)
+{
+    *name = self->name;
+    return 0;
+}
+
+static int 
+wt_column_get_description(wt_column_t *self, const char **description)
+{
+    *description = self->description;
+    return 0;
+}
+
+static int 
+wt_column_get_element_type(wt_column_t *self, u_int32_t *element_type)
+{
+    *element_type = self->element_type;
+    return 0;
+}
+
+static int 
+wt_column_get_num_elements(wt_column_t *self, u_int32_t *num_elements)
+{
+    *num_elements = self->num_elements;
+    return 0;
+}
+
+static int 
+wt_column_get_element_size(wt_column_t *self, u_int32_t *element_size)
+{
+    *element_size = self->element_size;
+    return 0;
+}
+
+
+
+
+
+
+/*==========================================================
+ * Row object 
+ *==========================================================
+ */
 
 /* 
  * Packs the address for a variable column for the specified number of elements
@@ -369,6 +417,7 @@ wt_row_pack_address(wt_row_t *self, wt_column_t *col, u_int32_t num_elements)
     int ret = 0;
     void *p = self->data + col->fixed_region_offset;
     u_int32_t new_size = self->size + num_elements * col->element_size;
+    printf("self->size = %d\n", self->size);
     if (new_size > WT_MAX_ROW_SIZE) {
         ret = EINVAL;
         goto out;
@@ -417,6 +466,10 @@ wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements,
 {
     int ret = 0;
     void *p;
+    if (self->size == 0) {
+        ret = EINVAL;
+        goto out;
+    }
     if (col->num_elements == WT_VARIABLE) {
         p = self->data + self->size;
         ret = wt_row_pack_address(self, col, num_elements);
@@ -466,17 +519,56 @@ out:
     return ret;
 }
 
-
-
-
 static int 
 wt_row_clear(wt_row_t *self)
 {
     memset(self->data, 0, self->size);
-    self->size = self->fixed_region_size;
+    self->size = self->table->fixed_region_size;
     return 0;
 }
 
+static int 
+wt_row_free(wt_row_t *self)
+{
+    if (self != NULL) {
+        if (self->data != NULL) {
+            free(self->data);
+        }
+        free(self);
+    }
+    return 0;
+}
+
+int 
+wt_row_alloc(wt_row_t **wtrp, wt_table_t *table, u_int32_t size)
+{
+    int ret = 0;
+    wt_row_t *self = calloc(1, sizeof(wt_row_t));
+    void *p = calloc(1, size);
+    if (self == NULL || p == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    self->table = table;
+    self->max_size = size;
+    self->data = p;
+    self->size = 0; 
+    self->set_value = wt_row_set_value;
+    self->get_value = wt_row_get_value;
+    self->clear = wt_row_clear;
+    self->free = wt_row_free;
+    *wtrp = self;
+out:
+    if (ret != 0) {
+        wt_row_free(self);
+    }
+    return ret;
+}
+
+/*==========================================================
+ * Table object 
+ *==========================================================
+ */
 
 static int
 wt_table_add_column(wt_table_t *self, const char *name, 
@@ -537,10 +629,20 @@ wt_table_add_column(wt_table_t *self, const char *name,
         col->fixed_region_offset = last_col->fixed_region_offset 
                 + last_col->fixed_region_size;
     }
+    col->get_name = wt_column_get_name;
+    col->get_description = wt_column_get_description;
+    col->get_element_type = wt_column_get_element_type;
+    col->get_element_size = wt_column_get_element_size;
+    col->get_num_elements = wt_column_get_num_elements;
+    
+    self->fixed_region_size += col->fixed_region_size;
+
+    /*
     printf("adding column: '%s' :%d %d %d\n", name,
             element_type, element_size, num_elements);
     printf("offset = %d, size = %d\n", col->fixed_region_offset,
             col->fixed_region_size);
+    */
 out:
     return ret;
 }
@@ -986,40 +1088,6 @@ wt_table_close(wt_table_t *self)
 }
 
 static int 
-wt_table_alloc_row(wt_table_t *self, wt_row_t **row)
-{
-    int ret = 0;
-    wt_column_t *last_col;
-    void *p = malloc(WT_MAX_ROW_SIZE);
-    wt_row_t *r = malloc(sizeof(wt_row_t));
-    if (r == NULL || p == NULL) {
-        ret = -ENOMEM;
-        goto out;
-    }
-    last_col = &self->columns[self->num_columns - 1];
-    memset(r, 0, sizeof(wt_row_t));
-    r->fixed_region_size = last_col->fixed_region_offset 
-            + last_col->fixed_region_size;
-    r->size = r->fixed_region_size; 
-    r->data = p;
-    r->set_value = wt_row_set_value;
-    r->get_value = wt_row_get_value;
-    r->clear = wt_row_clear;
-    *row = r;
-out:
-    return ret;
-}
-
-static int 
-wt_table_free_row(wt_table_t *self, wt_row_t *row)
-{
-    int ret = 0;
-    free(row->data);
-    free(row);
-    return ret;
-}
-
-static int 
 wt_table_add_row(wt_table_t *self, wt_row_t *row)
 {
     int ret = 0;
@@ -1099,6 +1167,7 @@ wt_table_create(wt_table_t **wtp)
     if (ret != 0) {
         goto out;
     }
+    self->fixed_region_size = 0;
     self->keysize = WT_DEFAULT_KEYSIZE;
     self->open = wt_table_open;
     self->add_column = wt_table_add_column_write_mode;
@@ -1107,8 +1176,6 @@ wt_table_create(wt_table_t **wtp)
     self->get_column_by_index = wt_table_get_column_by_index;
     self->get_column_by_name = wt_table_get_column_by_name;
     self->close = wt_table_close;
-    self->alloc_row = wt_table_alloc_row;
-    self->free_row = wt_table_free_row;
     self->add_row = wt_table_add_row;
     self->get_num_rows = wt_table_get_num_rows;
     self->get_row = wt_table_get_row;

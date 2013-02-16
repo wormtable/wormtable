@@ -36,15 +36,19 @@ generate_table(const char *table_name)
     wtt->add_column(wtt, "float_4_1", "testing", WT_FLOAT, 4, 1);
     wtt->add_column(wtt, "float_8_2", "testing", WT_FLOAT, 8, 2);
     wtt->add_column(wtt, "str_1_0", "testing", WT_CHAR, 1, 0);
-    wtt->alloc_row(wtt, &row);
+    wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
     wtt->get_column_by_index(wtt, 1, &uint_col);
     wtt->get_column_by_index(wtt, 2, &int_col);
     wtt->get_column_by_index(wtt, 3, &float_col);
     wtt->get_column_by_index(wtt, 4, &double_2_col);
     wtt->get_column_by_index(wtt, 5, &char_col);
-    for (j = 0; j < 500; j++) { 
+    for (j = 0; j < 5; j++) { 
+        row->clear(row);
         uint_val = j;
-        row->set_value(row, uint_col, &uint_val, 1);
+        wt_ret = row->set_value(row, uint_col, &uint_val, 1);
+        if (wt_ret != 0) {
+            handle_error(wt_ret);
+        }
         int_val = -1 * j;
         row->set_value(row, int_col, &int_val, 1);
         float_val = j; 
@@ -58,9 +62,8 @@ generate_table(const char *table_name)
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
-        row->clear(row);
     }
-    wtt->free_row(wtt, row);
+    row->free(row);
     wt_ret = wtt->close(wtt);
     if (wt_ret != 0) {
         handle_error(wt_ret);
@@ -76,6 +79,7 @@ dump_table(const char *table_name)
     wt_column_t *uint_col, *int_col, *float_col, *char_col, *double_2_col;
     wt_row_t *row;
     
+    const char *description, *name;
     double float_val, v[2];
     u_int64_t uint_val;
     int64_t int_val;
@@ -90,13 +94,17 @@ dump_table(const char *table_name)
     if (wt_ret != 0) {
         handle_error(wt_ret);
     }
-    wtt->alloc_row(wtt, &row);
+    wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
     wtt->get_column_by_name(wtt, "uint_1_1", &uint_col);
     wtt->get_column_by_name(wtt, "int_1_1", &int_col);
     wtt->get_column_by_index(wtt, 3, &float_col);
     wtt->get_column_by_index(wtt, 4, &double_2_col);
     wtt->get_column_by_index(wtt, 5, &char_col);
     wt_ret = wtt->get_num_rows(wtt, &num_rows);
+    uint_col->get_name(uint_col, &name);
+    uint_col->get_description(uint_col, &description);
+    printf("%s: %s\n", name, description); 
+    
     if (wt_ret != 0) {
         handle_error(wt_ret);
     }
@@ -120,8 +128,7 @@ dump_table(const char *table_name)
         printf("got double2 val: %f %f\n", v[0], v[1]);
 
     }
-
-    wtt->free_row(wtt, row);
+    row->free(row);
     wt_ret = wtt->close(wtt);
     if (wt_ret != 0) {
         handle_error(wt_ret);

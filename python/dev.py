@@ -21,7 +21,7 @@ def main():
     t.add_column("char_1_0", "testing", _wormtable.WT_CHAR, 1, 
         _wormtable.WT_VARIABLE)
     col = t.get_column_by_index(0)
-    print("Column at index:", col)
+    print("Column at index:", col.get_name())
     t.close()
            
        
