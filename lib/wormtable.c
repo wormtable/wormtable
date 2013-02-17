@@ -460,13 +460,18 @@ out:
 
 
 static int 
-wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements, 
+wt_row_set_value(wt_row_t *self, u_int32_t col_index, void *elements, 
         u_int32_t num_elements)
 {
     int ret = 0;
     void *p;
+    wt_column_t *col = NULL;
     if (self->size == 0) {
         ret = EINVAL;
+        goto out;
+    }
+    ret = self->table->get_column_by_index(self->table, col_index, &col);
+    if (ret != 0) {
         goto out;
     }
     if (col->num_elements == WT_VARIABLE) {
@@ -490,13 +495,18 @@ out:
 }
 
 static int 
-wt_row_get_value(wt_row_t *self, wt_column_t *col, void *elements, 
+wt_row_get_value(wt_row_t *self, u_int32_t col_index, void *elements, 
         u_int32_t *num_elements)
 {
     int ret = 0;
     void *p;
     u_int32_t offset;
     u_int32_t n;
+    wt_column_t *col = NULL;
+    ret = self->table->get_column_by_index(self->table, col_index, &col);
+    if (ret != 0) {
+        goto out;
+    }
     if (col->num_elements == WT_VARIABLE) {
         ret = wt_row_unpack_address(self, col, &offset, &n);
         if (ret != 0) {
@@ -1098,9 +1108,8 @@ static int
 wt_table_add_row(wt_table_t *self, wt_row_t *row)
 {
     int ret = 0;
-    wt_column_t *id_col = self->columns[0];
     DBT key, data;
-    ret = row->set_value(row, id_col, &self->num_rows, 1);
+    ret = row->set_value(row, 0, &self->num_rows, 1);
     if (ret != 0) {
         goto out;
     }
@@ -1134,9 +1143,8 @@ wt_table_get_row(wt_table_t *self, u_int64_t row_id, wt_row_t *row)
 {
     int ret = 0;
     DBT key, data;
-    wt_column_t *id_col = self->columns[0];
     row->clear(row);
-    ret = row->set_value(row, id_col, &row_id, 1);
+    ret = row->set_value(row, 0, &row_id, 1);
     if (ret != 0) {
         goto out;
     }

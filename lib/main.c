@@ -45,19 +45,19 @@ generate_table(const char *table_name)
     for (j = 0; j < 5; j++) { 
         row->clear(row);
         uint_val = j;
-        wt_ret = row->set_value(row, uint_col, &uint_val, 1);
+        wt_ret = row->set_value(row, 1, &uint_val, 1);
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
         int_val = -1 * j;
-        row->set_value(row, int_col, &int_val, 1);
+        row->set_value(row, 2, &int_val, 1);
         float_val = j; 
-        row->set_value(row, float_col, &float_val, 1);
+        row->set_value(row, 3, &float_val, 1);
         char_val = "TESTING";
-        row->set_value(row, char_col, char_val, strlen(char_val));
+        row->set_value(row, 5, char_val, strlen(char_val));
         v[0] = -j * 3.4;
         v[1] = j * 3.4;
-        row->set_value(row, double_2_col, v, 2);
+        row->set_value(row, 4, v, 2);
         wt_ret = wtt->add_row(wtt, row); 
         if (wt_ret != 0) {
             handle_error(wt_ret);
@@ -116,16 +116,16 @@ dump_table(const char *table_name)
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
-        row->get_value(row, uint_col, &uint_val, &tmp);
+        row->get_value(row, 1, &uint_val, &tmp);
         printf("got uint value: %lu\n", uint_val);
-        row->get_value(row, int_col, &int_val, &tmp);
+        row->get_value(row, 2, &int_val, &tmp);
         printf("got int value: %ld\n", int_val);
-        row->get_value(row, float_col, &float_val, &tmp);
+        row->get_value(row, 3, &float_val, &tmp);
         printf("got float value: %f\n", float_val);
-        row->get_value(row, char_col, buff, &tmp);
+        row->get_value(row, 5, buff, &tmp);
         buff[tmp] = '\0';
         printf("got char  value '%s'\n", buff);
-        row->get_value(row, double_2_col, v, &tmp);
+        row->get_value(row, 4, v, &tmp);
         printf("got double2 val: %f %f\n", v[0], v[1]);
 
     }

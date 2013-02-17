@@ -15,11 +15,8 @@ def main():
     shutil.rmtree(test_table)
     t = _wormtable.Table()
     t.open(test_table, _wormtable.WT_WRITE)
-    t.add_column("uint_1_1", "testing", _wormtable.WT_UINT, 1, 1)
-    t.add_column("int_1_1", "testing", _wormtable.WT_INT, 2, 1)
-    t.add_column("float_4_1", "testing", _wormtable.WT_FLOAT, 4, 1)
-    t.add_column("char_1_0", "testing", _wormtable.WT_CHAR, 1, 
-        _wormtable.WT_VARIABLE)
+    col = _wormtable.Column("uint_1_1", "testing", _wormtable.WT_UINT, 1, 1)
+    t.add_column(col)
     col = t.get_column_by_index(0)
     print("Column at index:", col.get_name())
     t.close()

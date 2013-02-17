@@ -52,14 +52,19 @@ typedef struct wt_column_t_t {
     int (*free)(struct wt_column_t_t *self);
 } wt_column_t;
 
+typedef struct wt_schema_t_t {
+
+} wt_schema_t;
+
+
 typedef struct wt_row_t_t {
     void *data;
     u_int32_t size;
     u_int32_t max_size;
     struct wt_table_t_t *table;
-    int (*set_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
+    int (*set_value)(struct wt_row_t_t *wtr, u_int32_t col, void *elements,
             u_int32_t num_elements);
-    int (*get_value)(struct wt_row_t_t *wtr, wt_column_t *col, void *elements,
+    int (*get_value)(struct wt_row_t_t *wtr, u_int32_t col, void *elements,
             u_int32_t *num_elements);
     int (*clear)(struct wt_row_t_t *wtr);
     int (*free)(struct wt_row_t_t *wtr);
