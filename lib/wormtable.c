@@ -939,6 +939,7 @@ wt_table_read_num_rows(wt_table_t *self)
         id_col->unpack_elements(id_col, &max_key, key.data, 1);
         self->num_rows = max_key + 1;
     } else if (ret == DB_NOTFOUND) {
+        ret = 0;
         self->num_rows = 0; 
     } 
 out:
@@ -1168,6 +1169,14 @@ wt_table_get_num_rows(wt_table_t *self, u_int64_t *num_rows)
 }
 
 static int 
+wt_table_get_num_columns(wt_table_t *self, u_int32_t *num_columns)
+{
+    *num_columns = self->num_columns;
+    return 0;
+}
+
+
+static int 
 wt_table_free(wt_table_t *self)
 {
     unsigned int j;
@@ -1213,6 +1222,7 @@ wt_table_alloc(wt_table_t **wtp)
     self->close = wt_table_close;
     self->add_row = wt_table_add_row;
     self->get_num_rows = wt_table_get_num_rows;
+    self->get_num_columns = wt_table_get_num_columns;
     self->get_row = wt_table_get_row;
     self->free = wt_table_free;
     *wtp = self;

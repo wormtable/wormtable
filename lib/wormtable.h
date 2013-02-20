@@ -90,6 +90,7 @@ typedef struct wt_table_t_t {
             wt_column_t **column);
     int (*add_row)(struct wt_table_t_t *wtt, wt_row_t *row);
     int (*get_num_rows)(struct wt_table_t_t *wtt, u_int64_t *num_rows);
+    int (*get_num_columns)(struct wt_table_t_t *wtt, u_int32_t *num_columns);
     int (*get_row)(struct wt_table_t_t *wtt, u_int64_t row_id, wt_row_t *row);
     int (*free)(struct wt_table_t_t *wtt);
 } wt_table_t;

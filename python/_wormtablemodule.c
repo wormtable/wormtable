@@ -36,71 +36,6 @@ handle_wt_error(int err)
 {
     PyErr_SetString(WormtableError, wt_strerror(err));
 }
-/*==========================================================
- * Row object 
- *==========================================================
- */
-
-static void
-Row_dealloc(Row* self)
-{
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static int
-Row_init(Row *self, PyObject *args, PyObject *kwds)
-{
-    int ret = -1;
-    ret = 0;
-    return ret;
-}
-
-
-
-static PyMethodDef Row_methods[] = {
-    {NULL}  /* Sentinel */
-};
-
-
-static PyTypeObject RowType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "_wormtable.Row",             /* tp_name */
-    sizeof(Row),             /* tp_basicsize */
-    0,                         /* tp_itemsize */
-    (destructor)Row_dealloc, /* tp_dealloc */
-    0,                         /* tp_print */
-    0,                         /* tp_getattr */
-    0,                         /* tp_setattr */
-    0,                         /* tp_reserved */
-    0,                         /* tp_repr */
-    0,                         /* tp_as_number */
-    0,                         /* tp_as_sequence */
-    0,                         /* tp_as_mapping */
-    0,                         /* tp_hash  */
-    0,                         /* tp_call */
-    0,                         /* tp_str */
-    0,                         /* tp_getattro */
-    0,                         /* tp_setattro */
-    0,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "Row objects",           /* tp_doc */
-    0,                     /* tp_traverse */
-    0,                     /* tp_clear */
-    0,                     /* tp_richcompare */
-    0,                     /* tp_weaklistoffset */
-    0,                     /* tp_iter */
-    0,                     /* tp_iternext */
-    Row_methods,             /* tp_methods */
-    0,                         /* tp_members */
-    0,                         /* tp_getset */
-    0,                         /* tp_base */
-    0,                         /* tp_dict */
-    0,                         /* tp_descr_get */
-    0,                         /* tp_descr_set */
-    0,                         /* tp_dictoffset */
-    (initproc)Row_init,      /* tp_init */
-};
-
 
 /*==========================================================
  * Column object 
@@ -122,8 +57,113 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     return ret;
 }
 
+static PyObject * 
+Column_get_name(Column *self)
+{
+    PyObject *ret = NULL;
+    const char *name;
+    int wt_ret;
+    if (self->column != NULL) {
+        wt_ret = self->column->get_name(self->column, &name);     
+        if (wt_ret != 0) {
+            handle_wt_error(wt_ret); 
+            goto out;
+        }
+        ret = Py_BuildValue("s", name);
+    } else {
+        PyErr_SetString(WormtableError, "Null Column");
+    }
+out:
+    return ret;
+}
+
+static PyObject * 
+Column_get_description(Column *self)
+{
+    PyObject *ret = NULL;
+    const char *description;
+    int wt_ret;
+    if (self->column != NULL) {
+        wt_ret = self->column->get_description(self->column, &description);     
+        if (wt_ret != 0) {
+            handle_wt_error(wt_ret); 
+            goto out;
+        }
+        ret = Py_BuildValue("s", description);
+    } else {
+        PyErr_SetString(WormtableError, "Null Column");
+    }
+out:
+    return ret;
+}
+
+static PyObject * 
+Column_get_element_type(Column *self)
+{
+    PyObject *ret = NULL;
+    u_int32_t element_type;
+    int wt_ret;
+    if (self->column != NULL) {
+        wt_ret = self->column->get_element_type(self->column, &element_type);     
+        if (wt_ret != 0) {
+            handle_wt_error(wt_ret); 
+            goto out;
+        }
+        ret = Py_BuildValue("i", (int) element_type);
+    } else {
+        PyErr_SetString(WormtableError, "Null Column");
+    }
+out:
+    return ret;
+}
+
+static PyObject * 
+Column_get_element_size(Column *self)
+{
+    PyObject *ret = NULL;
+    u_int32_t element_size;
+    int wt_ret;
+    if (self->column != NULL) {
+        wt_ret = self->column->get_element_size(self->column, &element_size);     
+        if (wt_ret != 0) {
+            handle_wt_error(wt_ret); 
+            goto out;
+        }
+        ret = Py_BuildValue("i", (int) element_size);
+    } else {
+        PyErr_SetString(WormtableError, "Null Column");
+    }
+out:
+    return ret;
+}
+    
+static PyObject * 
+Column_get_num_elements(Column *self)
+{
+    PyObject *ret = NULL;
+    u_int32_t num_elements;
+    int wt_ret;
+    if (self->column != NULL) {
+        wt_ret = self->column->get_num_elements(self->column, &num_elements);     
+        if (wt_ret != 0) {
+            handle_wt_error(wt_ret); 
+            goto out;
+        }
+        ret = Py_BuildValue("i", (int) num_elements);
+    } else {
+        PyErr_SetString(WormtableError, "Null Column");
+    }
+out:
+    return ret;
+}
+
 
 static PyMethodDef Column_methods[] = {
+    {"get_name", (PyCFunction) Column_get_name, METH_NOARGS, "Return the name." },
+    {"get_description", (PyCFunction) Column_get_description, METH_NOARGS, "Return the description." },
+    {"get_element_type", (PyCFunction) Column_get_element_type, METH_NOARGS, "Return the element_type." },
+    {"get_element_size", (PyCFunction) Column_get_element_size, METH_NOARGS, "Return the element_size." },
+    {"get_num_elements", (PyCFunction) Column_get_num_elements, METH_NOARGS, "Return the num_elements." },
     {NULL}  /* Sentinel */
 };
 
@@ -179,7 +219,7 @@ static void
 Table_dealloc(Table* self)
 {
     if (self->table != NULL) {
-        self->table->close(self->table);
+        self->table->free(self->table);
     }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -190,7 +230,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     int ret = -1;
     int wt_ret;
     self->table = NULL;
-    wt_ret = wt_table_create(&self->table);
+    wt_ret = wt_table_alloc(&self->table);
     if (wt_ret != 0) {
         handle_wt_error(wt_ret); 
         goto out;
@@ -251,6 +291,49 @@ out:
 }
 
 static PyObject *
+Table_get_num_rows(Table* self)
+{
+    PyObject *ret = NULL;
+    int wt_ret;
+    u_int64_t num_rows;
+    if (self->table == NULL) {
+        PyErr_SetString(WormtableError, "Null table");
+        goto out;
+    }
+    wt_ret = self->table->get_num_rows(self->table, &num_rows);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue("K", (unsigned long long) num_rows);
+out:
+    return ret; 
+}
+
+static PyObject *
+Table_get_num_columns(Table* self)
+{
+    PyObject *ret = NULL;
+    int wt_ret;
+    u_int32_t num_columns;
+    if (self->table == NULL) {
+        PyErr_SetString(WormtableError, "Null table");
+        goto out;
+    }
+    wt_ret = self->table->get_num_columns(self->table, &num_columns);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;    
+    }
+    ret = Py_BuildValue("i", (int) num_columns);
+out:
+    return ret; 
+}
+
+
+
+
+static PyObject *
 Table_get_column_by_index(Table* self, PyObject *args)
 {
     int wt_ret;
@@ -286,6 +369,7 @@ Table_add_column(Table* self, PyObject *args)
     PyObject *ret = NULL;
     unsigned int element_type, element_size, num_elements; 
     const char *name, *description;
+    wt_column_t *col = NULL;
     if (!PyArg_ParseTuple(args, "ssIII", &name, &description, &element_type,
             &element_size, &num_elements)) {
         goto out;
@@ -294,9 +378,14 @@ Table_add_column(Table* self, PyObject *args)
         PyErr_SetString(WormtableError, "table closed");
         goto out;
     }
-    wt_ret = self->table->add_column(self->table, name, description, 
+    wt_ret = wt_column_alloc(&col,  name, description, 
             (u_int32_t) element_type, (u_int32_t) element_size, 
             (u_int32_t) num_elements);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;
+    }
+    wt_ret = self->table->add_column(self->table, col);
     if (wt_ret != 0) {
         handle_wt_error(wt_ret);
         goto out;    
@@ -307,15 +396,13 @@ out:
     return ret; 
 }
 
-
-
-
-
-
-
 static PyMethodDef Table_methods[] = {
     {"open", (PyCFunction) Table_open, METH_VARARGS, "Opens the table." },
     {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
+    {"get_num_rows", (PyCFunction) Table_get_num_rows, METH_NOARGS, 
+            "Get the number of rows" },
+    {"get_num_columns", (PyCFunction) Table_get_num_columns, METH_NOARGS, 
+            "Get the number of columns" },
     {"get_column_by_index", (PyCFunction) Table_get_column_by_index, 
             METH_VARARGS, "Gets a column by its index.." },
     {"add_column", (PyCFunction) Table_add_column, METH_VARARGS, 
@@ -363,6 +450,120 @@ static PyTypeObject TableType = {
     (initproc)Table_init,      /* tp_init */
 };
    
+
+/*==========================================================
+ * Row object 
+ *==========================================================
+ */
+
+static void
+Row_dealloc(Row* self)
+{
+    if (self->row != NULL) {
+        self->row->free(self->row);
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Row_init(Row *self, PyObject *args, PyObject *kwds)
+{
+    int ret = -1;
+    int wt_ret = 0;
+    wt_table_t *table;
+    PyObject *py_table;
+    static char *kwlist[] = {"table", NULL}; 
+    self->row = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
+            &TableType, &py_table)) {
+        goto out;
+    }
+    table = ((Table *) py_table)->table;
+    wt_ret = wt_row_alloc(&self->row, table, WT_MAX_ROW_SIZE);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        self->row = NULL;
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+static PyObject *
+Row_set_value(Row *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    unsigned int column;
+    PyObject *elements;
+    if (!PyArg_ParseTuple(args, "IO", &column, &elements)) {
+        goto out;
+    }
+    if (self->row == NULL) {
+        PyErr_SetString(WormtableError, "Null row");
+        goto out;
+    }
+    printf("Set value - implement!\n");
+    /*
+
+    int (*set_value)(struct wt_row_t_t *wtr, u_int32_t col, void *elements,
+            u_int32_t num_elements);
+    */
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+
+
+}
+
+
+static PyMethodDef Row_methods[] = {
+    
+   
+    {"set_value", (PyCFunction) Row_set_value, METH_VARARGS, "Sets values in the row." },
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject RowType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_wormtable.Row",             /* tp_name */
+    sizeof(Row),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)Row_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "Row objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    0,                     /* tp_iter */
+    0,                     /* tp_iternext */
+    Row_methods,             /* tp_methods */
+    0,                         /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)Row_init,      /* tp_init */
+};
 
 
 
