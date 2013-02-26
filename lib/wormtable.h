@@ -71,11 +71,11 @@ typedef struct wt_row_t_t {
 } wt_row_t;
 
 typedef struct wt_table_t_t {
+    DB *db;
     const char *homedir;
     u_int32_t num_columns;
     u_int64_t num_rows;
     wt_column_t **columns;
-    DB *db;
     u_int32_t mode;
     u_int32_t keysize;
     u_int32_t fixed_region_size;
@@ -95,15 +95,22 @@ typedef struct wt_table_t_t {
     int (*free)(struct wt_table_t_t *wtt);
 } wt_table_t;
 
-typedef struct {
-    wt_table_t *table;
-    wt_column_t *columns;
+typedef struct wt_index_t_t {
     DB *db;
+    char *name;
+    wt_table_t *table;
+    wt_column_t **columns;
+    u_int32_t num_columns;
+    int (*open)(struct wt_index_t_t *wtt, u_int32_t flags);
+    int (*close)(struct wt_index_t_t *wtt);
+    int (*free)(struct wt_index_t_t *wtt);
 } wt_index_t;
 
 
 char * wt_strerror(int err);
 int wt_table_alloc(wt_table_t **wttp);
+int wt_index_alloc(wt_index_t **wtip, wt_table_t *wtt, wt_column_t **columns,
+        u_int32_t num_columns);
 int wt_column_alloc(wt_column_t **wtcp, const char *name, 
         const char *description, u_int32_t element_type, 
         u_int32_t element_size, u_int32_t num_elements);

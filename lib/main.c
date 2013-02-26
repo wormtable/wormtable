@@ -137,6 +137,55 @@ dump_table(const char *table_name)
     wtt->free(wtt);
 }
 
+void 
+build_index(const char *table_name)
+{
+    int wt_ret;
+    wt_table_t *wtt;
+    wt_index_t *wti;
+    wt_column_t *uint_col, *int_col;
+    wt_column_t *columns[] = {NULL, NULL, NULL};
+    wt_ret = wt_table_alloc(&wtt);
+    if (wt_ret != 0) {
+        handle_error(wt_ret); 
+    }
+    wt_ret = wtt->open(wtt, table_name, WT_READ);
+    if (wt_ret != 0) {
+        handle_error(wt_ret);
+    }
+    wt_ret = wtt->get_column_by_name(wtt, "uint_1_1", &uint_col);
+    if (wt_ret != 0) {
+        handle_error(wt_ret);
+    }
+    wt_ret = wtt->get_column_by_name(wtt, "int_1_1", &int_col);
+    if (wt_ret != 0) {
+        handle_error(wt_ret);
+    }
+    columns[0] = uint_col;
+    columns[1] = int_col;
+    wt_ret = wt_index_alloc(&wti, wtt, columns, 2);
+    if (wt_ret != 0) {
+        handle_error(wt_ret); 
+    }
+    wt_ret = wti->open(wti, WT_WRITE);
+    if (wt_ret != 0) {
+        handle_error(wt_ret); 
+    }
+    
+    wt_ret = wti->close(wti);
+    if (wt_ret != 0) {
+        handle_error(wt_ret); 
+    }
+    
+    wt_ret = wtt->close(wtt);
+    if (wt_ret != 0) {
+        handle_error(wt_ret);
+    }
+    wti->free(wti);
+    wtt->free(wtt);
+}
+
+
 int 
 main(int argc, char **argv)
 {
@@ -150,7 +199,9 @@ main(int argc, char **argv)
         dump_table("test_table/");
     } else if (strstr(command, "write") != NULL) {
         generate_table("test_table/");           
-    } else {
+    } else if (strstr(command, "build-index") != NULL) {
+        build_index("test_table/");           
+    } else { 
         printf("Unrecognised command");
         return 1;
     }

@@ -1234,6 +1234,152 @@ out:
     return ret;
 }
 
+/*==========================================================
+ * Index object 
+ *==========================================================
+ */
+
+static int 
+wt_index_close(wt_index_t *self)
+{
+    int ret = 0;
+    printf("closing index\n");
+    return ret;
+}
+
+
+static int
+wt_index_open_writer(wt_index_t *self)
+{
+    int ret = 0;
+    printf("opening index for writing\n");
+    return ret;
+}
+
+static int
+wt_index_open_reader(wt_index_t *self)
+{
+    int ret = 0;
+    printf("opening index for reading\n");
+    return ret;
+}
+
+
+static int 
+wt_index_open(wt_index_t *self, u_int32_t flags)
+{
+    int ret = 0;
+    if (flags == WT_WRITE) {
+        ret = wt_index_open_writer(self); 
+    } else if (flags == WT_READ) {
+        ret = wt_index_open_reader(self); 
+    } else {
+        ret = EINVAL; 
+    }
+    return ret;
+}
+
+
+/* 
+ * Generates the name for this index by concatenating the names of the 
+ * columns together, separated by '+'.
+ */
+static int 
+wt_index_generate_name(wt_index_t *self)
+{
+    int ret = 0;
+    u_int32_t j, k;
+    u_int32_t len = self->num_columns;
+    const char *col_name;
+    for (j = 0; j < self->num_columns; j++) {
+        // TODO this is a violation of the OO design - change to 
+        // use the getter function.
+        col_name = self->columns[j]->name;
+        len += strlen(col_name); 
+    }
+    self->name = malloc(len);
+    if (self->name == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    k = 0;
+    for (j = 0; j < self->num_columns; j++) {
+        col_name = self->columns[j]->name;
+        strcpy(&self->name[k], col_name);
+        k += strlen(col_name);
+        self->name[k] = '+';
+        k++;
+    }
+    self->name[len - 1] = '\0';
+    printf("name = '%s'\n", self->name);
+out:
+    return ret;
+
+}
+
+
+
+static int 
+wt_index_free(wt_index_t *self)
+{
+    if (self != NULL) {
+        if (self->db != NULL) {
+            self->db->close(self->db, 0);
+        }
+        if (self->columns != NULL) {
+            free(self->columns);
+        }
+        if (self->name != NULL) {
+            free(self->name);
+        }
+        free(self);
+    }
+    return 0;
+}
+
+
+int 
+wt_index_alloc(wt_index_t **wtp, wt_table_t *table, wt_column_t **columns,
+        u_int32_t num_columns)
+{
+    int ret = 0;
+    u_int32_t j;
+    wt_index_t *self = calloc(1, sizeof(wt_index_t));
+    if (self == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    memset(self, 0, sizeof(wt_index_t));
+    ret = db_create(&self->db, NULL, 0);
+    if (ret != 0) {
+        goto out;
+    }
+    self->table = table;
+    self->num_columns = num_columns;
+    self->columns = malloc(num_columns * sizeof(wt_column_t *));
+    if (self->columns == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    for (j = 0; j < num_columns; j++) {
+        self->columns[j] = columns[j];
+    }
+    
+    self->free = wt_index_free;
+    self->open = wt_index_open;
+    self->close = wt_index_close;
+    ret = wt_index_generate_name(self);
+    if (ret != 0) {
+        goto out;
+    }
+    *wtp = self;
+out:
+    if (ret != 0) {
+        wt_index_free(self);
+    }
+    return ret;
+}
+
 char *
 wt_strerror(int err)
 {
