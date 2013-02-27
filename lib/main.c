@@ -171,12 +171,14 @@ build_index(const char *table_name)
     if (wt_ret != 0) {
         handle_error(wt_ret); 
     }
-    
+    wt_ret = wti->build(wti);
+    if (wt_ret != 0) {
+        handle_error(wt_ret); 
+    }
     wt_ret = wti->close(wti);
     if (wt_ret != 0) {
         handle_error(wt_ret); 
     }
-    
     wt_ret = wtt->close(wtt);
     if (wt_ret != 0) {
         handle_error(wt_ret);

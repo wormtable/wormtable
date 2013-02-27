@@ -101,9 +101,10 @@ typedef struct wt_index_t_t {
     wt_table_t *table;
     wt_column_t **columns;
     u_int32_t num_columns;
-    int (*open)(struct wt_index_t_t *wtt, u_int32_t flags);
-    int (*close)(struct wt_index_t_t *wtt);
-    int (*free)(struct wt_index_t_t *wtt);
+    int (*open)(struct wt_index_t_t *wti, u_int32_t flags);
+    int (*close)(struct wt_index_t_t *wti);
+    int (*free)(struct wt_index_t_t *wti);
+    int (*build)(struct wt_index_t_t *wti);
 } wt_index_t;
 
 

@@ -722,7 +722,6 @@ wt_table_open_writer(wt_table_t *self)
     }
     self->num_rows = 0;
     /* add the key column */
-    // TODO add #defs for these constants.
     ret = wt_column_alloc(&col, WT_KEY_COL_NAME, WT_KEY_COL_DESCRIPTION, 
             WT_UINT, self->keysize, 1);
     wt_table_add_column(self, col); 
@@ -1240,9 +1239,70 @@ out:
  */
 
 static int 
+wt_index_build(wt_index_t *self)
+{
+    int ret = 0;
+    DB *pdb, *sdb;
+    DBC *cursor;
+    DBT pkey, pdata, skey, sdata;
+    pdb = self->table->db;
+    sdb = self->db;
+    if (pdb == NULL || sdb == NULL) {
+        ret = EINVAL;
+        goto out;
+    }
+    ret = pdb->cursor(pdb, NULL, &cursor, 0);
+    if (ret != 0) {
+        goto out;    
+    }
+    memset(&pkey, 0, sizeof(DBT));
+    memset(&pdata, 0, sizeof(DBT));
+    memset(&skey, 0, sizeof(DBT));
+    memset(&sdata, 0, sizeof(DBT));
+    printf("building index\n");
+    while ((ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
+        printf("examing record\n");
+        printf("TODO fill key\n");
+        /*
+        if (Index_fill_key(self, &pdata, &skey) < 0 ) {
+            goto out;
+        }
+        */
+        sdata.data = pkey.data;
+        sdata.size = pkey.size;
+        ret = sdb->put(sdb, NULL, &skey, &sdata, 0);
+        if (ret != 0) {
+            goto out;
+        } 
+        /* Invoke the callback if necessary */
+    }
+    if (ret != DB_NOTFOUND) {
+        goto out;    
+    }
+    
+    /* Free the cursor */
+    ret = cursor->close(cursor);
+    cursor = NULL;
+    if (ret != 0) {
+        goto out;    
+    }
+    
+
+out: 
+    
+    return ret;
+}
+
+
+static int 
 wt_index_close(wt_index_t *self)
 {
     int ret = 0;
+    if (self->db != NULL) {
+        ret = self->db->close(self->db, 0);
+        self->db = NULL;
+    }
+    
     printf("closing index\n");
     return ret;
 }
@@ -1252,7 +1312,21 @@ static int
 wt_index_open_writer(wt_index_t *self)
 {
     int ret = 0;
-    printf("opening index for writing\n");
+    char *db_filename = strconcat(self->table->homedir, self->name); 
+    if (db_filename == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    printf("opening index %s for writing: %s\n", self->name, db_filename);   
+    ret = self->db->open(self->db, NULL, db_filename, NULL, 
+            DB_BTREE, DB_CREATE, 0);
+    if (ret != 0) {
+        goto out;
+    }
+out:
+    if (db_filename != NULL) {
+        free(db_filename);
+    }
     return ret;
 }
 
@@ -1368,6 +1442,7 @@ wt_index_alloc(wt_index_t **wtp, wt_table_t *table, wt_column_t **columns,
     self->free = wt_index_free;
     self->open = wt_index_open;
     self->close = wt_index_close;
+    self->build = wt_index_build;
     ret = wt_index_generate_name(self);
     if (ret != 0) {
         goto out;
