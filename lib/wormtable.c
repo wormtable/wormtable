@@ -460,18 +460,13 @@ out:
 
 
 static int 
-wt_row_set_value(wt_row_t *self, u_int32_t col_index, void *elements, 
+wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements, 
         u_int32_t num_elements)
 {
     int ret = 0;
     void *p;
-    wt_column_t *col = NULL;
     if (self->size == 0) {
         ret = EINVAL;
-        goto out;
-    }
-    ret = self->table->get_column_by_index(self->table, col_index, &col);
-    if (ret != 0) {
         goto out;
     }
     if (col->num_elements == WT_VARIABLE) {
@@ -495,18 +490,13 @@ out:
 }
 
 static int 
-wt_row_get_value(wt_row_t *self, u_int32_t col_index, void *elements, 
+wt_row_get_value(wt_row_t *self, wt_column_t *col, void *elements, 
         u_int32_t *num_elements)
 {
     int ret = 0;
     void *p;
     u_int32_t offset;
     u_int32_t n;
-    wt_column_t *col = NULL;
-    ret = self->table->get_column_by_index(self->table, col_index, &col);
-    if (ret != 0) {
-        goto out;
-    }
     if (col->num_elements == WT_VARIABLE) {
         ret = wt_row_unpack_address(self, col, &offset, &n);
         if (ret != 0) {
@@ -1238,6 +1228,28 @@ out:
  *==========================================================
  */
 
+/* 
+ * Fulls the specified DBT to copy values from the columns in this index
+ * into its data buffer.
+ */
+static int 
+wt_index_fill_key(wt_index_t *self, wt_row_t *row, DBT *key)
+{
+    int ret = 0;
+    uint32_t j, num_elements, size;
+    wt_column_t *col;
+    void *p = key->data;
+    key->size = 0;
+    for (j = 0; j < self->num_columns; j++) {
+        col = self->columns[j];
+        ret = row->get_value(row, col, p, &num_elements); 
+        size = num_elements * col->element_size;    
+        p += size;
+        key->size += size;
+    }
+    return ret;
+}
+
 static int 
 wt_index_build(wt_index_t *self)
 {
@@ -1245,6 +1257,8 @@ wt_index_build(wt_index_t *self)
     DB *pdb, *sdb;
     DBC *cursor;
     DBT pkey, pdata, skey, sdata;
+    void *skey_buffer = NULL;
+    wt_row_t *row = NULL;
     pdb = self->table->db;
     sdb = self->db;
     if (pdb == NULL || sdb == NULL) {
@@ -1255,19 +1269,30 @@ wt_index_build(wt_index_t *self)
     if (ret != 0) {
         goto out;    
     }
+    ret = wt_row_alloc(&row, self->table, WT_MAX_ROW_SIZE); 
+    if (ret != 0) {
+        goto out;
+    }
+    skey_buffer = malloc(WT_MAX_ROW_SIZE);
+    if (skey_buffer == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
     memset(&pkey, 0, sizeof(DBT));
     memset(&pdata, 0, sizeof(DBT));
     memset(&skey, 0, sizeof(DBT));
     memset(&sdata, 0, sizeof(DBT));
-    printf("building index\n");
+    skey.data = skey_buffer;
+    pkey.size = self->table->keysize;
+    pkey.data = row->data;
+    pdata.data = row->data + self->table->keysize;
+    pdata.ulen = row->max_size - self->table->keysize;
+    pdata.flags = DB_DBT_USERMEM;
     while ((ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
-        printf("examing record\n");
-        printf("TODO fill key\n");
-        /*
-        if (Index_fill_key(self, &pdata, &skey) < 0 ) {
+        ret = wt_index_fill_key(self, row, &skey);
+        if (ret != 0) {
             goto out;
         }
-        */
         sdata.data = pkey.data;
         sdata.size = pkey.size;
         ret = sdb->put(sdb, NULL, &skey, &sdata, 0);
@@ -1289,7 +1314,12 @@ wt_index_build(wt_index_t *self)
     
 
 out: 
-    
+    if (row != NULL) {
+        row->free(row);
+    }
+    if (skey_buffer != NULL) {
+        free(skey_buffer);
+    }
     return ret;
 }
 
@@ -1312,14 +1342,23 @@ static int
 wt_index_open_writer(wt_index_t *self)
 {
     int ret = 0;
+    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
+    DB *db = self->db;
     char *db_filename = strconcat(self->table->homedir, self->name); 
     if (db_filename == NULL) {
         ret = ENOMEM;
         goto out;
     }
     printf("opening index %s for writing: %s\n", self->name, db_filename);   
-    ret = self->db->open(self->db, NULL, db_filename, NULL, 
-            DB_BTREE, DB_CREATE, 0);
+    ret = db->set_flags(db, DB_DUPSORT); 
+    if (ret != 0) {
+        goto out;    
+    }
+    ret = db->set_bt_compress(db, NULL, NULL); 
+    if (ret != 0) {
+        goto out;    
+    }
+    ret = db->open(db, NULL, db_filename, NULL, DB_BTREE, flags, 0);
     if (ret != 0) {
         goto out;
     }
@@ -1334,7 +1373,23 @@ static int
 wt_index_open_reader(wt_index_t *self)
 {
     int ret = 0;
-    printf("opening index for reading\n");
+    char *db_filename = strconcat(self->table->homedir, self->name); 
+    DB *pdb, *sdb;
+    if (db_filename == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    pdb = self->table->db;
+    sdb = self->db;
+    ret = sdb->open(sdb, NULL, db_filename, NULL, DB_BTREE, DB_RDONLY, 0);
+    if (ret != 0) {
+        goto out;
+    }
+    ret = pdb->associate(pdb, NULL, sdb, NULL, 0);
+out:
+    if (db_filename != NULL) {
+        free(db_filename);
+    }
     return ret;
 }
 

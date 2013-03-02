@@ -3,6 +3,8 @@
 
 #include "wormtable.h"
 
+#define ERROR_CHECK(R) {if (R != 0) { handle_error(R); }}
+
 void 
 handle_error(int err)
 {
@@ -45,19 +47,19 @@ generate_table(const char *table_name)
     for (j = 0; j < 5; j++) { 
         row->clear(row);
         uint_val = j;
-        wt_ret = row->set_value(row, 1, &uint_val, 1);
+        wt_ret = row->set_value(row, uint_col, &uint_val, 1);
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
         int_val = -1 * j;
-        row->set_value(row, 2, &int_val, 1);
+        row->set_value(row, int_col, &int_val, 1);
         float_val = j; 
-        row->set_value(row, 3, &float_val, 1);
+        row->set_value(row, float_col, &float_val, 1);
         char_val = "TESTING";
-        row->set_value(row, 5, char_val, strlen(char_val));
+        row->set_value(row, char_col, char_val, strlen(char_val));
         v[0] = -j * 3.4;
         v[1] = j * 3.4;
-        row->set_value(row, 4, v, 2);
+        row->set_value(row, double_2_col, v, 2);
         wt_ret = wtt->add_row(wtt, row); 
         if (wt_ret != 0) {
             handle_error(wt_ret);
@@ -116,16 +118,16 @@ dump_table(const char *table_name)
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
-        row->get_value(row, 1, &uint_val, &tmp);
+        row->get_value(row, uint_col, &uint_val, &tmp);
         printf("got uint value: %lu\n", uint_val);
-        row->get_value(row, 2, &int_val, &tmp);
+        row->get_value(row, int_col, &int_val, &tmp);
         printf("got int value: %ld\n", int_val);
-        row->get_value(row, 3, &float_val, &tmp);
+        row->get_value(row, float_col, &float_val, &tmp);
         printf("got float value: %f\n", float_val);
-        row->get_value(row, 5, buff, &tmp);
+        row->get_value(row, char_col, buff, &tmp);
         buff[tmp] = '\0';
         printf("got char  value '%s'\n", buff);
-        row->get_value(row, 4, v, &tmp);
+        row->get_value(row, double_2_col, v, &tmp);
         printf("got double2 val: %f %f\n", v[0], v[1]);
 
     }
@@ -187,6 +189,38 @@ build_index(const char *table_name)
     wtt->free(wtt);
 }
 
+void 
+show_index(const char *table_name)
+{
+    int wt_ret;
+    wt_table_t *wtt;
+    wt_index_t *wti;
+    wt_column_t *uint_col, *int_col;
+    wt_column_t *columns[] = {NULL, NULL, NULL};
+    wt_ret = wt_table_alloc(&wtt);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wtt->open(wtt, table_name, WT_READ);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wtt->get_column_by_name(wtt, "uint_1_1", &uint_col);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wtt->get_column_by_name(wtt, "int_1_1", &int_col);
+    ERROR_CHECK(wt_ret);
+    columns[0] = uint_col;
+    columns[1] = int_col;
+    wt_ret = wt_index_alloc(&wti, wtt, columns, 2);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wti->open(wti, WT_READ);
+    ERROR_CHECK(wt_ret);
+    
+    wt_ret = wti->close(wti);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wtt->close(wtt);
+    ERROR_CHECK(wt_ret);
+    wti->free(wti);
+    wtt->free(wtt);
+}
+
+
 
 int 
 main(int argc, char **argv)
@@ -203,6 +237,8 @@ main(int argc, char **argv)
         generate_table("test_table/");           
     } else if (strstr(command, "build-index") != NULL) {
         build_index("test_table/");           
+    } else if (strstr(command, "show-index") != NULL) {
+        show_index("test_table/");           
     } else { 
         printf("Unrecognised command");
         return 1;
