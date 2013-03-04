@@ -108,6 +108,16 @@ typedef struct wt_index_t_t {
 } wt_index_t;
 
 
+typedef struct wt_cursor_t_t {
+    wt_table_t *table;
+    wt_index_t *index;
+    DBC *cursor;
+    int (*open)(struct wt_cursor_t_t *wtc, wt_index_t *index, u_int32_t flags);
+    int (*close)(struct wt_cursor_t_t *wtc);
+    int (*next)(struct wt_cursor_t_t *wtc, wt_row_t *row);
+    int (*free)(struct wt_cursor_t_t *wtc);
+} wt_cursor_t;
+
 char * wt_strerror(int err);
 int wt_table_alloc(wt_table_t **wttp);
 int wt_index_alloc(wt_index_t **wtip, wt_table_t *wtt, wt_column_t **columns,
@@ -116,6 +126,7 @@ int wt_column_alloc(wt_column_t **wtcp, const char *name,
         const char *description, u_int32_t element_type, 
         u_int32_t element_size, u_int32_t num_elements);
 int wt_row_alloc(wt_row_t **wtrp, wt_table_t *wtt, u_int32_t size);
+int wt_cursor_alloc(wt_cursor_t **wtrp, wt_table_t *wtt);
 
 
 

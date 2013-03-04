@@ -465,6 +465,10 @@ wt_row_set_value(wt_row_t *self, wt_column_t *col, void *elements,
 {
     int ret = 0;
     void *p;
+    if (col == NULL) {
+        ret = EINVAL;
+        goto out;
+    }
     if (self->size == 0) {
         ret = EINVAL;
         goto out;
@@ -1099,7 +1103,7 @@ wt_table_add_row(wt_table_t *self, wt_row_t *row)
 {
     int ret = 0;
     DBT key, data;
-    ret = row->set_value(row, 0, &self->num_rows, 1);
+    ret = row->set_value(row, self->columns[0], &self->num_rows, 1);
     if (ret != 0) {
         goto out;
     }
@@ -1134,7 +1138,7 @@ wt_table_get_row(wt_table_t *self, u_int64_t row_id, wt_row_t *row)
     int ret = 0;
     DBT key, data;
     row->clear(row);
-    ret = row->set_value(row, 0, &row_id, 1);
+    ret = row->set_value(row, self->columns[0], &row_id, 1);
     if (ret != 0) {
         goto out;
     }
@@ -1506,6 +1510,104 @@ wt_index_alloc(wt_index_t **wtp, wt_table_t *table, wt_column_t **columns,
 out:
     if (ret != 0) {
         wt_index_free(self);
+    }
+    return ret;
+}
+
+/*==========================================================
+ * Cursor object 
+ *==========================================================
+ */
+
+static int 
+wt_cursor_free(wt_cursor_t *self)
+{
+    if (self != NULL) {
+        free(self);
+    }
+    return 0;
+}
+
+static int 
+wt_cursor_open(wt_cursor_t *self, wt_index_t *index, u_int32_t flags)
+{
+    int ret = 0;
+    DB *db;
+    self->index = index;
+    if (self->index == NULL) {
+        db = self->table->db;
+    } else {
+        db = self->index->db;
+    }
+    ret = db->cursor(db, NULL, &self->cursor, 0);
+    if (ret != 0) {
+        goto out;
+    }
+
+out:
+    return ret;
+}
+
+static int 
+wt_cursor_close(wt_cursor_t *self)
+{
+    int ret = 0;
+    if (self->cursor == NULL) {
+        ret = EINVAL;
+        goto out;
+    }
+    ret = self->cursor->close(self->cursor);
+    self->cursor = NULL;
+out:
+    return ret;
+}
+
+
+static int 
+wt_cursor_next(wt_cursor_t *self, wt_row_t *row) 
+{
+    int ret = 0;
+    DBT pkey, skey, data;
+    DBC *cursor = self->cursor; 
+    memset(&pkey, 0, sizeof(DBT));
+    memset(&skey, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    pkey.size = self->table->keysize;
+    pkey.data = row->data;
+    data.data = row->data + self->table->keysize;
+    data.ulen = row->max_size - self->table->keysize;
+    data.flags = DB_DBT_USERMEM;
+    if (self->index == NULL) {
+        ret = cursor->get(cursor, &pkey, &data, DB_NEXT);
+    } else {
+        ret = cursor->pget(cursor, &skey, &pkey, &data, DB_NEXT);
+    }
+    return ret;
+}
+
+
+
+
+
+int 
+wt_cursor_alloc(wt_cursor_t **wtc, wt_table_t *table)
+{
+    int ret = 0;
+    wt_cursor_t *self = calloc(1, sizeof(wt_cursor_t));
+    if (self == NULL) {
+        ret = ENOMEM;
+        goto out;
+    }
+    memset(self, 0, sizeof(wt_cursor_t));
+    self->table = table;
+    self->free = wt_cursor_free;
+    self->open = wt_cursor_open;
+    self->close = wt_cursor_close;
+    self->next = wt_cursor_next;
+    *wtc = self;
+out:
+    if (ret != 0) {
+        wt_cursor_free(self);
     }
     return ret;
 }

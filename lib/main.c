@@ -12,6 +12,33 @@ handle_error(int err)
     exit(1);
 }
 
+
+void 
+dump_row(wt_table_t *table, wt_row_t *row)
+{
+    wt_column_t *uint_col, *int_col, *float_col, *char_col, *double_2_col;
+    
+    double float_val, v[2];
+    u_int64_t uint_val;
+    int64_t int_val;
+    u_int32_t tmp;
+    char buff[1024];
+    table->get_column_by_name(table, "uint_1_1", &uint_col);
+    table->get_column_by_name(table, "int_1_1", &int_col);
+    table->get_column_by_index(table, 3, &float_col);
+    table->get_column_by_index(table, 4, &double_2_col);
+    table->get_column_by_index(table, 5, &char_col);
+    row->get_value(row, uint_col, &uint_val, &tmp);
+    row->get_value(row, int_col, &int_val, &tmp);
+    row->get_value(row, float_col, &float_val, &tmp);
+    row->get_value(row, char_col, buff, &tmp);
+    buff[tmp] = '\0';
+    row->get_value(row, double_2_col, v, &tmp);
+    
+    printf("%ld\t%ld\t%f\t(%f, %f)\t%s\n", uint_val, int_val, float_val,
+            v[0], v[1], buff);
+}
+
 void 
 generate_table(const char *table_name)
 {
@@ -44,14 +71,14 @@ generate_table(const char *table_name)
     wtt->add_column(wtt, double_2_col);
     wtt->add_column(wtt, char_col);
     wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
-    for (j = 0; j < 5; j++) { 
+    for (j = 0; j < 50; j++) { 
         row->clear(row);
-        uint_val = j;
+        uint_val = j % 8;
         wt_ret = row->set_value(row, uint_col, &uint_val, 1);
         if (wt_ret != 0) {
             handle_error(wt_ret);
         }
-        int_val = -1 * j;
+        int_val = -1 * j % 8;
         row->set_value(row, int_col, &int_val, 1);
         float_val = j; 
         row->set_value(row, float_col, &float_val, 1);
@@ -97,7 +124,8 @@ dump_table(const char *table_name)
     if (wt_ret != 0) {
         handle_error(wt_ret);
     }
-    wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
+    wt_ret = wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
+    ERROR_CHECK(wt_ret);
     wtt->get_column_by_name(wtt, "uint_1_1", &uint_col);
     wtt->get_column_by_name(wtt, "int_1_1", &int_col);
     wtt->get_column_by_index(wtt, 3, &float_col);
@@ -195,6 +223,8 @@ show_index(const char *table_name)
     int wt_ret;
     wt_table_t *wtt;
     wt_index_t *wti;
+    wt_cursor_t *wtc;
+    wt_row_t *row;
     wt_column_t *uint_col, *int_col;
     wt_column_t *columns[] = {NULL, NULL, NULL};
     wt_ret = wt_table_alloc(&wtt);
@@ -207,15 +237,30 @@ show_index(const char *table_name)
     ERROR_CHECK(wt_ret);
     columns[0] = uint_col;
     columns[1] = int_col;
+    
+    wt_ret = wt_row_alloc(&row, wtt, WT_MAX_ROW_SIZE);
+    ERROR_CHECK(wt_ret);
     wt_ret = wt_index_alloc(&wti, wtt, columns, 2);
     ERROR_CHECK(wt_ret);
     wt_ret = wti->open(wti, WT_READ);
     ERROR_CHECK(wt_ret);
-    
+    wt_ret = wt_cursor_alloc(&wtc, wtt);
+    ERROR_CHECK(wt_ret);
+    wt_ret = wtc->open(wtc, wti, 0); 
+    ERROR_CHECK(wt_ret);
+    while ((wt_ret = wtc->next(wtc, row)) == 0) {
+        dump_row(wtt, row);
+    }
+
+
+    wt_ret = wtc->close(wtc); 
+    ERROR_CHECK(wt_ret);
     wt_ret = wti->close(wti);
     ERROR_CHECK(wt_ret);
     wt_ret = wtt->close(wtt);
     ERROR_CHECK(wt_ret);
+    row->free(row);
+    wtc->free(wtc);
     wti->free(wti);
     wtt->free(wtt);
 }
