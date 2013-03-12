@@ -27,7 +27,12 @@ def main():
         print("element_type:", col.get_element_type())
         print("element_size:", col.get_element_size())
         print("num_elements:", col.get_num_elements())
-    row.set_value(1, 1)
+    
+    col_uint_1_1 = t.get_column_by_index(1)
+    col_int_1_1 = t.get_column_by_index(2)
+    row.clear()
+    row.set_value(col_uint_1_1, 2**65)
+    row.set_value(col_int_1_1, 1)
     t.close()
            
        

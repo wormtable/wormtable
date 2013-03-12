@@ -251,7 +251,9 @@ show_index(const char *table_name)
     while ((wt_ret = wtc->next(wtc, row)) == 0) {
         dump_row(wtt, row);
     }
-
+    if (wt_ret != DB_NOTFOUND) {
+        ERROR_CHECK(wt_ret);
+    }
 
     wt_ret = wtc->close(wtc); 
     ERROR_CHECK(wt_ret);

@@ -52,10 +52,6 @@ typedef struct wt_column_t_t {
     int (*free)(struct wt_column_t_t *self);
 } wt_column_t;
 
-typedef struct wt_schema_t_t {
-
-} wt_schema_t;
-
 
 typedef struct wt_row_t_t {
     void *data;

@@ -25,16 +25,117 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     wt_row_t *row;
+    u_int32_t conversion_buffer_size;
+    void *conversion_buffer;
 } Row;
-
-
-
-
 
 static void 
 handle_wt_error(int err)
 {
     PyErr_SetString(WormtableError, wt_strerror(err));
+}
+
+/*==========================================================
+ * Python to native conversion. 
+ *==========================================================
+ */
+
+
+static int 
+python_to_native_uint(PyObject *element, void *output_buffer, 
+        u_int32_t output_buffer_size)
+{
+    int ret = -1;
+    u_int64_t native = 0;
+    if (!PyNumber_Check(element)) {
+        PyErr_SetString(PyExc_TypeError, "Must be numeric");
+        goto out;
+    }
+    native = (u_int64_t) PyLong_AsUnsignedLongLong(element);
+    if (native == (u_int64_t) -1) {
+        /* PyLong_AsUnsignedLongLong return -1 and raises OverFlowError if 
+         * the value cannot be represented as an unsigned long long 
+         */
+        if (PyErr_Occurred()) {
+            goto out;
+        }
+    } 
+    memcpy(output_buffer, &native, sizeof(native));
+    ret = 0;
+out:
+    return ret;
+}
+
+static int 
+python_to_native_int(PyObject *element, void *output_buffer, 
+        u_int32_t output_buffer_size)
+{
+    int ret = -1;
+    int64_t native = 0;
+    if (!PyNumber_Check(element)) {
+        PyErr_SetString(PyExc_TypeError, "Must be numeric");
+        goto out;
+    }
+    native = (int64_t) PyLong_AsLongLong(element);
+    if (native == -1) {
+        /* PyLong_AsLongLong return -1 and raises OverFlowError if 
+         * the value cannot be represented as a long long 
+         */
+        if (PyErr_Occurred()) {
+            goto out;
+        }
+    }
+    printf("converted: %ld\n", native);
+    memcpy(output_buffer, &native, sizeof(native));
+    ret = 0;
+out:
+    return ret;
+}
+
+
+/* 
+ * Converts a single element to the native type.
+ */
+static int 
+python_to_native_element(wt_column_t *column, PyObject *element, void *output_buffer,
+        u_int32_t output_buffer_size)
+{
+    int ret = 0;
+    if (column->element_type == WT_UINT) {
+        printf("converting to unsigned integer\n");
+        ret = python_to_native_uint(element, output_buffer, output_buffer_size);
+    } else if (column->element_type == WT_INT) {
+        printf("converting to integer\n");
+        ret = python_to_native_int(element, output_buffer, output_buffer_size);
+    } else {
+        printf("error!");
+    }
+    return ret;
+}
+
+/* 
+ * Converts the elements in the specified python object into native values
+ * stored in the specified output_buffer, and return the number of elements 
+ * converted.
+ */
+static int 
+python_to_native(wt_column_t *column, PyObject *elements, void *output_buffer,
+        u_int32_t output_buffer_size)
+{
+    int ret = 0;
+    if (column->num_elements == 1) {
+        /* this error and return protocol is shite - need to fix it! */
+        ret = python_to_native_element(column, elements, output_buffer, 
+                output_buffer_size);
+        if (ret != 0) {
+            ret = 0;
+            goto out;
+        }
+        ret = 1;
+    }
+
+out:
+    return ret;
 }
 
 /*==========================================================
@@ -462,6 +563,9 @@ Row_dealloc(Row* self)
     if (self->row != NULL) {
         self->row->free(self->row);
     }
+    if (self->conversion_buffer != NULL) {
+        PyMem_Free(self->conversion_buffer);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -473,6 +577,7 @@ Row_init(Row *self, PyObject *args, PyObject *kwds)
     wt_table_t *table;
     PyObject *py_table;
     static char *kwlist[] = {"table", NULL}; 
+    self->conversion_buffer = NULL;
     self->row = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
             &TableType, &py_table)) {
@@ -485,6 +590,8 @@ Row_init(Row *self, PyObject *args, PyObject *kwds)
         self->row = NULL;
         goto out;
     }
+    self->conversion_buffer = PyMem_Malloc(WT_MAX_ROW_SIZE);
+    self->conversion_buffer_size = WT_MAX_ROW_SIZE;
     ret = 0;
 out:
     return ret;
@@ -494,21 +601,31 @@ static PyObject *
 Row_set_value(Row *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    unsigned int column;
+    PyObject *column;
     PyObject *elements;
-    if (!PyArg_ParseTuple(args, "IO", &column, &elements)) {
+    wt_column_t *wt_col;
+    u_int32_t num_elements;
+    int wt_ret;
+    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) {
         goto out;
     }
     if (self->row == NULL) {
         PyErr_SetString(WormtableError, "Null row");
         goto out;
     }
-    printf("Set value - implement!\n");
-    /*
-
-    int (*set_value)(struct wt_row_t_t *wtr, u_int32_t col, void *elements,
-            u_int32_t num_elements);
-    */
+    wt_col = ((Column *) column)->column;
+    num_elements = python_to_native(wt_col, elements, self->conversion_buffer,
+            self->conversion_buffer_size);
+    if (num_elements == 0) {
+        goto out;
+    }
+    printf("setting value...\n");
+    wt_ret = self->row->set_value(self->row, wt_col, self->conversion_buffer,
+            num_elements);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;
+    }
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
@@ -517,10 +634,31 @@ out:
 
 }
 
+static PyObject * 
+Row_clear(Row *self)
+{
+    PyObject *ret = NULL;
+    int wt_ret;
+    if (self->row == NULL) {
+        PyErr_SetString(WormtableError, "Null Column");
+        goto out;
+    }
+    wt_ret = self->row->clear(self->row);     
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret); 
+        goto out;
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+}
+
+
 
 static PyMethodDef Row_methods[] = {
     
-   
+    {"clear", (PyCFunction) Row_clear, METH_NOARGS, "Clears the row." },
     {"set_value", (PyCFunction) Row_set_value, METH_VARARGS, "Sets values in the row." },
     {NULL}  /* Sentinel */
 };
