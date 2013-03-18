@@ -35,12 +35,26 @@ def write_table(table_name):
         t.add_row(row) 
 
     t.close()
-     
+
+def read_table(table_name):
+    t = _wormtable.Table()
+    t.open(table_name, _wormtable.WT_READ)
+    cols = [t.get_column_by_index(j) for j in range(t.get_num_columns())]
+    row = _wormtable.Row(t)
+    num_rows = t.get_num_rows()
+    print("num_rows = ",  num_rows)
+    for j in range(num_rows):
+        print("got row:", j)
+        t.get_row(j, row)
+        for c in cols:
+            print("\t", c.get_name(), "->", row.get_value(c))
+    
+    t.close()
 
 def main():
     test_table = "../test_table/"
-    write_table(test_table) 
-       
+    # write_table(test_table) 
+    read_table(test_table)       
 if __name__ == "__main__":
     main()
 

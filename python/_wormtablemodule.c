@@ -139,6 +139,62 @@ out:
 }
 
 /*==========================================================
+ * Native to Python conversion. 
+ *==========================================================
+ */
+
+
+static PyObject *
+native_to_python_uint(void *buffer)
+{
+    u_int64_t *native = (u_int64_t *) buffer;
+    return PyLong_FromUnsignedLongLong((unsigned long long) native[0]);
+}
+
+static PyObject *
+native_to_python_int(void *buffer)
+{
+    int64_t *native = (int64_t *) buffer;
+    return PyLong_FromLongLong((long long) native[0]);
+}
+
+
+
+static PyObject *
+native_to_python_element(wt_column_t *column, void *input_buffer)
+{
+    PyObject *ret = NULL;
+    if (column->element_type == WT_UINT) {
+        ret = native_to_python_uint(input_buffer);
+    } else if (column->element_type == WT_INT) {
+        ret = native_to_python_int(input_buffer);
+    } else {
+        printf("error!");
+    } 
+    return ret;
+}
+
+/* 
+ */
+static PyObject * 
+native_to_python(wt_column_t *column, u_int32_t num_elements, void *input_buffer)
+{
+    PyObject *ret = NULL;
+    if (column->num_elements == 1) {
+        if (num_elements != 1) { 
+            PyErr_SetString(PyExc_TypeError, "Wrong number of elements");
+            goto out;
+        }
+        ret = native_to_python_element(column, input_buffer);
+
+    }
+out:
+    return ret;
+}
+
+
+
+/*==========================================================
  * Column object 
  *==========================================================
  */
@@ -390,6 +446,52 @@ out:
 
 }
 
+static PyObject *
+Row_get_value(Row *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    PyObject *column;
+    wt_column_t *wt_col;
+    u_int32_t num_elements;
+    int wt_ret;
+    if (!PyArg_ParseTuple(args, "O!", &ColumnType, &column)) {
+        goto out;
+    }
+    if (self->row == NULL) {
+        PyErr_SetString(WormtableError, "Null row");
+        goto out;
+    }
+    wt_col = ((Column *) column)->column;
+    wt_ret = self->row->get_value(self->row, wt_col, self->conversion_buffer,
+            &num_elements);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;
+    }
+    
+    ret = native_to_python(wt_col, num_elements, self->conversion_buffer);
+    /* 
+    num_elements = python_to_native(wt_col, elements, self->conversion_buffer,
+            self->conversion_buffer_size);
+    if (num_elements == 0) {
+        goto out;
+    }
+    wt_ret = self->row->set_value(self->row, wt_col, self->conversion_buffer,
+            num_elements);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;
+    }
+    */
+out:
+    return ret;
+
+
+}
+
+
+
+
 static PyObject * 
 Row_clear(Row *self)
 {
@@ -416,6 +518,7 @@ static PyMethodDef Row_methods[] = {
     
     {"clear", (PyCFunction) Row_clear, METH_NOARGS, "Clears the row." },
     {"set_value", (PyCFunction) Row_set_value, METH_VARARGS, "Sets values in the row." },
+    {"get_value", (PyCFunction) Row_get_value, METH_VARARGS, "Gets values in the row." },
     {NULL}  /* Sentinel */
 };
 
@@ -679,6 +782,36 @@ out:
     return ret; 
 }
 
+static PyObject *
+Table_get_row(Table* self, PyObject *args)
+{
+    int wt_ret;
+    PyObject *ret = NULL;
+    unsigned long long row_id;
+    Row *row = NULL;
+    if (!PyArg_ParseTuple(args, "KO!", &row_id, &RowType, &row)) {
+        goto out;
+    }
+    if (self->table == NULL) {
+        PyErr_SetString(WormtableError, "table closed");
+        goto out;
+    }
+    if (row->row == NULL) {
+        PyErr_SetString(WormtableError, "Bad row");
+        goto out;
+    }
+    wt_ret = self->table->get_row(self->table, (u_int64_t) row_id, row->row);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;    
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+
 
 
 static PyMethodDef Table_methods[] = {
@@ -694,6 +827,8 @@ static PyMethodDef Table_methods[] = {
             "Add a column." },
     {"add_row", (PyCFunction) Table_add_row, METH_VARARGS, 
             "Add a row." },
+    {"get_row", (PyCFunction) Table_get_row, METH_VARARGS, 
+            "Get a row." },
     {NULL}  /* Sentinel */
 };
 
