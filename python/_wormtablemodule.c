@@ -12,6 +12,9 @@
 
 static PyObject *WormtableError;
 
+/* forward declaration */
+static PyTypeObject TableType;
+
 typedef struct {
     PyObject_HEAD
     wt_table_t *table;
@@ -85,7 +88,6 @@ python_to_native_int(PyObject *element, void *output_buffer,
             goto out;
         }
     }
-    printf("converted: %ld\n", native);
     memcpy(output_buffer, &native, sizeof(native));
     ret = 0;
 out:
@@ -102,10 +104,8 @@ python_to_native_element(wt_column_t *column, PyObject *element, void *output_bu
 {
     int ret = 0;
     if (column->element_type == WT_UINT) {
-        printf("converting to unsigned integer\n");
         ret = python_to_native_uint(element, output_buffer, output_buffer_size);
     } else if (column->element_type == WT_INT) {
-        printf("converting to integer\n");
         ret = python_to_native_int(element, output_buffer, output_buffer_size);
     } else {
         printf("error!");
@@ -309,6 +309,159 @@ static PyTypeObject ColumnType = {
 };
    
 
+/*==========================================================
+ * Row object 
+ *==========================================================
+ */
+
+static void
+Row_dealloc(Row* self)
+{
+    if (self->row != NULL) {
+        self->row->free(self->row);
+    }
+    if (self->conversion_buffer != NULL) {
+        PyMem_Free(self->conversion_buffer);
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+Row_init(Row *self, PyObject *args, PyObject *kwds)
+{
+    int ret = -1;
+    int wt_ret = 0;
+    wt_table_t *table;
+    PyObject *py_table;
+    static char *kwlist[] = {"table", NULL}; 
+    self->conversion_buffer = NULL;
+    self->row = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
+            &TableType, &py_table)) {
+        goto out;
+    }
+    table = ((Table *) py_table)->table;
+    wt_ret = wt_row_alloc(&self->row, table, WT_MAX_ROW_SIZE);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        self->row = NULL;
+        goto out;
+    }
+    self->conversion_buffer = PyMem_Malloc(WT_MAX_ROW_SIZE);
+    self->conversion_buffer_size = WT_MAX_ROW_SIZE;
+    ret = 0;
+out:
+    return ret;
+}
+
+static PyObject *
+Row_set_value(Row *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    PyObject *column;
+    PyObject *elements;
+    wt_column_t *wt_col;
+    u_int32_t num_elements;
+    int wt_ret;
+    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) {
+        goto out;
+    }
+    if (self->row == NULL) {
+        PyErr_SetString(WormtableError, "Null row");
+        goto out;
+    }
+    wt_col = ((Column *) column)->column;
+    num_elements = python_to_native(wt_col, elements, self->conversion_buffer,
+            self->conversion_buffer_size);
+    if (num_elements == 0) {
+        goto out;
+    }
+    wt_ret = self->row->set_value(self->row, wt_col, self->conversion_buffer,
+            num_elements);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+
+
+}
+
+static PyObject * 
+Row_clear(Row *self)
+{
+    PyObject *ret = NULL;
+    int wt_ret;
+    if (self->row == NULL) {
+        PyErr_SetString(WormtableError, "Null Column");
+        goto out;
+    }
+    wt_ret = self->row->clear(self->row);     
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret); 
+        goto out;
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+}
+
+
+
+static PyMethodDef Row_methods[] = {
+    
+    {"clear", (PyCFunction) Row_clear, METH_NOARGS, "Clears the row." },
+    {"set_value", (PyCFunction) Row_set_value, METH_VARARGS, "Sets values in the row." },
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject RowType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_wormtable.Row",             /* tp_name */
+    sizeof(Row),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)Row_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "Row objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    0,                     /* tp_iter */
+    0,                     /* tp_iternext */
+    Row_methods,             /* tp_methods */
+    0,                         /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)Row_init,      /* tp_init */
+};
+
+
+
+
 
 
 /*==========================================================
@@ -497,6 +650,37 @@ out:
     return ret; 
 }
 
+
+static PyObject *
+Table_add_row(Table* self, PyObject *args)
+{
+    int wt_ret;
+    PyObject *ret = NULL;
+    Row *row = NULL;
+    if (!PyArg_ParseTuple(args, "O!", &RowType, &row)) {
+        goto out;
+    }
+    if (self->table == NULL) {
+        PyErr_SetString(WormtableError, "table closed");
+        goto out;
+    }
+    if (row->row == NULL) {
+        PyErr_SetString(WormtableError, "Bad row");
+        goto out;
+    }
+    wt_ret = self->table->add_row(self->table, row->row);
+    if (wt_ret != 0) {
+        handle_wt_error(wt_ret);
+        goto out;    
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+
+
 static PyMethodDef Table_methods[] = {
     {"open", (PyCFunction) Table_open, METH_VARARGS, "Opens the table." },
     {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
@@ -508,6 +692,8 @@ static PyMethodDef Table_methods[] = {
             METH_VARARGS, "Gets a column by its index.." },
     {"add_column", (PyCFunction) Table_add_column, METH_VARARGS, 
             "Add a column." },
+    {"add_row", (PyCFunction) Table_add_row, METH_VARARGS, 
+            "Add a row." },
     {NULL}  /* Sentinel */
 };
 
@@ -551,160 +737,6 @@ static PyTypeObject TableType = {
     (initproc)Table_init,      /* tp_init */
 };
    
-
-/*==========================================================
- * Row object 
- *==========================================================
- */
-
-static void
-Row_dealloc(Row* self)
-{
-    if (self->row != NULL) {
-        self->row->free(self->row);
-    }
-    if (self->conversion_buffer != NULL) {
-        PyMem_Free(self->conversion_buffer);
-    }
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static int
-Row_init(Row *self, PyObject *args, PyObject *kwds)
-{
-    int ret = -1;
-    int wt_ret = 0;
-    wt_table_t *table;
-    PyObject *py_table;
-    static char *kwlist[] = {"table", NULL}; 
-    self->conversion_buffer = NULL;
-    self->row = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
-            &TableType, &py_table)) {
-        goto out;
-    }
-    table = ((Table *) py_table)->table;
-    wt_ret = wt_row_alloc(&self->row, table, WT_MAX_ROW_SIZE);
-    if (wt_ret != 0) {
-        handle_wt_error(wt_ret);
-        self->row = NULL;
-        goto out;
-    }
-    self->conversion_buffer = PyMem_Malloc(WT_MAX_ROW_SIZE);
-    self->conversion_buffer_size = WT_MAX_ROW_SIZE;
-    ret = 0;
-out:
-    return ret;
-}
-
-static PyObject *
-Row_set_value(Row *self, PyObject *args)
-{
-    PyObject *ret = NULL;
-    PyObject *column;
-    PyObject *elements;
-    wt_column_t *wt_col;
-    u_int32_t num_elements;
-    int wt_ret;
-    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) {
-        goto out;
-    }
-    if (self->row == NULL) {
-        PyErr_SetString(WormtableError, "Null row");
-        goto out;
-    }
-    wt_col = ((Column *) column)->column;
-    num_elements = python_to_native(wt_col, elements, self->conversion_buffer,
-            self->conversion_buffer_size);
-    if (num_elements == 0) {
-        goto out;
-    }
-    printf("setting value...\n");
-    wt_ret = self->row->set_value(self->row, wt_col, self->conversion_buffer,
-            num_elements);
-    if (wt_ret != 0) {
-        handle_wt_error(wt_ret);
-        goto out;
-    }
-    Py_INCREF(Py_None);
-    ret = Py_None;
-out:
-    return ret;
-
-
-}
-
-static PyObject * 
-Row_clear(Row *self)
-{
-    PyObject *ret = NULL;
-    int wt_ret;
-    if (self->row == NULL) {
-        PyErr_SetString(WormtableError, "Null Column");
-        goto out;
-    }
-    wt_ret = self->row->clear(self->row);     
-    if (wt_ret != 0) {
-        handle_wt_error(wt_ret); 
-        goto out;
-    }
-    Py_INCREF(Py_None);
-    ret = Py_None;
-out:
-    return ret;
-}
-
-
-
-static PyMethodDef Row_methods[] = {
-    
-    {"clear", (PyCFunction) Row_clear, METH_NOARGS, "Clears the row." },
-    {"set_value", (PyCFunction) Row_set_value, METH_VARARGS, "Sets values in the row." },
-    {NULL}  /* Sentinel */
-};
-
-
-static PyTypeObject RowType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "_wormtable.Row",             /* tp_name */
-    sizeof(Row),             /* tp_basicsize */
-    0,                         /* tp_itemsize */
-    (destructor)Row_dealloc, /* tp_dealloc */
-    0,                         /* tp_print */
-    0,                         /* tp_getattr */
-    0,                         /* tp_setattr */
-    0,                         /* tp_reserved */
-    0,                         /* tp_repr */
-    0,                         /* tp_as_number */
-    0,                         /* tp_as_sequence */
-    0,                         /* tp_as_mapping */
-    0,                         /* tp_hash  */
-    0,                         /* tp_call */
-    0,                         /* tp_str */
-    0,                         /* tp_getattro */
-    0,                         /* tp_setattro */
-    0,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "Row objects",           /* tp_doc */
-    0,                     /* tp_traverse */
-    0,                     /* tp_clear */
-    0,                     /* tp_richcompare */
-    0,                     /* tp_weaklistoffset */
-    0,                     /* tp_iter */
-    0,                     /* tp_iternext */
-    Row_methods,             /* tp_methods */
-    0,                         /* tp_members */
-    0,                         /* tp_getset */
-    0,                         /* tp_base */
-    0,                         /* tp_dict */
-    0,                         /* tp_descr_get */
-    0,                         /* tp_descr_set */
-    0,                         /* tp_dictoffset */
-    (initproc)Row_init,      /* tp_init */
-};
-
-
-
 
 
 /* Initialisation code supports Python 2.x and 3.x. The framework uses the 
