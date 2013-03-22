@@ -64,6 +64,9 @@ def vcf_column_factory(line):
         num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
     else:
         num_elements = int(number) 
+    # We can also have negative num_elements to indicate variable column
+    if num_elements < 0:
+        num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
     st = d[TYPE]
     if st == INTEGER:
         element_type = _vcfdb.ELEMENT_TYPE_INT
