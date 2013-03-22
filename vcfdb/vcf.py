@@ -67,7 +67,7 @@ def vcf_column_factory(line):
     st = d[TYPE]
     if st == INTEGER:
         element_type = _vcfdb.ELEMENT_TYPE_INT
-        element_size = 2
+        element_size = 4
     elif st == FLOAT: 
         element_type = _vcfdb.ELEMENT_TYPE_FLOAT
         element_size = 4
@@ -171,7 +171,7 @@ class VCFSchemaGenerator(object):
             _vcfdb.Column(CHROM, b"Chromosome", enum_type, 1, variable),
             _vcfdb.Column(POS, b"position", int_type, 8, 1),
             _vcfdb.Column(ID, b"ID", char_type, 1, variable),  
-            _vcfdb.Column(REF, b"Reference allele", enum_type, 1, 1),
+            _vcfdb.Column(REF, b"Reference allele", enum_type, 1, variable),
             _vcfdb.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
             _vcfdb.Column(QUAL, b"Quality", float_type, 4, 1),
             _vcfdb.Column(FILTER, b"Filter", char_type, 1, variable),

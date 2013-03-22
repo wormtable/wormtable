@@ -91,7 +91,7 @@ def build_index(homedir, column_names):
     monitor = ProgressMonitor(n)
     def progress(processed_rows):
         monitor.update(processed_rows)
-    index.build(progress, int(n / 1000))
+    index.build(progress, max(1, int(n / 1000)))
     monitor.finish()
 
 def read_position_index(homedir, chromosome, position):
@@ -100,13 +100,18 @@ def read_position_index(homedir, chromosome, position):
     min_val = (chromosome, position)
     total_rows = 0
     read_cols = indexed_columns + ["FILTER"]
-    for row in ir.get_rows(read_cols, min_val, row_type=collections.namedtuple): 
-    #for row in ir.get_rows(read_cols, min_val, row_type=dict): 
+    before = time.time()
+    #for row in ir.get_rows(read_cols, min_val, row_type=collections.namedtuple): 
+    for row in ir.get_rows(read_cols, min_val, row_type=dict): 
+    #for row in ir.get_rows(read_cols, min_val): 
         #print(row.FILTER)
-        print(row)
+        #print(row)
         total_rows += 1
-        if total_rows > 10:
+        if total_rows > 1000000:
             break
+    duration = time.time() - before
+    if duration > 0:
+        print("processed rows at ", total_rows / duration, " rows/sec")
     ir.close()
 
 def read_genotype_index(homedir, genotypes):
@@ -120,10 +125,10 @@ def read_genotype_index(homedir, genotypes):
     total_rows = 0
     filtered_rows = 0
     before = time.time()
-    for row in ir.get_rows(read_cols + ["CHROM", "POS"], min_val, max_val): 
+    for row in ir.get_rows(read_cols + indexed_columns + ["CHROM", "POS"], min_val, max_val): 
         total_rows += 1
         #print(row[num_genotypes:]) 
-        #print(row) 
+        print(row) 
         if all(row[j] >= min_qual for j in range(num_genotypes)):
             filtered_rows += 1
     ir.close()
@@ -167,14 +172,14 @@ def main():
         homedir = sys.argv[1]
         #print_table(homedir)
         # Standard CHROM/POS index example
-        #indexed_columns = [b'CHROM', b'POS']
-        #build_index(homedir, indexed_columns) 
-        #read_position_index(homedir, b"8", 3000920)
-        # Genotype index example
-        genotypes = ['Fam', 'H12', 'H14', 'H15', 'H24', 'H26', 'H27', 
-                'H28', 'H30', 'H34', 'H36']
-        #indexed_columns = [s.encode() + b"_GT" for s in genotypes]
+        indexed_columns = [b'CHROM', b'POS']
         # build_index(homedir, indexed_columns) 
+        # read_position_index(homedir, b"X", 0)
+        # Genotype index example
+        genotypes = ['Fam', 'H12', 'H14', 'H15', 'H24', 'H26', 'H27',
+                'H28', 'H30', 'H34', 'H36']
+        indexed_columns = [s.encode() + b"_GT" for s in genotypes]
+        build_index(homedir, indexed_columns) 
         read_genotype_index(homedir, genotypes)
        
 if __name__ == "__main__":
