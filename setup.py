@@ -2,7 +2,7 @@ import re
 from distutils.core import setup, Extension
 
 f = open("README.txt")
-vcfdb_readme = f.read()
+wormtable_readme = f.read()
 f.close()
 
 # Following the recommendations of PEP 396 we parse the version number 
@@ -20,19 +20,19 @@ def parse_version(module_file):
     match = re.findall("__version__ = '([^']+)'", s)
     return match[0]
 
-vcfdb_version = parse_version("vcfdb/__init__.py") 
+wormtable_version = parse_version("wormtable/__init__.py") 
 
-_vcfdb_module = Extension('_vcfdb', 
-    sources = ["_vcfdbmodule.c"],
+_wormtable_module = Extension('_wormtable', 
+    sources = ["_wormtablemodule.c"],
     libraries = ["db"])
 
 setup(
-    name = "vcfdb",
-    version = vcfdb_version, 
+    name = "wormtable",
+    version = wormtable_version, 
     description = "Store and search VCF data with Berkeley DB",
     author = "Jerome Kelleher",
     author_email = "jerome.kelleher@ed.ac.uk",
-    url = "http://pypi.python.org/pypi/vcfdb", 
+    url = "http://pypi.python.org/pypi/wormtable", 
     keywords = ["add", "some", "keywords"], 
     license = "GNU GPLv3",
     platforms = ["POSIX"], 
@@ -48,9 +48,9 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    long_description = vcfdb_readme,
-    ext_modules = [_vcfdb_module],
-    packages = ['vcfdb']
+    long_description = wormtable_readme,
+    ext_modules = [_wormtable_module],
+    packages = ['wormtable']
 )
 
     

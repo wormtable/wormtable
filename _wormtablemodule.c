@@ -17,7 +17,7 @@
 #define MAX_ROW_SIZE 65536
 
 #define MODULE_DOC \
-"Low level Berkeley DB interface for vcfdb"
+"Low level Berkeley DB interface for wormtable"
 
 static PyObject *BerkeleyDatabaseError;
 
@@ -1151,7 +1151,7 @@ static PyMethodDef Column_methods[] = {
 
 static PyTypeObject ColumnType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.Column",             /* tp_name */
+    "_wormtable.Column",             /* tp_name */
     sizeof(Column),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)Column_dealloc, /* tp_dealloc */
@@ -1482,7 +1482,7 @@ static PyMethodDef BerkeleyDatabase_methods[] = {
 
 static PyTypeObject BerkeleyDatabaseType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.BerkeleyDatabase",             /* tp_name */
+    "_wormtable.BerkeleyDatabase",             /* tp_name */
     sizeof(BerkeleyDatabase),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)BerkeleyDatabase_dealloc, /* tp_dealloc */
@@ -1765,7 +1765,7 @@ static PyMethodDef WriteBuffer_methods[] = {
 
 static PyTypeObject WriteBufferType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.WriteBuffer",             /* tp_name */
+    "_wormtable.WriteBuffer",             /* tp_name */
     sizeof(WriteBuffer),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)WriteBuffer_dealloc, /* tp_dealloc */
@@ -2167,7 +2167,7 @@ static PyMethodDef Index_methods[] = {
 
 static PyTypeObject IndexType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.Index",             /* tp_name */
+    "_wormtable.Index",             /* tp_name */
     sizeof(Index),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)Index_dealloc, /* tp_dealloc */
@@ -2438,7 +2438,7 @@ static PyMethodDef RowIterator_methods[] = {
 
 static PyTypeObject RowIteratorType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_vcfdb.RowIterator",             /* tp_name */
+    "_wormtable.RowIterator",             /* tp_name */
     sizeof(RowIterator),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)RowIterator_dealloc, /* tp_dealloc */
@@ -2486,9 +2486,9 @@ static PyTypeObject RowIteratorType = {
 
 #if PY_MAJOR_VERSION >= 3
 
-static struct PyModuleDef vcfdbmodule = {
+static struct PyModuleDef wormtablemodule = {
     PyModuleDef_HEAD_INIT,
-    "_vcfdb",   /* name of module */
+    "_wormtable",   /* name of module */
     MODULE_DOC, /* module documentation, may be NULL */
     -1,    
     NULL, NULL, NULL, NULL, NULL 
@@ -2497,19 +2497,19 @@ static struct PyModuleDef vcfdbmodule = {
 #define INITERROR return NULL
 
 PyObject * 
-PyInit__vcfdb(void)
+PyInit__wormtable(void)
 
 #else
 #define INITERROR return
 
 void
-init_vcfdb(void)
+init_wormtable(void)
 #endif
 {
 #if PY_MAJOR_VERSION >= 3
-    PyObject *module = PyModule_Create(&vcfdbmodule);
+    PyObject *module = PyModule_Create(&wormtablemodule);
 #else
-    PyObject *module = Py_InitModule3("_vcfdb", NULL, MODULE_DOC);
+    PyObject *module = Py_InitModule3("_wormtable", NULL, MODULE_DOC);
 #endif
     if (module == NULL) {
         INITERROR;
@@ -2552,7 +2552,7 @@ init_vcfdb(void)
     Py_INCREF(&WriteBufferType);
     PyModule_AddObject(module, "WriteBuffer", (PyObject *) &WriteBufferType);
     
-    BerkeleyDatabaseError = PyErr_NewException("_vcfdb.BerkeleyDatabaseError", 
+    BerkeleyDatabaseError = PyErr_NewException("_wormtable.BerkeleyDatabaseError", 
             NULL, NULL);
     Py_INCREF(BerkeleyDatabaseError);
     PyModule_AddObject(module, "BerkeleyDatabaseError", BerkeleyDatabaseError);

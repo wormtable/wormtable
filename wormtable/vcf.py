@@ -2,7 +2,7 @@ from __future__ import print_function
 from __future__ import division 
 
 """
-VCF processing for vcfdb. 
+VCF processing for wormtable. 
 
 TODO:document.
 
@@ -15,7 +15,7 @@ sure that all the literals have a 'b' in front of them, but worth the
 effort.
 
 """
-import _vcfdb
+import _wormtable
 from . import core 
 
 # VCF Fixed columns
@@ -61,34 +61,34 @@ def vcf_column_factory(line):
     description = d[DESCRIPTION].strip(b"\"")
     number = d[NUMBER]
     if number == b".":
-        num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
+        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
     else:
         num_elements = int(number) 
     # We can also have negative num_elements to indicate variable column
     if num_elements < 0:
-        num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
+        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
     st = d[TYPE]
     if st == INTEGER:
-        element_type = _vcfdb.ELEMENT_TYPE_INT
+        element_type = _wormtable.ELEMENT_TYPE_INT
         element_size = 4
     elif st == FLOAT: 
-        element_type = _vcfdb.ELEMENT_TYPE_FLOAT
+        element_type = _wormtable.ELEMENT_TYPE_FLOAT
         element_size = 4
     elif st == FLAG: 
-        element_type = _vcfdb.ELEMENT_TYPE_INT
+        element_type = _wormtable.ELEMENT_TYPE_INT
         element_size = 1
     elif st == CHARACTER: 
-        element_type = _vcfdb.ELEMENT_TYPE_CHAR
+        element_type = _wormtable.ELEMENT_TYPE_CHAR
         element_size = 1
     elif st == STRING: 
-        #element_type = _vcfdb.ELEMENT_TYPE_ENUM
+        #element_type = _wormtable.ELEMENT_TYPE_ENUM
         # TMP while we're fixing ENUMs
-        num_elements = _vcfdb.NUM_ELEMENTS_VARIABLE 
-        element_type = _vcfdb.ELEMENT_TYPE_CHAR
+        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
+        element_type = _wormtable.ELEMENT_TYPE_CHAR
         element_size = 1
     else:
         raise ValueError("Unknown VFC type:", st)
-    col = _vcfdb.Column(name, description, element_type, 
+    col = _wormtable.Column(name, description, element_type, 
             element_size, num_elements)
     return col
    
@@ -98,7 +98,7 @@ def copy_column(col, prefix):
     appended to its name.
     """
     new_name = prefix + b"_" + col.name
-    new_col = _vcfdb.Column(name=new_name, description=col.description, 
+    new_col = _wormtable.Column(name=new_name, description=col.description, 
             element_type=col.element_type, element_size=col.element_size, 
             num_elements=col.num_elements)
     return new_col
@@ -158,26 +158,26 @@ class VCFSchemaGenerator(object):
             self._parse_meta_information(s)
             s = f.readline()
         self._parse_header_line(s)
-        int_type = _vcfdb.ELEMENT_TYPE_INT
-        char_type = _vcfdb.ELEMENT_TYPE_CHAR
-        float_type = _vcfdb.ELEMENT_TYPE_FLOAT
-        #enum_type = _vcfdb.ELEMENT_TYPE_ENUM
+        int_type = _wormtable.ELEMENT_TYPE_INT
+        char_type = _wormtable.ELEMENT_TYPE_CHAR
+        float_type = _wormtable.ELEMENT_TYPE_FLOAT
+        #enum_type = _wormtable.ELEMENT_TYPE_ENUM
         # TMP while we're fixing enums
-        enum_type = _vcfdb.ELEMENT_TYPE_CHAR
-        variable = _vcfdb.NUM_ELEMENTS_VARIABLE
+        enum_type = _wormtable.ELEMENT_TYPE_CHAR
+        variable = _wormtable.NUM_ELEMENTS_VARIABLE
         # Get the fixed columns
         # TODO Add string constants at the top of the file for the descriptions 
         # of these columns.
         # TODO These sizes have been changed until some bugs are fixed - they 
         # need to be gone through again.
         columns = [
-            _vcfdb.Column(CHROM, b"Chromosome", enum_type, 1, variable),
-            _vcfdb.Column(POS, b"position", int_type, 8, 1),
-            _vcfdb.Column(ID, b"ID", char_type, 1, variable),  
-            _vcfdb.Column(REF, b"Reference allele", enum_type, 1, variable),
-            _vcfdb.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
-            _vcfdb.Column(QUAL, b"Quality", float_type, 4, 1),
-            _vcfdb.Column(FILTER, b"Filter", char_type, 1, variable),
+            _wormtable.Column(CHROM, b"Chromosome", enum_type, 1, variable),
+            _wormtable.Column(POS, b"position", int_type, 8, 1),
+            _wormtable.Column(ID, b"ID", char_type, 1, variable),  
+            _wormtable.Column(REF, b"Reference allele", enum_type, 1, variable),
+            _wormtable.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
+            _wormtable.Column(QUAL, b"Quality", float_type, 4, 1),
+            _wormtable.Column(FILTER, b"Filter", char_type, 1, variable),
         ]
         for col in self._info_columns:
             columns.append(copy_column(col, INFO))
@@ -257,11 +257,11 @@ class VCFTableBuilder(core.TableBuilder):
         types.
         """
         rb = self._row_buffer
-        if col.element_type == _vcfdb.ELEMENT_TYPE_CHAR:
+        if col.element_type == _wormtable.ELEMENT_TYPE_CHAR:
             rb.insert_elements(col, encoded)
         else:
             f = int
-            if col.element_type == _vcfdb.ELEMENT_TYPE_FLOAT:
+            if col.element_type == _wormtable.ELEMENT_TYPE_FLOAT:
                 f = float
             if col.num_elements == 1:
                 rb.insert_elements(col, f(encoded))

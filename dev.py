@@ -7,7 +7,7 @@ from __future__ import print_function
 import os
 import sys
 
-import vcfdb
+import wormtable
 import collections
 
 import time
@@ -52,11 +52,11 @@ class IndexReader(object):
     """
     def __init__(self, homedir, column_names):
         cache_size = 6 * 2**30
-        self.__table = vcfdb.Table(homedir, cache_size)
+        self.__table = wormtable.Table(homedir, cache_size)
         schema = self.__table.get_schema()
         columns = [schema.get_column(name.encode()) for name in column_names] 
         cache_size = 2 * 2**30
-        self.__index = vcfdb.Index(self.__table, columns, cache_size)
+        self.__index = wormtable.Index(self.__table, columns, cache_size)
         self.__index.open()
 
     def get_rows(self, columns, min_val=None, max_val=None, row_type=tuple):
@@ -82,11 +82,11 @@ class IndexReader(object):
 def build_index(homedir, column_names):
     print("building index on ", column_names)
     cache_size = 1 * 2**30
-    table = vcfdb.Table(homedir, cache_size)
+    table = wormtable.Table(homedir, cache_size)
     schema = table.get_schema()
     columns = [schema.get_column(name) for name in column_names] 
     cache_size = 8 * 2**30
-    index = vcfdb.Index(table, columns, cache_size)
+    index = wormtable.Index(table, columns, cache_size)
     n = table.get_num_rows()
     monitor = ProgressMonitor(n)
     def progress(processed_rows):
@@ -141,18 +141,18 @@ def read_genotype_index(homedir, genotypes):
 
 def build_vcf(homedir, vcf_file):
     input_schema = os.path.join(homedir, "input_schema.xml")
-    schema = vcfdb.vcf_schema_factory(vcf_file)
+    schema = wormtable.vcf_schema_factory(vcf_file)
     schema.write_xml(input_schema)
     # In the command line tool we'll optionally stop here 
     # and allow the user to edit the schema. This means 
     # we don't have to generate the 'perfect' vcf schema.
-    dbb = vcfdb.VCFTableBuilder(homedir, input_schema)
+    dbb = wormtable.VCFTableBuilder(homedir, input_schema)
     dbb.set_cache_size(8 * 2**30) # 8 gigs - bigger is better
     dbb.set_buffer_size(64 * 2**20) # 64 megs
     dbb.build(vcf_file)
     
 def print_table(homedir):
-    table = vcfdb.Table(homedir)
+    table = wormtable.Table(homedir)
     print("num rows = ", table.get_num_rows())
     v = 0
     for j in range(table.get_num_rows()):

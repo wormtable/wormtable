@@ -1,6 +1,6 @@
 # simple makefile for development.
 
-SRC=_vcfdbmodule.c
+SRC=_wormtablemodule.c
 
 ext3: ${SRC}
 	python3 setup.py build_ext --inplace
