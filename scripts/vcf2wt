@@ -1,6 +1,4 @@
-from __future__ import print_function
-from __future__ import division 
-
+#!python
 """
 VCF processing for wormtable. 
 
@@ -15,8 +13,15 @@ sure that all the literals have a 'b' in front of them, but worth the
 effort.
 
 """
+from __future__ import print_function
+from __future__ import division 
+
+import wormtable as wt
 import _wormtable
-from . import core 
+
+import os
+import sys
+
 
 # VCF Fixed columns
 
@@ -61,30 +66,30 @@ def vcf_column_factory(line):
     description = d[DESCRIPTION].strip(b"\"")
     number = d[NUMBER]
     if number == b".":
-        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
+        num_elements = wt.WT_VARIABLE 
     else:
         num_elements = int(number) 
     # We can also have negative num_elements to indicate variable column
     if num_elements < 0:
-        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
+        num_elements = wt.WT_VARIABLE 
     st = d[TYPE]
     if st == INTEGER:
-        element_type = _wormtable.ELEMENT_TYPE_INT
+        element_type = wt.WT_INT
         element_size = 4
     elif st == FLOAT: 
-        element_type = _wormtable.ELEMENT_TYPE_FLOAT
+        element_type = wt.WT_FLOAT
         element_size = 4
     elif st == FLAG: 
-        element_type = _wormtable.ELEMENT_TYPE_INT
+        element_type = wt.WT_INT
         element_size = 1
     elif st == CHARACTER: 
-        element_type = _wormtable.ELEMENT_TYPE_CHAR
+        element_type = wt.WT_CHAR
         element_size = 1
     elif st == STRING: 
         #element_type = _wormtable.ELEMENT_TYPE_ENUM
         # TMP while we're fixing ENUMs
-        num_elements = _wormtable.NUM_ELEMENTS_VARIABLE 
-        element_type = _wormtable.ELEMENT_TYPE_CHAR
+        num_elements = wt.WT_VARIABLE 
+        element_type = wt.WT_CHAR
         element_size = 1
     else:
         raise ValueError("Unknown VFC type:", st)
@@ -158,13 +163,13 @@ class VCFSchemaGenerator(object):
             self._parse_meta_information(s)
             s = f.readline()
         self._parse_header_line(s)
-        int_type = _wormtable.ELEMENT_TYPE_INT
-        char_type = _wormtable.ELEMENT_TYPE_CHAR
-        float_type = _wormtable.ELEMENT_TYPE_FLOAT
+        int_type = wt.WT_INT
+        char_type = wt.WT_CHAR
+        float_type = wt.WT_FLOAT
         #enum_type = _wormtable.ELEMENT_TYPE_ENUM
         # TMP while we're fixing enums
-        enum_type = _wormtable.ELEMENT_TYPE_CHAR
-        variable = _wormtable.NUM_ELEMENTS_VARIABLE
+        enum_type = wt.WT_CHAR
+        variable = wt.WT_VARIABLE
         # Get the fixed columns
         # TODO Add string constants at the top of the file for the descriptions 
         # of these columns.
@@ -184,7 +189,7 @@ class VCFSchemaGenerator(object):
         for genotype in self._genotypes:
             for col in self._genotype_columns:
                 columns.append(copy_column(col, genotype))
-        schema = core.Schema(columns)
+        schema = wt.Schema(columns)
         return schema
 
 def vcf_schema_factory(vcf_file):
@@ -197,7 +202,7 @@ def vcf_schema_factory(vcf_file):
     return schema
 
 
-class VCFTableBuilder(core.TableBuilder):
+class VCFTableBuilder(wt.TableBuilder):
     """
     Class responsible for parsing a VCF file and creating a database. 
     """
@@ -257,11 +262,11 @@ class VCFTableBuilder(core.TableBuilder):
         types.
         """
         rb = self._row_buffer
-        if col.element_type == _wormtable.ELEMENT_TYPE_CHAR:
+        if col.element_type == wt.WT_CHAR:
             rb.insert_elements(col, encoded)
         else:
             f = int
-            if col.element_type == _wormtable.ELEMENT_TYPE_FLOAT:
+            if col.element_type == wt.WT_FLOAT:
                 f = float
             if col.num_elements == 1:
                 rb.insert_elements(col, f(encoded))
@@ -324,3 +329,26 @@ class VCFTableBuilder(core.TableBuilder):
             # Finally, commit the record.
             self._row_buffer.commit_row()
  
+
+####### Command line interface ###############
+
+def build_vcf(homedir, vcf_file):
+    input_schema = os.path.join(homedir, "input_schema.xml")
+    schema = vcf_schema_factory(vcf_file)
+    schema.write_xml(input_schema)
+    # In the command line tool we'll optionally stop here 
+    # and allow the user to edit the schema. This means 
+    # we don't have to generate the 'perfect' vcf schema.
+    dbb = VCFTableBuilder(homedir, input_schema)
+    dbb.set_cache_size(8 * 2**30) # 8 gigs - bigger is better
+    dbb.set_buffer_size(64 * 2**20) # 64 megs
+    dbb.build(vcf_file)
+
+def main():
+    homedir = sys.argv[1] 
+    vcf_file = sys.argv[2]
+    build_vcf(homedir, vcf_file)
+
+if __name__ == "__main__":
+    main()
+

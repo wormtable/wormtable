@@ -1,11 +1,8 @@
+"""
+Wormtable.
+"""
 from __future__ import print_function
 from __future__ import division 
-
-"""
-Core facilities in the wormtable package.
-   
-TODO: document.
-"""
 
 import os
 import sys
@@ -16,9 +13,16 @@ from xml.dom import minidom
 
 import _wormtable
 
+__version__ = '0.0.1-dev'
+SCHEMA_VERSION = "0.4-dev"
+
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
-SCHEMA_VERSION = "0.4-dev"
+WT_VARIABLE = _wormtable.NUM_ELEMENTS_VARIABLE 
+WT_INT   = _wormtable.ELEMENT_TYPE_INT   
+WT_FLOAT = _wormtable.ELEMENT_TYPE_FLOAT 
+WT_CHAR  = _wormtable.ELEMENT_TYPE_CHAR 
+
 
 class Schema(object):
     """
@@ -280,3 +284,5 @@ class Index(object):
             row_iter.set_max(max_val)
         for row in row_iter:
             yield row
+
+

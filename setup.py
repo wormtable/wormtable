@@ -20,7 +20,7 @@ def parse_version(module_file):
     match = re.findall("__version__ = '([^']+)'", s)
     return match[0]
 
-wormtable_version = parse_version("wormtable/__init__.py") 
+wormtable_version = parse_version("wormtable.py") 
 
 _wormtable_module = Extension('_wormtable', 
     sources = ["_wormtablemodule.c"],
@@ -50,7 +50,8 @@ setup(
     ],
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
-    packages = ['wormtable']
+    py_modules = ['wormtable'],
+    scripts = ["scripts/vcf2wt"]
 )
 
     
