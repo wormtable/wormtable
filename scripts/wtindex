@@ -32,10 +32,7 @@ def main():
         homedir = args[1]
         column_names = args[2:]
         table = wt.Table(homedir, read_cache_size)
-        schema = table.get_schema()
-        columns = [schema.get_column(name.encode()) for name in column_names] 
-        cache_size = 8 * 2**30
-        index = wt.Index(table, columns, cache_size)
+        index = wt.Index(table, column_names, write_cache_size)
         n = table.get_num_rows()
         monitor = wt.ProgressMonitor(n)
         def progress(processed_rows):

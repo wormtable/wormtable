@@ -356,7 +356,7 @@ def main():
             parser.error(s)
     os.mkdir(homedir)
     
-    input_schema = os.path.join(homedir, "input_schema.xml")
+    input_schema = os.path.join(homedir, "schema.xml")
     schema = vcf_schema_factory(vcf_file)
     schema.write_xml(input_schema)
     dbb = VCFTableBuilder(homedir, input_schema)

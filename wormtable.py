@@ -225,7 +225,7 @@ class Table(object):
     def get_database(self):
         return self._database
 
-    def get_homdir(self):
+    def get_homedir(self):
         return self._homedir
 
     def get_schema(self):
@@ -256,13 +256,17 @@ class Index(object):
     """
     Class representing an index over a set of columns in a table.
     """
-    def __init__(self, table, columns, cache_size):
+    def __init__(self, table, columns, cache_size=DEFAULT_READ_CACHE_SIZE):
         self._table = table
-        self._columns = columns
-        name = b"+".join(c.name for c in columns)
-        filename = os.path.join(table.get_homdir().encode(), name + b".db")        
-        self._index = _wormtable.Index(table.get_database(), filename, columns, 
-                cache_size)
+        cols = []
+        s = table.get_schema()
+        for c in columns:
+            cols.append(s.get_column(c.encode()))
+        self._columns = cols 
+        name = b"+".join(c.name for c in self._columns)
+        filename = os.path.join(table.get_homedir().encode(), name + b".db")        
+        self._index = _wormtable.Index(table.get_database(), filename, 
+                self._columns, cache_size)
         
     def build(self, progress_callback=None, callback_interval=100):
         if progress_callback is not None:
@@ -278,7 +282,10 @@ class Index(object):
         self._index.close()
 
     def get_rows(self, columns, min_val=None, max_val=None):
-        row_iter = _wormtable.RowIterator(self._table.get_database(), columns, 
+        
+        s = self._table.get_schema()
+        cols = [s.get_column(c.encode()) for c in columns]
+        row_iter = _wormtable.RowIterator(self._table.get_database(), cols, 
                 self._index)
         if min_val is not None:
             row_iter.set_min(min_val)
@@ -286,6 +293,7 @@ class Index(object):
             row_iter.set_max(max_val)
         for row in row_iter:
             yield row
+
 
 #
 # Utilities for the command line programs.
@@ -312,7 +320,7 @@ class ProgressMonitor(object):
         spaces = self.__progress_width - filled 
         bar = self.__bars[self.__bar_index]
         self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
-        elapsed = time.clock() - self.__start_time
+        elapsed = max(1, time.clock() - self.__start_time)
         rate = processed / elapsed
         s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
             ' ' * spaces, complete * 100, rate, bar)
