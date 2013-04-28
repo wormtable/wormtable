@@ -51,7 +51,7 @@ setup(
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
     py_modules = ['wormtable'],
-    scripts = ["scripts/vcf2wt"]
+    scripts = ["scripts/vcf2wt", "scripts/wtindex"]
 )
 
     
