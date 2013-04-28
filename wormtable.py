@@ -6,7 +6,9 @@ from __future__ import division
 
 import os
 import sys
-import gzip
+
+import time
+
 
 from xml.etree import ElementTree
 from xml.dom import minidom
@@ -284,5 +286,63 @@ class Index(object):
             row_iter.set_max(max_val)
         for row in row_iter:
             yield row
+
+#
+# Utilities for the command line programs.
+#
+
+class ProgressMonitor(object):
+    """
+    Class representing a progress monitor for a terminal based interface.
+    """
+    def __init__(self, total):
+        self.__total = total
+        self.__progress_width = 40
+        self.__bar_index = 0
+        self.__bars = "/-\\|"
+        self.__start_time = time.clock()
+
+    def update(self, processed):
+        """
+        Updates this progress monitor to display the specified number 
+        of processed items.
+        """
+        complete = processed / self.__total
+        filled = int(complete * self.__progress_width)
+        spaces = self.__progress_width - filled 
+        bar = self.__bars[self.__bar_index]
+        self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
+        elapsed = time.clock() - self.__start_time
+        rate = processed / elapsed
+        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
+            ' ' * spaces, complete * 100, rate, bar)
+        print(s, end="")
+    
+    def finish(self):
+        """
+        Completes the progress monitor.
+        """
+        print()
+
+def parse_cache_size(s):
+    """
+    Parses the specified string into a cache size in bytes. Accepts either 
+    no suffix (bytes), K for Kibibytes, M for Mibibytes or G for Gibibytes.
+    """
+    multiplier = 1
+    value = s
+    if s.endswith("K"):
+        multiplier = 2**10
+        value = s[:-1]
+    elif s.endswith("M"):
+        multiplier = 2**20
+        value = s[:-1]
+    elif s.endswith("G"):
+        multiplier = 2**30
+        value = s[:-1]
+    
+    n = int(value)
+    return n * multiplier
+
 
 

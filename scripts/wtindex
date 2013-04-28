@@ -6,61 +6,45 @@ from __future__ import print_function
 from __future__ import division 
 
 import sys
-import time
+import optparse
 
-import wormtable
-
-class ProgressMonitor(object):
-    """
-    Class representing a progress monitor for a terminal based interface.
-    """
-    def __init__(self, total):
-        self.__total = total
-        self.__progress_width = 40
-        self.__bar_index = 0
-        self.__bars = "/-\\|"
-        self.__start_time = time.clock()
-
-    def update(self, processed):
-        """
-        Updates this progress monitor to display the specified number 
-        of processed items.
-        """
-        complete = processed / self.__total
-        filled = int(complete * self.__progress_width)
-        spaces = self.__progress_width - filled 
-        bar = self.__bars[self.__bar_index]
-        self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
-        elapsed = time.clock() - self.__start_time
-        rate = processed / elapsed
-        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
-            ' ' * spaces, complete * 100, rate, bar)
-        print(s, end="")
-    
-    def finish(self):
-        """
-        Completes the progress monitor.
-        """
-        print()
-
-def build_index(homedir, column_names):
-    print("building index for ", homedir, " on ", column_names)
-    cache_size = 1 * 2**30
-    table = wormtable.Table(homedir, cache_size)
-    schema = table.get_schema()
-    columns = [schema.get_column(name.encode()) for name in column_names] 
-    cache_size = 8 * 2**30
-    index = wormtable.Index(table, columns, cache_size)
-    n = table.get_num_rows()
-    monitor = ProgressMonitor(n)
-    def progress(processed_rows):
-        monitor.update(processed_rows)
-    index.build(progress, max(1, int(n / 1000)))
-    monitor.finish()
-
-
+import wormtable as wt
+   
 def main():
-    build_index(sys.argv[1], sys.argv[2:])    
+    usage = "usage: %prog [options] build homedir column1 [column2 ... ]"
+    parser = optparse.OptionParser(usage=usage) 
+    parser.add_option("-f", "--force", dest="force",
+            action="store_true", default=False,
+            help="overwrite existing index", metavar="FORCE")
+    parser.add_option("-w", "--write-cache-size", dest="write_cache_size",
+            help="write cache size in K, M or G", default="64M")
+    parser.add_option("-r", "--read-cache-size", dest="read_cache_size",
+            help="read cache size in K, M or G", default="64M")
+    (options, args) = parser.parse_args()
+    read_cache_size = wt.parse_cache_size(options.read_cache_size)
+    write_cache_size = wt.parse_cache_size(options.write_cache_size)
+    if len(args) < 1:
+        parser.error("command not supplied")
+    command = args[0]
+    if command == "build":
+        if len(args) < 3:
+            parser.error("Incorrect number of arguments")
+        homedir = args[1]
+        column_names = args[2:]
+        table = wt.Table(homedir, read_cache_size)
+        schema = table.get_schema()
+        columns = [schema.get_column(name.encode()) for name in column_names] 
+        cache_size = 8 * 2**30
+        index = wt.Index(table, columns, cache_size)
+        n = table.get_num_rows()
+        monitor = wt.ProgressMonitor(n)
+        def progress(processed_rows):
+            monitor.update(processed_rows)
+        index.build(progress, max(1, int(n / 1000)))
+        monitor.finish()
+    else:   
+        parser.error("command not supported")
+
 
 if __name__ == main():
     main()
