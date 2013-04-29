@@ -16,6 +16,9 @@ def main():
     parser.add_option("-f", "--force", dest="force",
             action="store_true", default=False,
             help="overwrite existing index", metavar="FORCE")
+    parser.add_option("-p", "--progress", dest="progress",
+            action="store_true", default=False,
+            help="show progress monitor", metavar="PROGRESS")
     parser.add_option("-w", "--write-cache-size", dest="write_cache_size",
             help="write cache size in K, M or G", default="64M")
     parser.add_option("-r", "--read-cache-size", dest="read_cache_size",
@@ -34,11 +37,14 @@ def main():
         table = wt.Table(homedir, read_cache_size)
         index = wt.Index(table, column_names, write_cache_size)
         n = table.get_num_rows()
-        monitor = wt.ProgressMonitor(n)
-        def progress(processed_rows):
-            monitor.update(processed_rows)
-        index.build(progress, max(1, int(n / 1000)))
-        monitor.finish()
+        if options.progress: 
+            monitor = wt.ProgressMonitor(n, "rows")
+            def progress(processed_rows):
+                monitor.update(processed_rows)
+            index.build(progress, max(1, int(n / 1000)))
+            monitor.finish()
+        else:
+            index.build(None, n)
     else:   
         parser.error("command not supported")
 
