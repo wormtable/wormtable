@@ -303,8 +303,9 @@ class ProgressMonitor(object):
     """
     Class representing a progress monitor for a terminal based interface.
     """
-    def __init__(self, total):
+    def __init__(self, total, units):
         self.__total = total
+        self.__units = units
         self.__progress_width = 40
         self.__bar_index = 0
         self.__bars = "/-\\|"
@@ -322,8 +323,8 @@ class ProgressMonitor(object):
         self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
         elapsed = max(1, time.clock() - self.__start_time)
         rate = processed / elapsed
-        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} rows/s {4}'.format('#' * filled, 
-            ' ' * spaces, complete * 100, rate, bar)
+        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} {4}/s {5}'.format('#' * filled, 
+            ' ' * spaces, complete * 100, rate, self.__units, bar)
         print(s, end="")
     
     def finish(self):
