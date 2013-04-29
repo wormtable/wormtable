@@ -7,13 +7,15 @@ import unittest
 import random
 import string
 
-import wormtable
 import _wormtable
 
 __column_id = 0
 
-# TODO add proper bounds checking tests for strings and numbers.
+# module variables used to control the number of tests that we do.
+num_random_test_rows = 10
 
+
+# TODO add proper bounds checking tests for strings and numbers.
 
 def get_int_column(element_size, num_elements=_wormtable.NUM_ELEMENTS_VARIABLE):
     """
@@ -84,8 +86,7 @@ class TestDatabase(unittest.TestCase):
         os.close(fd)
         buffer_size = 64 * 1024
         self._row_buffer = _wormtable.WriteBuffer(self._database, buffer_size, 1)
-        
-        self.num_random_test_rows = 1000 
+        self.num_random_test_rows = num_random_test_rows 
 
     def open_reading(self):
         """
