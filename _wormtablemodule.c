@@ -105,8 +105,14 @@ typedef struct {
     uint32_t min_key_size;
     void *max_key;
     uint32_t max_key_size;
-
 } RowIterator;
+
+typedef struct {
+    PyObject_HEAD
+    BerkeleyDatabase *database;
+    Index *index;
+    DBC *cursor;
+} DistinctValueIterator;
 
 
 static void 
@@ -2475,6 +2481,161 @@ static PyTypeObject RowIteratorType = {
     (initproc)RowIterator_init,      /* tp_init */
 };
 
+/*==========================================================
+ * DistinctValueIterator object 
+ *==========================================================
+ */
+
+static void
+DistinctValueIterator_dealloc(DistinctValueIterator* self)
+{
+    Py_XDECREF(self->database);
+    Py_XDECREF(self->index);
+    /* This doesn't necessarily happen in the right order - need 
+     * to figure out a good way to do this.
+    if (self->cursor != NULL) {
+        self->cursor->close(self->cursor);
+    }
+    */
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+DistinctValueIterator_init(DistinctValueIterator *self, PyObject *args, PyObject *kwds)
+{
+    int ret = -1;
+    static char *kwlist[] = {"database", "index", NULL}; 
+    BerkeleyDatabase *database = NULL;
+    Index *index = NULL;
+    self->database = NULL;
+    self->index = NULL;
+    self->cursor = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
+            &BerkeleyDatabaseType, &database, 
+            &IndexType, &index)) {
+        goto out;
+    }
+    self->database = database;
+    Py_INCREF(self->database);
+    self->index = index;
+    Py_INCREF(self->index);
+    ret = 0;
+out:
+    return ret;
+}
+
+static PyMemberDef DistinctValueIterator_members[] = {
+    {NULL}  /* Sentinel */
+};
+
+
+static PyObject *
+DistinctValueIterator_next(DistinctValueIterator *self)
+{
+    PyObject *ret = NULL;
+    PyObject *t = NULL;
+    PyObject *value;
+    Column *col;
+    int db_ret, j;
+    DB *db;
+    DBT key, data;
+    uint32_t flags;
+    int num_columns = PyList_GET_SIZE(self->index->columns);
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    
+    flags = DB_NEXT_NODUP;
+    if (self->cursor == NULL) {
+        /* it's the first time through the loop, so set up the cursor */
+        db = self->index->secondary_db;
+        db_ret = db->cursor(db, NULL, &self->cursor, 0);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    } 
+    db_ret = self->cursor->get(self->cursor, &key, &data, flags);
+    if (db_ret == 0) {
+        t = PyTuple_New(num_columns);
+        if (t == NULL) {
+            PyErr_NoMemory();
+            goto out;
+        }
+        for (j = 0; j < num_columns; j++) {
+            col = (Column *) PyList_GET_ITEM(self->index->columns, j);
+            if (!PyObject_TypeCheck(col, &ColumnType)) {
+                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+                Py_DECREF(t);
+                goto out;
+            }
+            if (Column_extract_elements(col, data.data) < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+            value = Column_get_python_elements(col); 
+            if (value == NULL) {
+                Py_DECREF(t);
+                goto out;
+            }
+            PyTuple_SET_ITEM(t, j, value);
+        }
+        ret = t;
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    if (ret == NULL) {
+        /* Iteration is finished - free the cursor */
+        self->cursor->close(self->cursor);
+        self->cursor = NULL;
+    }
+out:
+    return ret;
+}
+
+static PyMethodDef DistinctValueIterator_methods[] = {
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject DistinctValueIteratorType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_wormtable.DistinctValueIterator",             /* tp_name */
+    sizeof(DistinctValueIterator),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)DistinctValueIterator_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "DistinctValueIterator objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    PyObject_SelfIter,               /* tp_iter */
+    (iternextfunc) DistinctValueIterator_next, /* tp_iternext */
+    DistinctValueIterator_methods,             /* tp_methods */
+    DistinctValueIterator_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)DistinctValueIterator_init,      /* tp_init */
+};
 
 
 
@@ -2543,7 +2704,14 @@ init_wormtable(void)
     }
     Py_INCREF(&RowIteratorType);
     PyModule_AddObject(module, "RowIterator", (PyObject *) &RowIteratorType);
-    
+    /* DistinctValueIterator */
+    DistinctValueIteratorType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&DistinctValueIteratorType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&DistinctValueIteratorType);
+    PyModule_AddObject(module, "DistinctValueIterator", 
+            (PyObject *) &DistinctValueIteratorType);
     /* WriteBuffer */
     WriteBufferType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&WriteBufferType) < 0) {

@@ -282,7 +282,6 @@ class Index(object):
         self._index.close()
 
     def get_rows(self, columns, min_val=None, max_val=None):
-        
         s = self._table.get_schema()
         cols = [s.get_column(c.encode()) for c in columns]
         row_iter = _wormtable.RowIterator(self._table.get_database(), cols, 
@@ -293,7 +292,20 @@ class Index(object):
             row_iter.set_max(max_val)
         for row in row_iter:
             yield row
+    
 
+    def get_distinct_values(self):
+        """
+        Returns the distinct values in this index.
+        """
+        dvi = _wormtable.DistinctValueIterator(self._table.get_database(), 
+                self._index)
+        if len(self._columns) == 1:
+            for v in dvi:
+                yield v[0]
+        else:
+            for v in dvi:
+                yield v
 
 #
 # Utilities for the command line programs.

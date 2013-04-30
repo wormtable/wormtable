@@ -31,6 +31,22 @@ def read_position_index(homedir, chromosome, position):
     index.close()
     table.close()
 
+def read_filter_index(homedir):
+    """
+    Example demonstrating the use of get_distinct_values and get_num_rows 
+    on the Index class. Requires the existence of and index on the FILTER
+    column.
+    """
+    table = wt.Table(homedir) 
+    index = wt.Index(table, ['FILTER'])
+    index.open()
+    for v in index.get_distinct_values():
+        print(v) 
+    index.close()
+    table.close()
+
+
+
 def dump_table(homedir):
     """
     Dumps the wormtable in the specified directory to stdout row-by-row.
@@ -58,8 +74,10 @@ def main():
     # NOTE: all strings must be specified as bytes literals at the 
     # moment (i.e. prefixed with a b). This will probably change 
     # at some point.
-    read_position_index(homedir, b"1", 3220987)
-       
+    #read_position_index(homedir, b"1", 3220987)
+     
+    read_filter_index(homedir)
+
 if __name__ == "__main__":
     main()
 
