@@ -40,8 +40,17 @@ def read_filter_index(homedir):
     table = wt.Table(homedir) 
     index = wt.Index(table, ['FILTER'])
     index.open()
+    total = 0
     for v in index.get_distinct_values():
-        print(v) 
+        c = index.get_num_rows(v)
+        total += c
+        print(c, "\t->", v) 
+    # verify that this count is the same as the total number of rows
+    assert(total == table.get_num_rows())
+    # See if we return 0 for a non-existent key correctly.
+    v = b"NO SUCH VALUE" 
+    c = index.get_num_rows(v)
+    print(c, "\t->", v) 
     index.close()
     table.close()
 

@@ -294,6 +294,22 @@ class Index(object):
             yield row
     
 
+    def get_num_rows(self, v):
+        """
+        Returns the number of rows in this index with value equal to v.
+        """
+        # It would make more logical sense to put this method in the 
+        # Index class; the infrastructure is available in the RowIterator
+        # class though, so it's easier to reuse this.
+        row_iter = _wormtable.RowIterator(self._table.get_database(), 
+                self._index.columns, self._index)
+        t = v
+        if len(self._index.columns) == 1:
+            t = (v,) 
+        row_iter.set_min(t)
+        return row_iter.get_num_rows() 
+
+    
     def get_distinct_values(self):
         """
         Returns the distinct values in this index.

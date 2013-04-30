@@ -2435,9 +2435,56 @@ out:
 }
 
 
+/* 
+ * This method doesn't belong here really - it should be in the Index 
+ * class. However, the infrastructure for setting the key was here already,
+ * so it was a good idea to reuse this.
+ */
+static PyObject *
+RowIterator_get_num_rows(RowIterator *self)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    db_recno_t count = 0;
+    DB *db;
+    DBC *cursor;
+    DBT key, data;
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    db = self->index->secondary_db;
+    db_ret = db->cursor(db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    key.data = self->min_key;
+    key.size = self->min_key_size;
+    db_ret = cursor->get(cursor, &key, &data, DB_SET);
+    if (db_ret == 0) {
+        db_ret = cursor->count(cursor, &count, 0); 
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = PyLong_FromUnsignedLongLong((unsigned long long) count);
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
+
+    return ret;
+}
+
+
 static PyMethodDef RowIterator_methods[] = {
     {"set_min", (PyCFunction) RowIterator_set_min, METH_VARARGS, "Set the minimum key" },
     {"set_max", (PyCFunction) RowIterator_set_max, METH_VARARGS, "Set the maximum key" },
+    {"get_num_rows", (PyCFunction) RowIterator_get_num_rows, METH_NOARGS, 
+        "Returns the number of rows in the index with min_key as the key." },
     {NULL}  /* Sentinel */
 };
 
