@@ -722,7 +722,12 @@ class TestIndexIntegrity(object):
         for f in index_files:
             os.unlink(f)
 
+    def test_distinct_values(self):
+        raise NotImplementedError()
 
+
+    def test_count_rows(self):
+        raise NotImplementedError()
 
 
 class TestDatabaseFloatIndexIntegrity(TestDatabaseFloat, TestIndexIntegrity):
