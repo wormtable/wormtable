@@ -72,6 +72,33 @@ def dump_table(homedir):
             print("\t", k, "->", v)
     table.close()
 
+def allele_frequency_example(homedir):
+    table = wt.Table(homedir) 
+    index = wt.Index(table, ["CHROM", "POS"]) 
+    index.open()
+    chromosome = b"1"
+    min_val = (chromosome, 0)
+    max_val = (chromosome, 2**32) # some big value
+    genotypes = ["Fam_GT", "H12_GT", "H14_GT", "H15_GT", "H24_GT", "H26_GT",
+            "H27_GT", "H28_GT", "H30_GT", "H34_GT", "H36_GT"]
+    num_genotypes = len(genotypes)
+    read_cols = ["ALT", "INFO_AF"] + genotypes 
+    for row in index.get_rows(read_cols, min_val, max_val): 
+        print(row)
+        af = 0.0
+        for g in row[2:]:
+            if g != "0/0":
+                af += 1
+                if g == "1/1":
+                    af += 1
+        af /= 2 * num_genotypes
+        print(af)
+    index.close()
+    table.close()
+
+
+
+
 def main():
     homedir = sys.argv[1]
     # Uncomment this is you want to just dump out the whole table in 
@@ -84,8 +111,9 @@ def main():
     # moment (i.e. prefixed with a b). This will probably change 
     # at some point.
     #read_position_index(homedir, b"1", 3220987)
-     
-    read_filter_index(homedir)
+    #read_filter_index(homedir)
+    allele_frequency_example(homedir)
+
 
 if __name__ == "__main__":
     main()
