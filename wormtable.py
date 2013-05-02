@@ -353,8 +353,9 @@ class ProgressMonitor(object):
         rate = processed / elapsed
         s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} {4}/s {5}'.format('#' * filled, 
             ' ' * spaces, complete * 100, rate, self.__units, bar)
-        print(s, end="")
-    
+        sys.stdout.write(s)
+        sys.stdout.flush()
+         
     def finish(self):
         """
         Completes the progress monitor.
