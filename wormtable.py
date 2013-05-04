@@ -293,10 +293,17 @@ class Index(object):
         cols = [s.get_column(c.encode()) for c in columns]
         row_iter = _wormtable.RowIterator(self._table.get_database(), cols, 
                 self._index)
+        n = len(self._index.columns)
         if min_val is not None:
-            row_iter.set_min(min_val)
+            v = min_val
+            if n == 1:
+                v = (min_val,)
+            row_iter.set_min(v)
         if max_val is not None:
-            row_iter.set_max(max_val)
+            v = max_val
+            if n == 1:
+                v = (max_val,)
+            row_iter.set_max(v)
         for row in row_iter:
             yield row
     
