@@ -491,18 +491,42 @@ Column_truncate_elements_int(Column *self, double bin_width)
     int64_t w = (int64_t) bin_width; 
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t u; 
+    if (bin_width <= 0.0) {
+        PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
+                PyBytes_AsString(self->name));
+        goto out;
+    }
     for (j = 0; j < self->num_buffered_elements; j++) {
         u = elements[j];
         elements[j] = u - (u % w);
         //printf("truncating :%d by %d = %d\n", u, w, elements[j]);    
     }
+    ret = 0;
+out:
     return ret;
 }
 
 static int 
 Column_truncate_elements_float(Column *self, double bin_width)
 {
-    return 0; 
+    int ret = -1;
+    unsigned int j;
+    double *elements = (double *) self->element_buffer;
+    double u; 
+    if (bin_width <= 0.0) {
+        PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
+                PyBytes_AsString(self->name));
+        goto out;
+    }
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        u = elements[j];
+        elements[j] = u - fmod(u, bin_width); 
+        //printf("truncating :%f by %f = %f\n", u, bin_width, elements[j]);    
+    }
+    ret = 0;
+out:
+    return ret;
+    
 }
 
 static int 

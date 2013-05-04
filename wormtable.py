@@ -17,6 +17,7 @@ import _wormtable
 
 __version__ = '0.0.1-dev'
 SCHEMA_VERSION = "0.4-dev"
+INDEX_METADATA_VERSION = "0.1-dev"
 
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
@@ -259,38 +260,51 @@ class Index(object):
     def __init__(self, table, columns, cache_size=DEFAULT_READ_CACHE_SIZE):
         self._table = table
         self._column_names = columns
+        self._cache_size = cache_size
         cols = []
         s = table.get_schema()
         for c in columns:
             cols.append(s.get_column(c.encode()))
         self._columns = cols 
         name = b"+".join(c.name for c in self._columns)
-        filename = os.path.join(table.get_homedir().encode(), name + b".db")        
-        self._index = _wormtable.Index(table.get_database(), filename, 
-                self._columns, cache_size)
-       
+        prefix = os.path.join(table.get_homedir().encode(), name)
+        self._db_filename = prefix + b".db"
+        self._metadata_filename = prefix + b".xml"
+        self._index = None
 
     def set_bin_widths(self, bin_widths):
         """
         Sets the bin widths for the columns to the specified values. Only has 
         an effect if called before build.
         """
-        self._index.set_bin_widths(bin_widths)
+        self._bin_widths = bin_widths
+
 
     def build(self, progress_callback=None, callback_interval=100):
+        build_filename = self._db_filename + b".build" 
+        self._index = _wormtable.Index(self._table.get_database(), build_filename, 
+                self._columns, self._cache_size)
+        self._index.set_bin_widths(self._bin_widths)
         if progress_callback is not None:
             self._index.create(progress_callback, callback_interval)
         else:
             self._index.create()
         self._index.close()
+        # Create the metadata file and move the build file to its final name
+        self._write_metadata_file()
+        os.rename(build_filename, self._db_filename)
 
     def open(self):
-        if not os.path.exists(self._index.filename):
+        if not os.path.exists(self._metadata_filename):
             homedir = self._table.get_homedir()
             cols = " ".join(self._column_names)
             s = "Index not found for {0};".format(cols) 
             s += " run 'wtadmin add {0} {1}'".format(homedir, cols)
             raise IOError(s)
+        self._read_metadata_file()
+        self._index = _wormtable.Index(self._table.get_database(), 
+                self._db_filename, self._columns, self._cache_size)
+        self._index.set_bin_widths(self._bin_widths)
         self._index.open()
     
     def close(self):
@@ -344,6 +358,59 @@ class Index(object):
         else:
             for v in dvi:
                 yield v
+
+    def _write_metadata_file(self):
+        """
+        Writes the metadata XML file.
+        """
+        d = {"version":INDEX_METADATA_VERSION}
+        root = ElementTree.Element("index", d)
+        columns = ElementTree.Element("columns")
+        root.append(columns)
+        for j in range(len(self._columns)):
+            c = self._columns[j]
+            w = self._bin_widths[j]
+            if c.element_type == WT_INT:
+                w = int(w)
+            d = {
+                "name":c.name.decode(), 
+                "bin_width":str(w),
+            }
+            element = ElementTree.Element("column", d)
+            columns.append(element)
+        tree = ElementTree.ElementTree(root)
+        raw_xml = ElementTree.tostring(root, 'utf-8')
+        reparsed = minidom.parseString(raw_xml)
+        pretty = reparsed.toprettyxml(indent="  ")
+        with open(self._metadata_filename, "w") as f:
+            f.write(pretty)
+    
+    def _read_metadata_file(self):
+        """
+        Reads the metadata for this index.
+        """
+        self._bin_widths = [0 for c in self._column_names]
+        tree = ElementTree.parse(self._metadata_filename)
+        root = tree.getroot()
+        if root.tag != "index":
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        version = root.get("version")
+        if version is None:
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        if version != INDEX_METADATA_VERSION:
+            raise ValueError("Unsupported index metadata version - rebuild required.")
+        xml_columns = root.find("columns")
+        for xmlcol in xml_columns.getchildren():
+            if xmlcol.tag != "column":
+                raise ValueError("invalid xml")
+            name = xmlcol.get("name")
+            bin_width = float(xmlcol.get("bin_width"))
+            j = self._column_names.index(name)
+            self._bin_widths[j] = bin_width             
+
+
 
 #
 # Utilities for the command line programs.
