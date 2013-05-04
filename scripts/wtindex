@@ -5,6 +5,7 @@ Administration program for wormtable indexes.
 from __future__ import print_function
 from __future__ import division 
 
+import re
 import sys
 import optparse
 
@@ -33,18 +34,31 @@ def main():
         if len(args) < 3:
             parser.error("Incorrect number of arguments")
         homedir = args[1]
-        column_names = args[2:]
+        column_names = []
+        bin_widths = []
+        for c in args[2:]:
+            col_name = c
+            bin_width = 0
+            m = re.search("\[.*\]$", c)
+            if m is not None:
+                g = m.group(0)
+                col_name = c[:m.start(0)]
+                bin_width = float(g.strip("[]"))
+            bin_widths.append(bin_width)
+            column_names.append(col_name)
         table = wt.Table(homedir, read_cache_size)
         index = wt.Index(table, column_names, write_cache_size)
         n = table.get_num_rows()
+        f = None
         if options.progress: 
             monitor = wt.ProgressMonitor(n, "rows")
             def progress(processed_rows):
                 monitor.update(processed_rows)
-            index.build(progress, max(1, int(n / 1000)))
+            f = progress
+        index.set_bin_widths(bin_widths)
+        index.build(f, max(1, int(n / 1000)))
+        if options.progress:
             monitor.finish()
-        else:
-            index.build(None, n)
     else:   
         parser.error("command not supported")
 

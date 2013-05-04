@@ -51,6 +51,7 @@ typedef struct Column_t {
     int (*string_to_native)(struct Column_t*, char *);  /* DEPRECATED */
     int (*python_to_native)(struct Column_t*, PyObject *);
     int (*verify_elements)(struct Column_t*);
+    int (*truncate_elements)(struct Column_t*, double);
     int (*pack_elements)(struct Column_t*, void *);
     int (*unpack_elements)(struct Column_t*, void *);
     PyObject *(*native_to_python)(struct Column_t *, int);
@@ -476,6 +477,41 @@ Column_verify_elements_char(Column *self)
 {
     return 0; 
 }
+
+/**************************************
+ *
+ * Truncate elements in the buffer. 
+ *
+ *************************************/
+static int 
+Column_truncate_elements_int(Column *self, double bin_width)
+{
+    int ret = 0;
+    unsigned int j;
+    int64_t w = (int64_t) bin_width; 
+    int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t u; 
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        u = elements[j];
+        elements[j] = u - (u % w);
+        //printf("truncating :%d by %d = %d\n", u, w, elements[j]);    
+    }
+    return ret;
+}
+
+static int 
+Column_truncate_elements_float(Column *self, double bin_width)
+{
+    return 0; 
+}
+
+static int 
+Column_truncate_elements_char(Column *self, double bin_width)
+{
+    return 0; 
+}
+
+
 /**************************************
  *
  * Python input element parsing.
@@ -963,7 +999,7 @@ out:
  * destination
  */
 static int
-Column_copy_row(Column *self, void *dest, void *src)
+Column_copy_row_values(Column *self, void *dest, void *src)
 {
     int ret = -1;
     uint32_t len, num_elements, offset;
@@ -983,7 +1019,27 @@ Column_copy_row(Column *self, void *dest, void *src)
 out:
     return ret;
 }
-
+/* Copies the data values from the specified source to the specified 
+ * destination by first reading them back and then truncating then 
+ * according to the specified bin_width.
+ */
+static int
+Column_truncate_values(Column *self, double bin_width, void *dest, void *src)
+{
+    int ret = -1;
+    if (Column_extract_elements(self, src) < 0) {
+        goto out;
+    }
+    if (self->truncate_elements(self, bin_width) < 0) {
+        goto out;
+    }
+    if (self->pack_elements(self, dest) < 0) {
+        goto out;
+    }
+    ret = self->num_buffered_elements * self->element_size;
+out:
+    return ret;
+}
 
 /*
  * Converts the native values in the element buffer to the appropriate 
@@ -1093,6 +1149,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->python_to_native = Column_python_to_native_int;
         self->string_to_native = Column_string_to_native_int;
         self->verify_elements = Column_verify_elements_int;
+        self->truncate_elements = Column_truncate_elements_int;
         self->pack_elements = Column_pack_elements_int;
         self->unpack_elements = Column_unpack_elements_int;
         self->native_to_python = Column_native_to_python_int; 
@@ -1106,6 +1163,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->python_to_native = Column_python_to_native_float;
         self->string_to_native = Column_string_to_native_float;
         self->verify_elements = Column_verify_elements_float;
+        self->truncate_elements = Column_truncate_elements_float;
         self->pack_elements = Column_pack_elements_float;
         self->unpack_elements = Column_unpack_elements_float;
         self->native_to_python = Column_native_to_python_float; 
@@ -1118,6 +1176,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->python_to_native = Column_python_to_native_char;
         self->string_to_native = Column_string_to_native_char;
         self->verify_elements = Column_verify_elements_char;
+        self->truncate_elements = Column_truncate_elements_char;
         self->pack_elements = Column_pack_elements_char;
         self->unpack_elements = Column_unpack_elements_char;
         self->native_to_python = Column_native_to_python_char; 
@@ -1977,7 +2036,14 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
             PyErr_SetString(PyExc_ValueError, "Must be Column objects");
             goto out;
         }
-        len = Column_copy_row(col, v, row->data);
+        len = 0;
+        if (self->bin_widths[j] == 0.0) {
+            /* we can just copy the values directly here */
+            len = Column_copy_row_values(col, v, row->data);
+        } else {
+            /* we must bin the values correctly here */
+            len = Column_truncate_values(col, self->bin_widths[j], v, row->data);
+        }
         if (len < 0) {
             goto out;
         }
@@ -2684,6 +2750,7 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     DBT key, data;
     uint32_t flags;
     int num_columns = PyList_GET_SIZE(self->index->columns);
+    double *bin_widths = self->index->bin_widths;
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
     
@@ -2696,7 +2763,7 @@ DistinctValueIterator_next(DistinctValueIterator *self)
             handle_bdb_error(db_ret);
             goto out;    
         }
-    } 
+    }
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
         t = PyTuple_New(num_columns);
@@ -2714,6 +2781,15 @@ DistinctValueIterator_next(DistinctValueIterator *self)
             if (Column_extract_elements(col, data.data) < 0) {
                 Py_DECREF(t);
                 goto out;
+            }
+            /* truncate values so that they are equal to those in the index,
+             * if necessary
+             */
+            if (bin_widths[j] != 0.0) {
+                if (col->truncate_elements(col, bin_widths[j]) < 0) {
+                    Py_DECREF(t);
+                    goto out;
+                }
             }
             value = Column_get_python_elements(col); 
             if (value == NULL) {
