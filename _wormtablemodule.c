@@ -1091,8 +1091,21 @@ Column_get_python_elements(Column *self)
         }
     } else {
         if (self->num_buffered_elements == 0) {
-            Py_INCREF(Py_None);
-            ret = Py_None;
+            /* this is the missing value case. If we have a 
+             * variable number of elements, we return an empty
+             * tuple, otherwise it's None.
+             */
+            if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+                t = PyTuple_New(0);
+                if (t == NULL) {
+                    PyErr_NoMemory();
+                    goto out;
+                }
+                ret = t;
+            } else {
+                Py_INCREF(Py_None);
+                ret = Py_None;
+            }
         } else {
             if (self->num_elements == 1) {
                 ret = self->native_to_python(self, 0);
