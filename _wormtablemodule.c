@@ -446,9 +446,14 @@ Column_verify_elements_int(Column *self)
     /* This seems to be wrong - must get the correct formula */
     int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1)) + 1;
     int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
+    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
     for (j = 0; j < self->num_buffered_elements; j++) {
-        if (elements[j] < min_value || elements[j] > max_value) {
-            PyErr_SetString(PyExc_OverflowError, "Value out of bounds");
+        if (elements[j] != missing_value && 
+                (elements[j] < min_value || elements[j] > max_value)) {
+            PyErr_Format(PyExc_OverflowError, 
+                    "Values for column '%s' must be between %lld and %lld",
+                    PyBytes_AsString(self->name), (long long) min_value, 
+                    (long long) max_value);
             goto out;
         }
     }
@@ -532,6 +537,7 @@ Column_python_to_native_int(Column *self, PyObject *elements)
 {
     int ret = -1;
     int64_t *native= (int64_t *) self->element_buffer; 
+    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
@@ -539,17 +545,23 @@ Column_python_to_native_int(Column *self, PyObject *elements)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
-        if (!PyNumber_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be numeric");
-            goto out;
-        }
-        native[j] = (int64_t) PyLong_AsLongLong(v);
-        if (native[j] == -1) {
-            /* PyLong_AsLongLong return -1 and raises OverFlowError if 
-             * the value cannot be represented as a long long 
-             */
-            if (PyErr_Occurred()) {
+        if (v == Py_None) {
+            native[j] = missing_value;
+        } else { 
+            if (!PyNumber_Check(v)) {
+                PyErr_Format(PyExc_TypeError, 
+                        "Values for column '%s' must be numeric",
+                        PyBytes_AsString(self->name));
                 goto out;
+            }
+            native[j] = (int64_t) PyLong_AsLongLong(v);
+            if (native[j] == -1) {
+                /* PyLong_AsLongLong return -1 and raises OverFlowError if 
+                 * the value cannot be represented as a long long 
+                 */
+                if (PyErr_Occurred()) {
+                    goto out;
+                }
             }
         }
     }
@@ -563,18 +575,28 @@ Column_python_to_native_float(Column *self, PyObject *elements)
 {
     int ret = -1;
     double *native = (double *) self->element_buffer; 
+    double missing_value;
+    char zero[sizeof(double)];
     PyObject *v;
     int j;
+    memset(zero, 0, sizeof(double));
+    missing_value = unpack_double(zero);
     if (Column_parse_python_sequence(self, elements) < 0) {
         goto out;
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
-        if (!PyNumber_Check(v)) {
-            PyErr_SetString(PyExc_TypeError, "Must be float");
-            goto out;
+        if (v == Py_None) {
+            native[j] = missing_value;
+        } else {
+            if (!PyNumber_Check(v)) {
+                PyErr_Format(PyExc_TypeError, 
+                        "Values for column '%s' must be numeric",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+            native[j] = (double) PyFloat_AsDouble(v);
         }
-        native[j] = (double) PyFloat_AsDouble(v);
     }
     ret = 0;
 out:
@@ -591,17 +613,22 @@ Column_python_to_native_char(Column *self, PyObject *elements)
     Py_ssize_t length;
     /* Elements must be a single Python bytes object */
     if (!PyBytes_Check(elements)) {
-        PyErr_SetString(PyExc_TypeError, "Must be bytes");
+        PyErr_Format(PyExc_TypeError, 
+                "Values for column '%s' must be bytes",
+                PyBytes_AsString(self->name));
         goto out;
     }
     if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
-        PyErr_SetString(PyExc_ValueError, "Error in string conversion");
+        PyErr_Format(PyExc_ValueError, 
+                "String conversion failed for column '%s'",
+                PyBytes_AsString(self->name));
         goto out;
     }
     if (length > max_length) {
-        PyErr_SetString(PyExc_ValueError, "String too long");
+        PyErr_Format(PyExc_ValueError, 
+                "String too long for column '%s'",
+                PyBytes_AsString(self->name));
         goto out;
-        
     }
     memcpy(self->element_buffer, s, length);
     self->num_buffered_elements = length;
