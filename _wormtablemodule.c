@@ -93,6 +93,8 @@ typedef struct {
     PyObject *filename;
     PyObject *columns;
     Py_ssize_t cache_size;
+    unsigned int num_columns;
+    double *bin_widths;
 } Index;
 
 typedef struct {
@@ -1849,6 +1851,9 @@ Index_dealloc(Index* self)
     if (self->secondary_db != NULL) {
         self->secondary_db->close(self->secondary_db, 0);
     }
+    if (self->bin_widths != NULL) {
+        PyMem_Free(self->bin_widths);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -1864,7 +1869,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     BerkeleyDatabase *database = NULL;
     self->secondary_db = NULL;
     self->database = NULL;
-    
+    self->bin_widths = NULL; 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
             &BerkeleyDatabaseType, &database, 
             &PyBytes_Type, &filename, 
@@ -1878,9 +1883,11 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     Py_INCREF(self->filename);
     self->columns = columns;
     Py_INCREF(self->columns);
-    
+    self->num_columns = PyList_GET_SIZE(self->columns);
+    self->bin_widths = PyMem_Malloc(self->num_columns * sizeof(double));
+    memset(self->bin_widths, 0, self->num_columns * sizeof(double));
     /* TODO there should be a function to verify columns */ 
-    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+    for (j = 0; j < self->num_columns; j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
         if (!PyObject_TypeCheck(col, &ColumnType)) {
             PyErr_SetString(PyExc_ValueError, "Must be Column objects");
@@ -1981,6 +1988,66 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
 out: 
     return ret;
 }
+
+static PyObject *
+Index_set_bin_widths(Index* self, PyObject *args)
+{
+    Column* col = NULL;
+    PyObject *ret = NULL;
+    PyObject *w = NULL;
+    unsigned int j;
+    PyObject *bin_widths = NULL;
+    if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &bin_widths)) {
+        goto out;
+    }
+    if (PyList_GET_SIZE(bin_widths) != self->num_columns) {
+        PyErr_Format(PyExc_ValueError, 
+                "Number of bins must equal to the number of columns"); 
+        goto out;
+    }
+    for (j = 0; j < PyList_GET_SIZE(bin_widths); j++) {
+        w = PyList_GET_ITEM(bin_widths, j);
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyNumber_Check(w)) {
+            PyErr_Format(PyExc_ValueError, 
+                    "Bad bin width for '%s': bin widths must be numeric",
+                    PyBytes_AsString(col->name));
+            goto out;
+        }
+        self->bin_widths[j] = PyFloat_AsDouble(w);
+        if (PyErr_Occurred()) {
+            goto out;
+        }
+        if (self->bin_widths[j] < 0.0) {
+            PyErr_Format(PyExc_ValueError, 
+                    "Bad bin width for '%s': bin widths must be nonnegative",
+                    PyBytes_AsString(col->name));
+            goto out;
+        }
+        if (col->element_type == ELEMENT_TYPE_CHAR 
+                && self->bin_widths[j] != 0.0) {
+            PyErr_Format(PyExc_ValueError, 
+                    "Bad bin width for '%s': char columns do not support bins",
+                    PyBytes_AsString(col->name));
+            goto out;
+        }
+        if (col->element_type == ELEMENT_TYPE_INT) {
+            if (fmod(self->bin_widths[j], 1.0) != 0.0) {
+                PyErr_Format(PyExc_ValueError, 
+                        "Bad bin width for '%s': "
+                        "integer column bins must be integers",
+                        PyBytes_AsString(col->name));
+                goto out;
+            }
+        }
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+}
+
+
 
 static PyObject *
 Index_create(Index* self, PyObject *args)
@@ -2191,6 +2258,8 @@ out:
 
 static PyMethodDef Index_methods[] = {
     {"create", (PyCFunction) Index_create, METH_VARARGS, "Create the index" },
+    {"set_bin_widths", (PyCFunction) Index_set_bin_widths, METH_VARARGS, 
+        "Sets the bin widths for the columns" },
     {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
     {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },

@@ -268,7 +268,15 @@ class Index(object):
         filename = os.path.join(table.get_homedir().encode(), name + b".db")        
         self._index = _wormtable.Index(table.get_database(), filename, 
                 self._columns, cache_size)
-        
+       
+
+    def set_bin_widths(self, bin_widths):
+        """
+        Sets the bin widths for the columns to the specified values. Only has 
+        an effect if called before build.
+        """
+        self._index.set_bin_widths(bin_widths)
+
     def build(self, progress_callback=None, callback_interval=100):
         if progress_callback is not None:
             self._index.create(progress_callback, callback_interval)
