@@ -490,6 +490,7 @@ Column_truncate_elements_int(Column *self, double bin_width)
     unsigned int j;
     int64_t w = (int64_t) bin_width; 
     int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
     int64_t u; 
     if (bin_width <= 0.0) {
         PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
@@ -498,8 +499,9 @@ Column_truncate_elements_int(Column *self, double bin_width)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         u = elements[j];
-        elements[j] = u - (u % w);
-        //printf("truncating :%d by %d = %d\n", u, w, elements[j]);    
+        if (u != missing_value) {
+            elements[j] = u - (u % w);
+        }
     }
     ret = 0;
 out:
@@ -511,8 +513,12 @@ Column_truncate_elements_float(Column *self, double bin_width)
 {
     int ret = -1;
     unsigned int j;
+    double missing_value;
     double *elements = (double *) self->element_buffer;
     double u; 
+    char zero[sizeof(double)];
+    memset(zero, 0, sizeof(double));
+    missing_value = unpack_double(zero);
     if (bin_width <= 0.0) {
         PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
                 PyBytes_AsString(self->name));
@@ -520,7 +526,9 @@ Column_truncate_elements_float(Column *self, double bin_width)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         u = elements[j];
-        elements[j] = u - fmod(u, bin_width); 
+        if (u != missing_value) {
+            elements[j] = u - fmod(u, bin_width); 
+        }
         //printf("truncating :%f by %f = %f\n", u, bin_width, elements[j]);    
     }
     ret = 0;
