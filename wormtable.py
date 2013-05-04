@@ -258,6 +258,7 @@ class Index(object):
     """
     def __init__(self, table, columns, cache_size=DEFAULT_READ_CACHE_SIZE):
         self._table = table
+        self._column_names = columns
         cols = []
         s = table.get_schema()
         for c in columns:
@@ -276,6 +277,12 @@ class Index(object):
         self._index.close()
 
     def open(self):
+        if not os.path.exists(self._index.filename):
+            homedir = self._table.get_homedir()
+            cols = " ".join(self._column_names)
+            s = "Index not found for {0};".format(cols) 
+            s += " run 'wtadmin add {0} {1}'".format(homedir, cols)
+            raise IOError(s)
         self._index.open()
     
     def close(self):
