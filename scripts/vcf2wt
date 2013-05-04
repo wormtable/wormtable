@@ -67,10 +67,13 @@ def vcf_column_factory(line):
     name = d[ID]
     description = d[DESCRIPTION].strip(b"\"")
     number = d[NUMBER]
-    if number == b".":
-        num_elements = wt.WT_VARIABLE 
-    else:
-        num_elements = int(number) 
+    num_elements = wt.WT_VARIABLE 
+    try:
+        # If we can parse it into a number, do so. If this fails than use
+        # a variable number of elements.
+        num_elements = int(number)    
+    except ValueError as v:
+        pass
     # We can also have negative num_elements to indicate variable column
     if num_elements < 0:
         num_elements = wt.WT_VARIABLE 
@@ -299,8 +302,10 @@ class VCFTableBuilder(wt.TableBuilder):
                     name = split[1]
                     self._info_columns[name] = c
                 else:
-                    index = genotypes.index(split[0])
-                    self._genotype_columns[index][split[1]] = c
+                    g = b"_".join(split[:-1])
+                    name = split[-1]
+                    index = genotypes.index(g)
+                    self._genotype_columns[index][name] = c
     
 
     def _insert_elements(self, col, encoded):
