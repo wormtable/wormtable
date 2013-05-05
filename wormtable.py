@@ -15,7 +15,7 @@ from xml.dom import minidom
 
 import _wormtable
 
-__version__ = '0.0.1-dev'
+__version__ = '0.0.01-dev'
 SCHEMA_VERSION = "0.4-dev"
 INDEX_METADATA_VERSION = "0.1-dev"
 
