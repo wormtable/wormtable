@@ -129,6 +129,25 @@ def allele_frequency_example(homedir):
     print("var = ", np.var(a))
 
 
+def min_max_example(homedir):
+    """
+    A straightforward example of using index.get_min and get_max.
+    """
+    table = wt.Table(homedir) 
+    index = wt.Index(table, ["CHROM", "POS"]) 
+    index.open()
+    # first let's get the min and max of the whole index
+    print("whole index: ")
+    print("\t", index.get_min(), "\t", index.get_max())
+    # Now, let's get the min and max of the two chromosomes
+    print("Individual chromosomes:")
+    print("\t", index.get_min([b'1']), "\t", index.get_max([b'1']))
+    print("\t", index.get_min([b'Y']), "\t", index.get_max([b'Y']))
+    # This can be extended indefinitely, matching as many columns 
+    # as are in the index
+    index.close()
+    table.close()
+
 
 
 def main():
@@ -144,8 +163,8 @@ def main():
     # at some point.
     #read_position_index(homedir, b"1", 3220987)
     #read_filter_index(homedir)
-    allele_frequency_example(homedir)
-
+    #allele_frequency_example(homedir)
+    min_max_example(homedir)
 
 if __name__ == "__main__":
     main()

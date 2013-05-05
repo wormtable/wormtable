@@ -495,7 +495,7 @@ Column_truncate_elements_int(Column *self, double bin_width)
     int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
     int64_t u; 
     if (bin_width <= 0.0) {
-        PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
+        PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
                 PyBytes_AsString(self->name));
         goto out;
     }
@@ -522,7 +522,7 @@ Column_truncate_elements_float(Column *self, double bin_width)
     memset(zero, 0, sizeof(double));
     missing_value = unpack_double(zero);
     if (bin_width <= 0.0) {
-        PyErr_Format(PyExc_TypeError, "bin_width for column '%s' must > 0",
+        PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
                 PyBytes_AsString(self->name));
         goto out;
     }
@@ -2117,6 +2117,7 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     int j, m;
     int size = 0;
     int ret = -1;
+    Py_ssize_t n;
     Column *col = NULL;
     PyObject *elements = NULL;
     PyObject *v = NULL;
@@ -2124,8 +2125,12 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
-    /* TODO add a field for max_key length and test for this here */
-    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+    n = PyTuple_GET_SIZE(elements);
+    if (n > self->num_columns) {
+        PyErr_Format(PyExc_ValueError, "More key values than columns."); 
+        goto out;
+    }
+    for (j = 0; j < n; j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
         v = PyTuple_GetItem(elements, j);
         if (v == NULL) {
@@ -2138,6 +2143,10 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
+        if (size + m > self->key_buffer_size) {
+            PyErr_Format(PyExc_SystemError, "Max key size exceeded."); 
+            goto out;
+        }
         col->pack_elements(col, dest);
         dest += m;
         size += m;
@@ -2147,16 +2156,56 @@ out:
     return ret;
 }
 
-
+/*
+ * Unpacks value for the columns in this index in the row pointed to in the 
+ * specified DBT, truncates them as necessary, and then generates Python 
+ * values from the buffer, returning a tuple.
+ */
+static PyObject *
+Index_row_to_python(Index *self, DBT *data) {
+    PyObject *ret = NULL;
+    PyObject *value;
+    unsigned int j;
+    Column *col;
+    PyObject *t = PyTuple_New(self->num_columns);
+    if (t == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (j = 0; j < self->num_columns; j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            Py_DECREF(t);
+            goto out;
+        }
+        if (Column_extract_elements(col, data->data) < 0) {
+            Py_DECREF(t);
+            goto out;
+        }
+        if (self->bin_widths[j] > 0.0) {
+            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+        }
+        value = Column_get_python_elements(col); 
+        if (value == NULL) {
+            Py_DECREF(t);
+            goto out;
+        }
+        PyTuple_SET_ITEM(t, j, value);
+    }
+    ret = t;
+out:
+    return ret;
+}
 
 static PyObject *
 Index_get_min(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    PyObject *t = NULL;
-    PyObject *value;
-    Column *col;
-    int db_ret, j;
+    int db_ret;
     DB *db;
     DBC *cursor = NULL;
     DBT key, data;
@@ -2176,34 +2225,10 @@ Index_get_min(Index* self, PyObject *args)
     key.size = (u_int32_t) key_size; 
     db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
     if (db_ret == 0) {
-        t = PyTuple_New(self->num_columns);
-        if (t == NULL) {
-            PyErr_NoMemory();
+        ret = Index_row_to_python(self, &data);
+        if (ret == NULL) {
             goto out;
         }
-        for (j = 0; j < self->num_columns; j++) {
-            col = (Column *) PyList_GET_ITEM(self->columns, j);
-            if (!PyObject_TypeCheck(col, &ColumnType)) {
-                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-                Py_DECREF(t);
-                goto out;
-            }
-            if (Column_extract_elements(col, data.data) < 0) {
-                Py_DECREF(t);
-                goto out;
-            }
-            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
-                Py_DECREF(t);
-                goto out;
-            }
-            value = Column_get_python_elements(col); 
-            if (value == NULL) {
-                Py_DECREF(t);
-                goto out;
-            }
-            PyTuple_SET_ITEM(t, j, value);
-        }
-        ret = t;
     } else {
         handle_bdb_error(db_ret);
         goto out;    
@@ -2216,7 +2241,77 @@ out:
     return ret;
 }
 
-
+static PyObject *
+Index_get_max(Index* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    u_int32_t j;
+    u_int32_t flags;
+    int db_ret;
+    DB *db;
+    DBC *cursor = NULL;
+    DBT key, data;
+    int key_size = Index_set_key(self, args, self->key_buffer);
+    unsigned char *key_buffer = self->key_buffer;
+    if (key_size < 0) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    db = self->secondary_db;
+    db_ret = db->cursor(db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    key.data = key_buffer;
+    key.size = (u_int32_t) key_size; 
+    if (key_size == 0) {
+        /* An empty list has been passed so we want the last value */
+        db_ret = cursor->get(cursor, &key, &data, DB_LAST);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    } else {
+        /* find the last non-zero value in the key buffer and increment it */
+        j = key.size - 1;
+        while (j > 0 && key_buffer[j] == 0) {
+            j--;
+        }
+        /* add one to the buffer, making sure to carry base 256 */
+        while (j > 0 && key_buffer[j] == 255) {
+            key_buffer[j] = 0;
+            j--;
+        }
+        key_buffer[j] += 1;
+        /* Seek to the first record >= to this */
+        db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+        /* If this is not found, we want the last record in the 
+         * index; otherwise, we want the record immediately before
+         */
+        flags = DB_PREV;
+        if (db_ret == DB_NOTFOUND) {
+            flags = DB_LAST;
+        } else if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+        db_ret = cursor->get(cursor, &key, &data, flags);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    }
+    /* data points to the correct row */
+    ret = Index_row_to_python(self, &data);
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
+   
+    return ret;
+}
 
 static PyObject *
 Index_set_bin_widths(Index* self, PyObject *args)
@@ -2491,6 +2586,8 @@ static PyMethodDef Index_methods[] = {
         "Sets the bin widths for the columns" },
     {"get_min", (PyCFunction) Index_get_min, METH_VARARGS, 
         "Returns the minumum key value in this index" },
+    {"get_max", (PyCFunction) Index_get_max, METH_VARARGS, 
+        "Returns the maxumum key value in this index" },
     {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
     {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },
@@ -2867,18 +2964,12 @@ static PyObject *
 DistinctValueIterator_next(DistinctValueIterator *self)
 {
     PyObject *ret = NULL;
-    PyObject *t = NULL;
-    PyObject *value;
-    Column *col;
-    int db_ret, j;
+    int db_ret;
     DB *db;
     DBT key, data;
     uint32_t flags;
-    int num_columns = PyList_GET_SIZE(self->index->columns);
-    double *bin_widths = self->index->bin_widths;
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    
     flags = DB_NEXT_NODUP;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
@@ -2891,39 +2982,10 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     }
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
-        t = PyTuple_New(num_columns);
-        if (t == NULL) {
-            PyErr_NoMemory();
+        ret = Index_row_to_python(self->index, &data);
+        if (ret == NULL) {
             goto out;
         }
-        for (j = 0; j < num_columns; j++) {
-            col = (Column *) PyList_GET_ITEM(self->index->columns, j);
-            if (!PyObject_TypeCheck(col, &ColumnType)) {
-                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-                Py_DECREF(t);
-                goto out;
-            }
-            if (Column_extract_elements(col, data.data) < 0) {
-                Py_DECREF(t);
-                goto out;
-            }
-            /* truncate values so that they are equal to those in the index,
-             * if necessary
-             */
-            if (bin_widths[j] != 0.0) {
-                if (col->truncate_elements(col, bin_widths[j]) < 0) {
-                    Py_DECREF(t);
-                    goto out;
-                }
-            }
-            value = Column_get_python_elements(col); 
-            if (value == NULL) {
-                Py_DECREF(t);
-                goto out;
-            }
-            PyTuple_SET_ITEM(t, j, value);
-        }
-        ret = t;
     } else if (db_ret != DB_NOTFOUND) {
         handle_bdb_error(db_ret);
         goto out;    

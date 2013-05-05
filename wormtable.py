@@ -12,7 +12,7 @@ from xml.dom import minidom
 
 import _wormtable
 
-__version__ = '0.0.01-dev'
+__version__ = '0.0.1-dev'
 SCHEMA_VERSION = "0.4-dev"
 INDEX_METADATA_VERSION = "0.1-dev"
 
@@ -356,27 +356,21 @@ class Index(object):
             for v in dvi:
                 yield v
 
-    def get_min(self, partial_key=None):
+    def get_min(self, partial_key=[]):
         """
         Returns the minimum key in this index. If partial_key is specified, 
-        this must be a tuple of values giving the leftmost values to 
+        this must be a sequence of values giving the leftmost values to 
         match against.
         """
-        key = []
-        for c in self._columns:
-            missing = None
-            if c.element_type == WT_CHAR:
-                missing = b''
-            elif c.num_elements == WT_VARIABLE:
-                missing = tuple() 
-            key.append(missing)
-        if partial_key is not None:
-            if len(partial_key) > len(self._columns):
-                raise ValueError("len(partial_key) must be <= num_columns")
-            for j in range(len(partial_key)):
-                key[j] = partial_key[j]
-        print("key = ", key)
-        return self._index.get_min(tuple(key))
+        return self._index.get_min(tuple(partial_key))
+
+    def get_max(self, partial_key=[]):
+        """
+        Returns the maximum key in this index. If a partial key is specified,
+        we return the largest key with initial values less than or equal to 
+        the value provided.
+        """
+        return self._index.get_max(tuple(partial_key))
 
     def _write_metadata_file(self):
         """
