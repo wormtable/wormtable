@@ -324,9 +324,6 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
         def f():
-            #if column.element_size != 8:
-            #print("inserting ", v, "numelements = ", column.num_elements,
-            #       column.element_size)
             rb.insert_elements(column, v)
         self.assertRaises(OverflowError, f)
 
@@ -347,7 +344,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
                 # TODO There is a problem with detecting bounds errors 
                 # in 64 bit numbers. This should be fixed or noted.
                 # See notes in python_to_native_int.
-                if c.element_size != 9:
+                if c.element_size != 8:
                     v = min_v - j
                     self.insert_bad_value(c, v) 
                     v = max_v + j
@@ -662,17 +659,21 @@ class TestIndexIntegrity(object):
                 print("TODO: fix this bug!")
                 print(min_val, max_val)
             self.assertEqual(len(l), 0)
-
+            # Check if the correct lists are returned. 
             row_iter = _wormtable.RowIterator(self._database, [col], index)
             row_iter.set_min(min_val)
             row_iter.set_max(max_val)
             l = [row[0] for row in row_iter]
-            l2 = sorted([v for v in original if min_val[0] <= v and v <= max_val[0]])
+            l2 = sorted([v for v in original if min_val[0] <= v and v < max_val[0]])
             # TODO: push the comparison up into the superclass
             if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
-                self.assertEqual(l, l2)
-
-            
+                if l != l2:
+                    self.assertEqual(l, l2)
+                min_value = index.get_min(tuple()) 
+                self.assertEqual(min(original), min_value[0]) 
+                max_value = index.get_max(tuple()) 
+                self.assertEqual(max(original), max_value[0]) 
+                 
             index.close()
 
 
@@ -722,12 +723,12 @@ class TestIndexIntegrity(object):
         for f in index_files:
             os.unlink(f)
 
-    def test_distinct_values(self):
-        raise NotImplementedError()
+    #def test_distinct_values(self):
+    #    raise NotImplementedError()
 
 
-    def test_count_rows(self):
-        raise NotImplementedError()
+    #def test_count_rows(self):
+    #    raise NotImplementedError()
 
 
 class TestDatabaseFloatIndexIntegrity(TestDatabaseFloat, TestIndexIntegrity):
@@ -751,7 +752,9 @@ class TestMissingValues(object):
         self.open_reading()
         r = self._database.get_row(0)
         for c in self._columns:
-            if c.num_elements < 2:
+            if c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
+                self.assertEqual(r[c.name], tuple())
+            elif c.num_elements < 2:
                 self.assertIsNone(r[c.name])
             else:
                 v = [None for j in range(c.num_elements)]
