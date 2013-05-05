@@ -1,7 +1,6 @@
 ===============================================
-Storing and searching VCF data with Berkeley DB
+Wormtable
 ===============================================
 
-The Variant Call Format (VCF) is an important format in bioinformatics.
-In its basic form it is a tab-delimited database describing polymorphic 
-sites in a genome. 
+Wormtable is a write-once read-many table for large scale datasets. It is currently
+under development, but the 0.1 release is coming soon.

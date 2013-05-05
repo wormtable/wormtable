@@ -30,10 +30,10 @@ setup(
     name = "wormtable",
     version = wormtable_version, 
     description = "Store and search VCF data with Berkeley DB",
-    author = "Jerome Kelleher",
+    author = "Jerome Kelleher, Dan Halligan, Rob Ness",
     author_email = "jerome.kelleher@ed.ac.uk",
     url = "http://pypi.python.org/pypi/wormtable", 
-    keywords = ["add", "some", "keywords"], 
+    keywords = ["Berkeley DB", "VCF", "Variant Call Format", "Bioinformatics"], 
     license = "GNU GPLv3",
     platforms = ["POSIX"], 
     classifiers = [
