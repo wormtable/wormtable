@@ -2525,13 +2525,13 @@ RowIterator_next(RowIterator *self)
     } 
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
-        /* Now, check if we've gone past max_key */
+        /* Now, check if we've hit or gone past max_key */
         if (self->max_key_size > 0) {
             cmp_size = self->max_key_size;
             if (key.size < cmp_size) {
                 cmp_size = self->max_key_size;
             }
-            max_exceeded = memcmp(self->max_key, key.data, cmp_size) < 0;
+            max_exceeded = memcmp(self->max_key, key.data, cmp_size) <= 0;
         }
         if (!max_exceeded) { 
             t = PyTuple_New(num_columns);
