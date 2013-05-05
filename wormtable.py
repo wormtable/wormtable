@@ -6,10 +6,7 @@ from __future__ import division
 
 import os
 import sys
-
 import time
-
-
 from xml.etree import ElementTree
 from xml.dom import minidom
 
@@ -358,6 +355,28 @@ class Index(object):
         else:
             for v in dvi:
                 yield v
+
+    def get_min(self, partial_key=None):
+        """
+        Returns the minimum key in this index. If partial_key is specified, 
+        this must be a tuple of values giving the leftmost values to 
+        match against.
+        """
+        key = []
+        for c in self._columns:
+            missing = None
+            if c.element_type == WT_CHAR:
+                missing = b''
+            elif c.num_elements == WT_VARIABLE:
+                missing = tuple() 
+            key.append(missing)
+        if partial_key is not None:
+            if len(partial_key) > len(self._columns):
+                raise ValueError("len(partial_key) must be <= num_columns")
+            for j in range(len(partial_key)):
+                key[j] = partial_key[j]
+        print("key = ", key)
+        return self._index.get_min(tuple(key))
 
     def _write_metadata_file(self):
         """

@@ -94,6 +94,8 @@ typedef struct {
     PyObject *filename;
     PyObject *columns;
     Py_ssize_t cache_size;
+    void *key_buffer;
+    uint32_t key_buffer_size;
     unsigned int num_columns;
     double *bin_widths;
 } Index;
@@ -1283,7 +1285,6 @@ static PyMemberDef Column_members[] = {
     {NULL}  /* Sentinel */
 };
 
-
 static PyMethodDef Column_methods[] = {
     {NULL}  /* Sentinel */
 };
@@ -1958,6 +1959,9 @@ Index_dealloc(Index* self)
     if (self->bin_widths != NULL) {
         PyMem_Free(self->bin_widths);
     }
+    if (self->key_buffer != NULL) {
+        PyMem_Free(self->key_buffer);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -1974,6 +1978,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     self->secondary_db = NULL;
     self->database = NULL;
     self->bin_widths = NULL; 
+    self->key_buffer = NULL; 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
             &BerkeleyDatabaseType, &database, 
             &PyBytes_Type, &filename, 
@@ -1990,6 +1995,8 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     self->num_columns = PyList_GET_SIZE(self->columns);
     self->bin_widths = PyMem_Malloc(self->num_columns * sizeof(double));
     memset(self->bin_widths, 0, self->num_columns * sizeof(double));
+    self->key_buffer_size = MAX_ROW_SIZE; /* TODO work out the right size */
+    self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     /* TODO there should be a function to verify columns */ 
     for (j = 0; j < self->num_columns; j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
@@ -2099,6 +2106,117 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
 out: 
     return ret;
 }
+
+/* 
+ * Reads the arguments and sets a key in the specified buffer, returning 
+ * its length.
+ */
+static int 
+Index_set_key(Index *self, PyObject *args, void *buffer)
+{
+    int j, m;
+    int size = 0;
+    int ret = -1;
+    Column *col = NULL;
+    PyObject *elements = NULL;
+    PyObject *v = NULL;
+    void *dest = buffer; 
+    if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
+        goto out;
+    }
+    /* TODO add a field for max_key length and test for this here */
+    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
+        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        v = PyTuple_GetItem(elements, j);
+        if (v == NULL) {
+            goto out;
+        }
+        if (col->python_to_native(col, v) < 0) {
+            goto out;   
+        }
+        if (col->verify_elements(col) < 0) {
+            goto out;
+        }
+        m = col->num_buffered_elements * col->element_size;
+        col->pack_elements(col, dest);
+        dest += m;
+        size += m;
+    }
+    ret = size;
+out:
+    return ret;
+}
+
+
+
+static PyObject *
+Index_get_min(Index* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    PyObject *t = NULL;
+    PyObject *value;
+    Column *col;
+    int db_ret, j;
+    DB *db;
+    DBC *cursor = NULL;
+    DBT key, data;
+    int key_size = Index_set_key(self, args, self->key_buffer);
+    if (key_size < 0) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    db = self->secondary_db;
+    db_ret = db->cursor(db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    key.data = self->key_buffer;
+    key.size = (u_int32_t) key_size; 
+    db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+    if (db_ret == 0) {
+        t = PyTuple_New(self->num_columns);
+        if (t == NULL) {
+            PyErr_NoMemory();
+            goto out;
+        }
+        for (j = 0; j < self->num_columns; j++) {
+            col = (Column *) PyList_GET_ITEM(self->columns, j);
+            if (!PyObject_TypeCheck(col, &ColumnType)) {
+                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+                Py_DECREF(t);
+                goto out;
+            }
+            if (Column_extract_elements(col, data.data) < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+            value = Column_get_python_elements(col); 
+            if (value == NULL) {
+                Py_DECREF(t);
+                goto out;
+            }
+            PyTuple_SET_ITEM(t, j, value);
+        }
+        ret = t;
+    } else {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
+   
+    return ret;
+}
+
+
 
 static PyObject *
 Index_set_bin_widths(Index* self, PyObject *args)
@@ -2371,6 +2489,8 @@ static PyMethodDef Index_methods[] = {
     {"create", (PyCFunction) Index_create, METH_VARARGS, "Create the index" },
     {"set_bin_widths", (PyCFunction) Index_set_bin_widths, METH_VARARGS, 
         "Sets the bin widths for the columns" },
+    {"get_min", (PyCFunction) Index_get_min, METH_VARARGS, 
+        "Returns the minumum key value in this index" },
     {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
     {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },
@@ -2573,51 +2693,11 @@ out:
 }
 
 
-/* 
- * Reads the arguments and sets a key in the specified buffer, returning 
- * its length.
- */
-static int 
-RowIterator_set_key(RowIterator *self, PyObject *args, void *buffer)
-{
-    int j, m;
-    int size = 0;
-    int ret = -1;
-    Column *col = NULL;
-    PyObject *elements = NULL;
-    PyObject *v = NULL;
-    void *dest = buffer; 
-    if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
-        goto out;
-    }
-    /* TODO add a field for max_key length and test for this here */
-    for (j = 0; j < PyList_GET_SIZE(self->index->columns); j++) {
-        col = (Column *) PyList_GET_ITEM(self->index->columns, j);
-        v = PyTuple_GetItem(elements, j);
-        if (v == NULL) {
-            goto out;
-        }
-        if (col->python_to_native(col, v) < 0) {
-            goto out;   
-        }
-        if (col->verify_elements(col) < 0) {
-            goto out;
-        }
-        m = col->num_buffered_elements * col->element_size;
-        col->pack_elements(col, dest);
-        dest += m;
-        size += m;
-    }
-    ret = size;
-out:
-    return ret;
-}
-
 static PyObject *
 RowIterator_set_min(RowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = RowIterator_set_key(self, args, self->min_key);
+    int size = Index_set_key(self->index, args, self->min_key);
     if (size < 0) {
         goto out;
     }
@@ -2631,7 +2711,7 @@ static PyObject *
 RowIterator_set_max(RowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = RowIterator_set_key(self, args, self->max_key);
+    int size = Index_set_key(self->index, args, self->max_key);
     if (size < 0) {
         goto out;
     }
