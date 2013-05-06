@@ -393,7 +393,7 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
     def test_small_int_retrieval(self):
         rb = self._row_buffer
         db = self._database
-        values = range(-20, 20)
+        values = range(40)
         for v in values:
             for c in self._columns:
                 if c.num_elements == 1:
@@ -754,10 +754,9 @@ class TestIndexIntegrity(object):
         k = 0
         for c in self._columns:
             distinct_values = {}
-            #for j in range(self._database.get_num_rows()):
-            #    r = self._database.get_row(j)
-            for r in self.rows:
-                v = r[k]
+            for j in range(self._database.get_num_rows()):
+                r = self._database.get_row(j)
+                v = r[c.name]
                 if v not in distinct_values:
                     distinct_values[v] = 0
                 distinct_values[v] += 1

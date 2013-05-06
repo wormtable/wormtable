@@ -15,8 +15,11 @@ def main():
             help="Number of rows for random data tests.", default=1000)
     parser.add_option("-n", "--name-case", dest="name",
             help="Run this specified test", default=None)
+    parser.add_option("-i", "--iterations", dest="iterations",
+            help="Repeat for i iterations", default="1")
     (options, args) = parser.parse_args()
     num_rows = int(options.num_rows)
+    iterations = int(options.iterations)
     if num_rows < 2:
         parser.error("At least 2 rows must be used for random tests")
     random.seed(int(options.random_seed))
@@ -26,7 +29,8 @@ def main():
         suite = testloader.loadTestsFromName(options.name)
     else:
         suite = testloader.loadTestsFromModule(coretests) 
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    for i in range(iterations):
+        unittest.TextTestRunner(verbosity=2).run(suite)
 
 if __name__ == '__main__':
     main()

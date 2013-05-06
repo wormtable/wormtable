@@ -181,11 +181,7 @@ max_int(u_int32_t k)
 static u_int64_t 
 missing_uint(u_int32_t k) 
 {
-    u_int64_t v = -1ll;
-    if (k < 8) {
-        v = (1ll << (8 * k)) - 1;
-    }
-    return v;
+    return (u_int64_t) -1ll;
 }
 
 /* 
@@ -194,7 +190,11 @@ missing_uint(u_int32_t k)
 static u_int64_t 
 max_uint(u_int32_t k) 
 {
-    return missing_uint(k) - 1;
+    u_int64_t v = (u_int64_t) -1ll;
+    if (k < 8) {
+        v = (1ll << (8 * k)) - 1;
+    } 
+    return v - 1;
 }
 
 /* 
@@ -1838,6 +1838,8 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
         if (PyDict_SetItem(row, col->name, value) < 0) {
             goto out;
         }
+        /* The dictionary now owns this reference, so we discard ours */
+        Py_DECREF(value);
     }
     ret = row;
 out:
