@@ -158,6 +158,9 @@ unpack_uint(u_int64_t *element, void *src, u_int8_t size)
 {
     u_int64_t dest = 0;
 #ifdef WORDS_BIGENDIAN
+    /* this does not work - see the 0.1 branch for the correct
+     * implementation*/
+    abort();
     memcpy(&dest + 8 - size, src, size);
 #else
     byteswap_copy(&dest, src, size);
@@ -172,6 +175,9 @@ unpack_int(int64_t *element, void *src, u_int8_t size)
     int64_t dest = 0;
     const int64_t m = 1LL << (size * 8 - 1);
 #ifdef WORDS_BIGENDIAN
+    /* this does not work - see the 0.1 branch for the correct
+     * implementation*/
+    abort();
     memcpy(&dest + 8 - size, src, size);
 #else
     byteswap_copy(&dest, src, size);
