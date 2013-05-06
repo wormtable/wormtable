@@ -6,10 +6,10 @@
 #define IS_PY3K
 #endif
 
-#define ELEMENT_TYPE_CHAR 0
+#define ELEMENT_TYPE_UINT 0 
 #define ELEMENT_TYPE_INT 1 
 #define ELEMENT_TYPE_FLOAT 2
-#define ELEMENT_TYPE_ENUM 3
+#define ELEMENT_TYPE_CHAR 3
 
 #define NUM_ELEMENTS_VARIABLE 0 
 #define MAX_NUM_ELEMENTS 255
@@ -39,7 +39,6 @@ typedef struct Column_t {
     PyObject_HEAD
     PyObject *name;
     PyObject *description;
-    PyObject *enum_values;
     PyObject *min_element;
     PyObject *max_element;
     int element_type;
@@ -176,6 +175,38 @@ max_int(u_int32_t k)
     return v;
 }
 
+/* 
+ * Returns the missing value for a k byte unsigned integer.
+ */
+static u_int64_t 
+missing_uint(u_int32_t k) 
+{
+    u_int64_t v = -1ll;
+    if (k < 8) {
+        v = (1ll << (8 * k)) - 1;
+    }
+    return v;
+}
+
+/* 
+ * Returns the maximum value for a k byte unsigned integer.
+ */
+static u_int64_t 
+max_uint(u_int32_t k) 
+{
+    return missing_uint(k) - 1;
+}
+
+/* 
+ * Returns the minumum value for a k byte unsigned integer.
+ */
+static u_int64_t 
+min_uint(u_int32_t k) 
+{
+    u_int64_t v = 0ll;
+    return v;
+}
+
 
 /* 
  * Returns the missing value for a k byte float.
@@ -203,6 +234,24 @@ missing_float(u_int32_t k)
  * Native values to Python conversion. 
  *
  *************************************/
+
+static PyObject *
+Column_native_to_python_uint(Column *self, int index)
+{
+    PyObject *ret = NULL;
+    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    u_int64_t missing_value = missing_uint(self->element_size); 
+    if (elements[index] == missing_value) {
+        Py_INCREF(Py_None);
+        ret = Py_None;
+    } else {
+        ret = PyLong_FromUnsignedLongLong((unsigned long long) elements[index]);
+        if (ret == NULL) {
+            PyErr_NoMemory();
+        }
+    }
+    return ret;
+}
 
 static PyObject *
 Column_native_to_python_int(Column *self, int index)
@@ -335,6 +384,36 @@ unpack_double(void *src)
  *
  *************************************/
 
+static u_int64_t
+unpack_uint(void *src, u_int8_t size) 
+{
+    u_int64_t dest = 0;
+    void *v = &dest;
+#ifdef WORDS_BIGENDIAN
+    memcpy(v + 8 - size, src, size);
+#else
+    bigendian_copy(v, src, size);
+#endif
+    /* decrement and return */
+    dest -= 1;
+    return dest; 
+}
+
+
+static int 
+Column_unpack_elements_uint(Column *self, void *source)
+{
+    int j;
+    int ret = -1;
+    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    int size = self->element_size; 
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        elements[j] = unpack_uint(source + j * size, size); 
+    }
+    ret = 0;
+    return ret; 
+}
+
 static int64_t
 unpack_int(void *src, u_int8_t size) 
 {
@@ -352,6 +431,7 @@ unpack_int(void *src, u_int8_t size)
     dest = (dest ^ m) - m;
     return dest; 
 }
+
 
 static int 
 Column_unpack_elements_int(Column *self, void *source)
@@ -408,6 +488,31 @@ Column_unpack_elements_char(Column *self, void *source)
  * Packing native values from the element_buffer to a row.
  *
  *************************************/
+
+static int 
+Column_pack_elements_uint(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    void *src;
+    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    u_int64_t u;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        u = elements[j];
+        /* increment before storing */
+        u += 1; 
+        src = &u;
+#ifdef WORDS_BIGENDIAN
+        memcpy(v, src + (8 - self->element_size), self->element_size);
+#else
+        bigendian_copy(v, src, self->element_size);
+#endif
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
 
 static int 
 Column_pack_elements_int(Column *self, void *dest)
@@ -490,6 +595,31 @@ Column_pack_elements_char(Column *self, void *dest)
  * so let's leave it in for now.
  */
 static int 
+Column_verify_elements_uint(Column *self)
+{
+    int j;
+    int ret = -1;
+    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    u_int64_t min_value = min_uint(self->element_size); 
+    u_int64_t max_value = max_uint(self->element_size); 
+    u_int64_t missing_value = missing_uint(self->element_size); 
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        if (elements[j] != missing_value && 
+                (elements[j] < min_value || elements[j] > max_value)) {
+            PyErr_Format(PyExc_OverflowError, 
+                    "Values for column '%s' must be between %lld and %lld",
+                    PyBytes_AsString(self->name), (long long) min_value, 
+                    (long long) max_value);
+            goto out;
+        }
+    }
+    ret = 0;
+out:
+    return ret; 
+
+}
+    
+static int 
 Column_verify_elements_int(Column *self)
 {
     int j;
@@ -531,6 +661,33 @@ Column_verify_elements_char(Column *self)
  * Truncate elements in the buffer. 
  *
  *************************************/
+static int 
+Column_truncate_elements_uint(Column *self, double bin_width)
+{
+    int ret = 0;
+    unsigned int j;
+    u_int64_t w = (u_int64_t) bin_width; 
+    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    u_int64_t missing_value = missing_uint(self->element_size); 
+    u_int64_t u; 
+    if (bin_width <= 0.0) {
+        PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
+                PyBytes_AsString(self->name));
+        goto out;
+    }
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        u = elements[j];
+        if (u != missing_value) {
+            elements[j] = u - (u % w);
+        }
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+    
 static int 
 Column_truncate_elements_int(Column *self, double bin_width)
 {
@@ -646,6 +803,55 @@ out:
     Py_XDECREF(seq);
     return ret;
 }
+
+static int 
+Column_python_to_native_uint(Column *self, PyObject *elements)
+{
+    int ret = -1;
+    u_int64_t *native= (u_int64_t *) self->element_buffer; 
+    u_int64_t missing_value = missing_uint(self->element_size); 
+    u_int64_t min_value = min_uint(self->element_size);  
+    u_int64_t max_value = max_uint(self->element_size); 
+    PyObject *v;
+    int j;
+    if (Column_parse_python_sequence(self, elements) < 0) {
+        goto out;
+    }
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        v = (PyObject *) self->input_elements[j];
+        if (v == Py_None) {
+            native[j] = missing_value;
+        } else { 
+            if (!PyNumber_Check(v)) {
+                PyErr_Format(PyExc_TypeError, 
+                        "Values for column '%s' must be numeric",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+            native[j] = (u_int64_t) PyLong_AsUnsignedLongLong(v);
+            if (native[j] == -1) {
+                /* PyLong_AsUnsignedLongLong return -1 and raises OverFlowError
+                 * if the value cannot be represented as an unsigned long long 
+                 */
+                if (PyErr_Occurred()) {
+                    goto out;
+                }
+            }
+            /* check if the values are in the right range for the column */
+            if (native[j] < min_value || native[j] > max_value) {
+                PyErr_Format(PyExc_OverflowError, 
+                        "Values for column '%s' must be between %lld and %lld",
+                        PyBytes_AsString(self->name), (long long) min_value, 
+                        (long long) max_value);
+                goto out;
+            }
+        }
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
 
 static int 
 Column_python_to_native_int(Column *self, PyObject *elements)
@@ -814,6 +1020,40 @@ out:
     return ret;
 }
 
+static int 
+Column_string_to_native_uint(Column *self, char *string)
+{
+    int ret = -1;
+    u_int64_t *native= (u_int64_t *) self->element_buffer; 
+    char *v, *tail;
+    int j;
+    if (Column_parse_string_sequence(self, string) < 0) {
+        goto out;
+    }
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        v = (char *) self->input_elements[j];
+        errno = 0;
+        native[j] = (u_int64_t) strtoull(v, &tail, 0);
+        if (errno) {
+            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            goto out;
+        }
+        if (v == tail) {
+            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            goto out;
+        }
+        if (*tail != '\0') {
+            if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
+                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                goto out;
+            }
+        }
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
 
 static int 
 Column_string_to_native_int(Column *self, char *string)
@@ -890,52 +1130,6 @@ Column_string_to_native_char(Column *self, char *string)
     size_t n = strlen(string);
     memcpy(self->element_buffer, string, n); 
     return n;
-}
-
-/*
- * TODO We need to support lists of enumeration values - this will need to 
- * copy the parsing code above.
- */
-static int 
-Column_string_to_native_enum(Column *self, char *string)
-{
-    int ret = -1;
-    unsigned long value; 
-    unsigned long max_value = 1l << (8 * self->element_size);
-    PyObject *v = PyDict_GetItemString(self->enum_values, string);
-    if (v == NULL) {
-        value = PyDict_Size(self->enum_values) + 1;
-        if (value > max_value) {
-            PyErr_SetString(PyExc_ValueError, "Enum value too large");
-            goto out;
-        }
-        v = PyLong_FromUnsignedLong(value);
-        if (v == NULL) {
-            PyErr_NoMemory();
-            goto out; 
-        }
-        if (PyDict_SetItemString(self->enum_values, string, v) < 0) {
-            Py_DECREF(v); 
-            goto out;
-        }
-        Py_DECREF(v);    
-    } else {
-        if (!PyLong_Check(v)) {
-            PyErr_SetString(PyExc_ValueError, "Enum value not a long");
-            goto out;
-        }
-        value = PyLong_AsUnsignedLong(v); 
-    }
-#ifdef WORDS_BIGENDIAN
-    printf("bigendian enums not supported\n");
-    abort();
-#else
-    bigendian_copy(self->element_buffer, &value, self->element_size);
-#endif
-    //printf("%s -> %ld\n", string, value);
-    ret = 1;
-out:
-    return ret;
 }
 
 
@@ -1199,7 +1393,6 @@ Column_dealloc(Column* self)
 {
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
-    Py_XDECREF(self->enum_values); 
     Py_XDECREF(self->min_element); 
     Py_XDECREF(self->max_element); 
     PyMem_Free(self->element_buffer);
@@ -1232,7 +1425,28 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     self->description = description;
     Py_INCREF(self->name);
     Py_INCREF(self->description);
-    if (self->element_type == ELEMENT_TYPE_INT) {
+    if (self->element_type == ELEMENT_TYPE_UINT) {
+        if (self->element_size < 1 || self->element_size > 8) {
+            PyErr_SetString(PyExc_ValueError, "bad element size");
+            goto out;
+        }
+        self->python_to_native = Column_python_to_native_uint;
+        self->string_to_native = Column_string_to_native_uint;
+        self->verify_elements = Column_verify_elements_uint;
+        self->truncate_elements = Column_truncate_elements_uint;
+        self->pack_elements = Column_pack_elements_uint;
+        self->unpack_elements = Column_unpack_elements_uint;
+        self->native_to_python = Column_native_to_python_uint; 
+        native_element_size = sizeof(u_int64_t);
+        self->min_element = PyLong_FromUnsignedLongLong(
+                min_uint(self->element_size));
+        self->max_element = PyLong_FromUnsignedLongLong(
+                max_uint(self->element_size));
+        if (self->min_element == NULL || self->max_element == NULL) {
+            PyErr_NoMemory();
+            goto out;
+        }
+    } else if (self->element_type == ELEMENT_TYPE_INT) {
         if (self->element_size < 1 || self->element_size > 8) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
@@ -1282,14 +1496,6 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         native_element_size = sizeof(char);
         self->min_element = Py_None; 
         self->max_element = Py_None; 
-    } else if (self->element_type == ELEMENT_TYPE_ENUM) {
-        if (self->element_size < 1 || self->element_size > 2) {
-            PyErr_SetString(PyExc_ValueError, "bad element size");
-            goto out;
-        }
-        self->string_to_native = Column_string_to_native_enum;
-        native_element_size = sizeof(char);
-        Py_FatalError("Column type not supported yet");
     } else {    
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
@@ -1305,11 +1511,6 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "negative num elements");
         goto out;
     }
-    self->enum_values = PyDict_New();
-    if (self->enum_values == NULL) {
-        goto out;
-    }
-    Py_INCREF(self->enum_values);
     max_num_elements = self->num_elements;
     if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
         max_num_elements = MAX_NUM_ELEMENTS;    
@@ -1333,7 +1534,6 @@ out:
 static PyMemberDef Column_members[] = {
     {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
     {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
-    {"enum_values", T_OBJECT_EX, offsetof(Column, enum_values), 0, "enum_values"},
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
@@ -3211,9 +3411,9 @@ init_wormtable(void)
             NUM_ELEMENTS_VARIABLE);
     PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE_OVERHEAD", 3); /* FIXME */
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_CHAR", ELEMENT_TYPE_CHAR);
+    PyModule_AddIntConstant(module, "ELEMENT_TYPE_UINT", ELEMENT_TYPE_UINT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_ENUM", ELEMENT_TYPE_ENUM);
     
     PyModule_AddIntConstant(module, "MAX_ROW_SIZE", MAX_ROW_SIZE);
     PyModule_AddIntConstant(module, "MAX_NUM_ELEMENTS", MAX_NUM_ELEMENTS);

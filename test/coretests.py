@@ -15,7 +15,17 @@ __column_id = 0
 num_random_test_rows = 10
 
 
-# TODO add proper bounds checking tests for strings and numbers.
+def get_uint_column(element_size, num_elements=_wormtable.NUM_ELEMENTS_VARIABLE):
+    """
+    Returns an unsigned integer column with the specified element size and 
+    number of elements.
+    """
+    global __column_id
+    __column_id += 1
+    name = "uint_{0}_{1}_{2}".format(element_size, num_elements, __column_id)
+    c = _wormtable.Column(name.encode(), b"", _wormtable.ELEMENT_TYPE_UINT, 
+            element_size, num_elements)
+    return c
 
 def get_int_column(element_size, num_elements=_wormtable.NUM_ELEMENTS_VARIABLE):
     """
@@ -57,6 +67,16 @@ def get_int_range(element_size):
     min_v = -2**(8 * element_size - 1) + 1
     max_v = 2**(8 * element_size - 1) - 1
     return min_v, max_v
+
+def get_uint_range(element_size):
+    """
+    Returns the tuple min, max defining the acceptable bounds for an
+    unsigned integer of the specified size.
+    """
+    min_v = 0 
+    max_v = 2**(8 * element_size) - 2
+    return min_v, max_v
+
 
 def random_string(n):
     """
@@ -122,8 +142,10 @@ class TestElementParsers(TestDatabase):
     """     
     def get_columns(self):
         self._int_columns = {}
+        self._uint_columns = {}
         for j in range(1, 9):
             self._int_columns[j] = get_int_column(j, 1)
+            self._uint_columns[j] = get_uint_column(j, 1)
         self._float_columns = {4: get_float_column(4, 1)}
         cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
         return cols
@@ -171,9 +193,11 @@ class TestListParsers(TestDatabase):
     detected.
     """     
     def get_columns(self): 
+        self._uint_columns = {}
         self._int_columns = {}
         self._float_columns = {}
         for j in range(1, 5):
+            self._uint_columns[j] = get_uint_column(1, j)
             self._int_columns[j] = get_int_column(1, j)
             self._float_columns[j] = get_float_column(4, j)
         cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
@@ -240,8 +264,11 @@ class TestDatabaseInteger(TestDatabase):
             + [get_int_column(j, 2) for j in range(1, 9)] \
             + [get_int_column(j, 3) for j in range(1, 9)] \
             + [get_int_column(j, 4) for j in range(1, 9)] \
-            + [get_int_column(j, 10) for j in range(1, 9)] 
-               
+            + [get_uint_column(j, q) for j in range(1, 9)] \
+            + [get_uint_column(j, 1) for j in range(1, 9)] \
+            + [get_uint_column(j, 2) for j in range(1, 9)] \
+            + [get_uint_column(j, 3) for j in range(1, 9)] \
+            + [get_uint_column(j, 4) for j in range(1, 9)] 
         # randomise the columns so we don't have all the variable 
         # columns at the start.
         random.shuffle(columns)
@@ -260,7 +287,7 @@ class TestDatabaseInteger(TestDatabase):
         for j in range(num_rows):
             for k in range(num_cols): 
                 c = cols[k]
-                min_v, max_v = get_int_range(c.element_size)
+                min_v, max_v = c.min_element, c.max_element
                 v = min_v
                 if j == 1:
                     v = max_v
@@ -274,8 +301,6 @@ class TestDatabaseInteger(TestDatabase):
                     self.rows[j][k] = v
                 rb.insert_elements(c, self.rows[j][k]) 
             rb.commit_row()
-
-
 
     def populate_randomly(self, num_rows):
         """
@@ -291,7 +316,7 @@ class TestDatabaseInteger(TestDatabase):
         for j in range(num_rows):
             for k in range(num_cols): 
                 c = cols[k]
-                min_v, max_v = get_int_range(c.element_size)
+                min_v, max_v = c.min_element, c.max_element
                 if c.num_elements == 1:
                     self.rows[j][k] = random.randint(min_v, max_v) 
                 else:
@@ -331,7 +356,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
 
     def test_outside_range(self):
         for c in self._columns:
-            min_v, max_v = get_int_range(c.element_size)
+            min_v, max_v = c.min_element, c.max_element
             for j in range(1, 5):
                 v = min_v - j
                 self.insert_bad_value(c, v) 
@@ -340,7 +365,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
 
     def test_inside_range(self):
         for c in self._columns:
-            min_v, max_v = get_int_range(c.element_size)
+            min_v, max_v = c.min_element, c.max_element
             for j in range(0, 5):
                 v = min_v + j
                 self.insert_good_value(c, v) 
@@ -356,6 +381,11 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
             min_v, max_v = get_int_range(c.element_size)
             self.assertEqual(min_v, c.min_element)
             self.assertEqual(max_v, c.max_element)
+            c = get_uint_column(j, 1) 
+            min_v, max_v = get_uint_range(c.element_size)
+            self.assertEqual(min_v, c.min_element)
+            self.assertEqual(max_v, c.max_element)
+
 
 class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
 
@@ -608,7 +638,7 @@ class TestIndexIntegrity(object):
             index.close()
             self._index_files.append(index_file)
             self._indexes[1].append(index)
-       
+
     def destroy_indexes(self):
         """
         Delete the index files.
@@ -679,25 +709,28 @@ class TestIndexIntegrity(object):
         index_files = []
         original_values = []
         n = len(self._columns)
-        for j in range(n):
-            for k in range(j + 1, n): 
-                c1 = self._columns[j]
-                c2 = self._columns[k]
-                # TODO: variable length columns don't sort the same way
-                # this might be a bug or it might not - this should be 
-                # verified and the correct sorting procedure used here.
-                if c1.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE and \
-                        c2.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE:
-                
-                    fd, index_file = tempfile.mkstemp("-index-test.db") 
-                    index = _wormtable.Index(self._database, index_file.encode(), [c1, c2], 
-                            cache_size)
-                    os.close(fd)
-                    index.create()
-                    index.close()
-                    index_files.append(index_file)
-                    indexes.append(index)
-                    original_values.append([(row[j], row[k]) for row in self.rows])
+        pairs = [(j, k) for j in range(n) for k in range(j + 1, n)]
+        max_pairs = 100
+        if len(pairs) > max_pairs:
+            pairs = random.sample(pairs, max_pairs)
+        for j, k in pairs:
+            c1 = self._columns[j]
+            c2 = self._columns[k]
+            # TODO: variable length columns don't sort the same way
+            # this might be a bug or it might not - this should be 
+            # verified and the correct sorting procedure used here.
+            if c1.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE and \
+                    c2.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE:
+            
+                fd, index_file = tempfile.mkstemp("-index-test.db") 
+                index = _wormtable.Index(self._database, index_file.encode(), [c1, c2], 
+                        cache_size)
+                os.close(fd)
+                index.create()
+                index.close()
+                index_files.append(index_file)
+                indexes.append(index)
+                original_values.append([(row[j], row[k]) for row in self.rows])
 
         for index, original in zip(indexes, original_values):
             index.open()
@@ -721,9 +754,10 @@ class TestIndexIntegrity(object):
         k = 0
         for c in self._columns:
             distinct_values = {}
-            for j in range(self._database.get_num_rows()):
-                r = self._database.get_row(j)
-                v = r[c.name]
+            #for j in range(self._database.get_num_rows()):
+            #    r = self._database.get_row(j)
+            for r in self.rows:
+                v = r[k]
                 if v not in distinct_values:
                     distinct_values[v] = 0
                 distinct_values[v] += 1
