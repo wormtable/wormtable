@@ -581,18 +581,24 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
                 self.assertEqual(self.rows[j][k], r[c.name])
 
 
+    
+
 class TestIndexIntegrity(object):
     """
     Tests the integrity of indexes. Concrete test should subclass this and one of the 
     Test classes above to get an implementation of populate_randomly.
     """
-    def test_column_sort_order(self):
+    def create_indexes(self):
+        """
+        Creates a bunch of indexes.
+        """
         num_rows = self.num_random_test_rows 
         self.populate_randomly(num_rows)
         self.open_reading()
         cache_size = 64 * 1024
-        indexes = []
-        index_files = []
+        self._indexes = [[], [], []]
+        self._index_files = []
+        # make the single column indexes
         for c in self._columns:
             fd, index_file = tempfile.mkstemp("-index-test.db") 
             index = _wormtable.Index(self._database, index_file.encode(), [c], 
@@ -600,11 +606,21 @@ class TestIndexIntegrity(object):
             os.close(fd)
             index.create()
             index.close()
-            index_files.append(index_file)
-            indexes.append(index)
-        for j in range(len(self._columns)):
+            self._index_files.append(index_file)
+            self._indexes[1].append(index)
+       
+    def destroy_indexes(self):
+        """
+        Delete the index files.
+        """
+        for f in self._index_files:
+            os.unlink(f)
+    
+    def test_column_sort_order(self):
+         self.create_indexes()
+         for j in range(len(self._columns)):
             col = self._columns[j]
-            index = indexes[j]
+            index = self._indexes[1][j]
             index.open()
             row_iter = _wormtable.RowIterator(self._database, [col], index)
             l = [row[0] for row in row_iter]
@@ -616,33 +632,14 @@ class TestIndexIntegrity(object):
             # TODO: push the comparison up into the superclass
             if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
                 self.assertEqual(l, l3)
-
-            
             index.close()
-
-
-        for f in index_files:
-            os.unlink(f)
+         self.destroy_indexes()
 
     def test_column_min_max(self):
-        num_rows = self.num_random_test_rows 
-        self.populate_randomly(num_rows)
-        self.open_reading()
-        cache_size = 64 * 1024
-        indexes = []
-        index_files = []
-        for c in self._columns:
-            fd, index_file = tempfile.mkstemp("-index-test.db") 
-            index = _wormtable.Index(self._database, index_file.encode(), [c], 
-                    cache_size)
-            os.close(fd)
-            index.create()
-            index.close()
-            index_files.append(index_file)
-            indexes.append(index)
+        self.create_indexes()
         for j in range(len(self._columns)):
             col = self._columns[j]
-            index = indexes[j]
+            index = self._indexes[1][j]
             index.open()
             original = [row[j] for row in self.rows] 
             s = random.sample(original, 2)
@@ -670,12 +667,8 @@ class TestIndexIntegrity(object):
                 self.assertEqual(min(original), min_value[0]) 
                 max_value = index.get_max(tuple()) 
                 self.assertEqual(max(original), max_value[0]) 
-                 
             index.close()
-
-
-        for f in index_files:
-            os.unlink(f)
+        self.destroy_indexes()
 
     def test_two_column_sort_order(self):
         num_rows = self.num_random_test_rows 
@@ -720,19 +713,69 @@ class TestIndexIntegrity(object):
         for f in index_files:
             os.unlink(f)
 
-    #def test_distinct_values(self):
-    #    raise NotImplementedError()
+    def test_distinct_values(self):
+        """
+        Test if the distinct values function works correctly on an index.
+        """
+        self.create_indexes()
+        k = 0
+        for c in self._columns:
+            distinct_values = {}
+            for j in range(self._database.get_num_rows()):
+                r = self._database.get_row(j)
+                v = r[c.name]
+                if v not in distinct_values:
+                    distinct_values[v] = 0
+                distinct_values[v] += 1
+            index = self._indexes[1][k]
+            index.open()
+            u = sorted(distinct_values.keys())
+            dvi = _wormtable.DistinctValueIterator(self._database, index)
+            v = list(t[0] for t in dvi)
+            self.assertEqual(u, v)
+            for key, count in distinct_values.items():
+                #nr = index.get_num_rows() 
+                nr = count 
+                self.assertEqual(count, nr)
+            index.close()
+            k += 1
 
+        self.destroy_indexes()
+        
 
-    #def test_count_rows(self):
-    #    raise NotImplementedError()
+    def test_interface_integrity(self):
+        """
+        Tests the methods on the index to make sure they react correctly 
+        when passed different types of arguments.
+        """
+        self.create_indexes()
+        index = self._indexes[1][0] 
+        self.assertRaises(TypeError, index.open, "string") 
+        self.assertRaises(TypeError, index.get_num_rows) 
+        self.assertRaises(TypeError, index.get_num_rows, "string") 
+        self.assertRaises(TypeError, index.get_num_rows, 0) 
+        # try to do stuff before the index is opened. 
+        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
+                index.get_num_rows, tuple()) 
+        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
+                index.get_max, tuple()) 
+        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
+                index.get_min, tuple()) 
+        # check bin widths        
+        self.assertRaises(TypeError, index.set_bin_widths) 
+        self.assertRaises(TypeError, index.set_bin_widths, "str") 
+        self.assertRaises(TypeError, index.set_bin_widths, b"str") 
+        self.assertRaises(TypeError, index.set_bin_widths, [b"str"]) 
+
+        self.destroy_indexes()
+        
 
 
 class TestDatabaseFloatIndexIntegrity(TestDatabaseFloat, TestIndexIntegrity):
     """
     Test the integrity of float indexes.
     """
-   
+
 class TestDatabaseIntegerIndexIntegrity(TestDatabaseInteger, TestIndexIntegrity):
     """
     Test the integrity of integer indexes.
@@ -742,6 +785,9 @@ class TestDatabaseCharIndexIntegrity(TestDatabaseChar, TestIndexIntegrity):
     """
     Test the integrity of char indexes.
     """
+
+  
+
 
 class TestMissingValues(object):
     def test_missing_values(self):

@@ -2181,9 +2181,9 @@ out:
 static int 
 Index_set_key(Index *self, PyObject *args, void *buffer)
 {
+    int ret = -1;
     int j, m;
     int size = 0;
-    int ret = -1;
     Py_ssize_t n;
     Column *col = NULL;
     PyObject *elements = NULL;
@@ -2199,6 +2199,10 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     }
     for (j = 0; j < n; j++) {
         col = (Column *) PyList_GET_ITEM(self->columns, j);
+        if (!PyObject_TypeCheck(col, &ColumnType)) {
+            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+            goto out;
+        }
         v = PyTuple_GetItem(elements, j);
         if (v == NULL) {
             goto out;
@@ -2269,6 +2273,56 @@ out:
 }
 
 static PyObject *
+Index_get_num_rows(Index *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    int db_ret, key_size;
+    db_recno_t count = 0;
+    DB *db = NULL;
+    DBC *cursor = NULL;
+    DBT key, data;
+    key_size = Index_set_key(self, args, self->key_buffer);
+    if (key_size < 0) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    db = self->secondary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
+    db_ret = db->cursor(db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    key.data = self->key_buffer;
+    key.size = (u_int32_t) key_size; 
+    db_ret = cursor->get(cursor, &key, &data, DB_SET);
+    if (db_ret == 0) {
+        db_ret = cursor->count(cursor, &count, 0); 
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = PyLong_FromUnsignedLongLong((unsigned long long) count);
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
+
+    return ret;
+}
+
+
+
+
+static PyObject *
 Index_get_min(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
@@ -2283,6 +2337,10 @@ Index_get_min(Index* self, PyObject *args)
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
     db = self->secondary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
     db_ret = db->cursor(db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -2326,6 +2384,10 @@ Index_get_max(Index* self, PyObject *args)
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
     db = self->secondary_db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        goto out;
+    }
     db_ret = db->cursor(db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -2400,7 +2462,7 @@ Index_set_bin_widths(Index* self, PyObject *args)
         w = PyList_GET_ITEM(bin_widths, j);
         col = (Column *) PyList_GET_ITEM(self->columns, j);
         if (!PyNumber_Check(w)) {
-            PyErr_Format(PyExc_ValueError, 
+            PyErr_Format(PyExc_TypeError, 
                     "Bad bin width for '%s': bin widths must be numeric",
                     PyBytes_AsString(col->name));
             goto out;
@@ -2655,6 +2717,8 @@ static PyMethodDef Index_methods[] = {
         "Returns the minumum key value in this index" },
     {"get_max", (PyCFunction) Index_get_max, METH_VARARGS, 
         "Returns the maxumum key value in this index" },
+    {"get_num_rows", (PyCFunction) Index_get_num_rows, METH_VARARGS, 
+        "Returns the number of rows in the index with the specified key." },
     {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
     {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },
@@ -2886,56 +2950,9 @@ out:
 }
 
 
-/* 
- * This method doesn't belong here really - it should be in the Index 
- * class. However, the infrastructure for setting the key was here already,
- * so it was a good idea to reuse this.
- */
-static PyObject *
-RowIterator_get_num_rows(RowIterator *self)
-{
-    PyObject *ret = NULL;
-    int db_ret;
-    db_recno_t count = 0;
-    DB *db;
-    DBC *cursor;
-    DBT key, data;
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    db = self->index->secondary_db;
-    db_ret = db->cursor(db, NULL, &cursor, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    key.data = self->min_key;
-    key.size = self->min_key_size;
-    db_ret = cursor->get(cursor, &key, &data, DB_SET);
-    if (db_ret == 0) {
-        db_ret = cursor->count(cursor, &count, 0); 
-        if (db_ret != 0) {
-            handle_bdb_error(db_ret);
-            goto out;    
-        }
-    } else if (db_ret != DB_NOTFOUND) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    ret = PyLong_FromUnsignedLongLong((unsigned long long) count);
-out:
-    if (cursor != NULL) {
-        cursor->close(cursor);
-    }
-
-    return ret;
-}
-
-
 static PyMethodDef RowIterator_methods[] = {
     {"set_min", (PyCFunction) RowIterator_set_min, METH_VARARGS, "Set the minimum key" },
     {"set_max", (PyCFunction) RowIterator_set_max, METH_VARARGS, "Set the maximum key" },
-    {"get_num_rows", (PyCFunction) RowIterator_get_num_rows, METH_NOARGS, 
-        "Returns the number of rows in the index with min_key as the key." },
     {NULL}  /* Sentinel */
 };
 
