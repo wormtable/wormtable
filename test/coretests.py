@@ -144,13 +144,13 @@ class TestElementParsers(TestDatabase):
             "0.01", "-5.224234345235", "1E12"]
         for c in self._float_columns.values():
             for v in values:
-                self.assertIsNone(rb.insert_encoded_elements(c, v.encode()))
-                self.assertIsNone(rb.insert_elements(c, float(v)))
+                self.assertEqual(rb.insert_encoded_elements(c, v.encode()), None)
+                self.assertEqual(rb.insert_elements(c, float(v)), None)
             for k in range(10):
                 v = random.uniform(-100, 100)
                 b = str(v).encode()
-                self.assertIsNone(rb.insert_encoded_elements(c, b))
-                self.assertIsNone(rb.insert_elements(c, v))
+                self.assertEqual(rb.insert_encoded_elements(c, b), None)
+                self.assertEqual(rb.insert_elements(c, v), None)
      
     def FIX_test_bad_float_values(self):
         rb = self._row_buffer
@@ -326,7 +326,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
-        self.assertIsNone(rb.insert_elements(column, v))
+        self.assertEqual(rb.insert_elements(column, v), None)
 
 
     def test_outside_range(self):
@@ -797,7 +797,7 @@ class TestMissingValues(object):
             if c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
                 self.assertEqual(r[c.name], tuple())
             elif c.num_elements < 2:
-                self.assertIsNone(r[c.name])
+                self.assertEqual(r[c.name], None)
             else:
                 v = [None for j in range(c.num_elements)]
                 self.assertEqual(tuple(v), r[c.name])
