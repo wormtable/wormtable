@@ -2971,12 +2971,9 @@ RowIterator_dealloc(RowIterator* self)
     Py_XDECREF(self->database);
     Py_XDECREF(self->index);
     Py_XDECREF(self->columns);
-    /* This doesn't necessarily happen in the right order - need 
-     * to figure out a good way to do this.
     if (self->cursor != NULL) {
         self->cursor->close(self->cursor);
     }
-    */
     PyMem_Free(self->min_key);
     PyMem_Free(self->max_key);
     Py_TYPE(self)->tp_free((PyObject*)self);
@@ -3019,6 +3016,10 @@ RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
     /* TODO this is wasteful - work out how much we really need above */
     self->min_key = PyMem_Malloc(MAX_ROW_SIZE);
     self->max_key = PyMem_Malloc(MAX_ROW_SIZE);
+    if (self->min_key == NULL || self->max_key == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     self->min_key_size = 0;
     self->max_key_size = 0;
 
@@ -3201,12 +3202,9 @@ DistinctValueIterator_dealloc(DistinctValueIterator* self)
 {
     Py_XDECREF(self->database);
     Py_XDECREF(self->index);
-    /* This doesn't necessarily happen in the right order - need 
-     * to figure out a good way to do this.
     if (self->cursor != NULL) {
         self->cursor->close(self->cursor);
     }
-    */
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 

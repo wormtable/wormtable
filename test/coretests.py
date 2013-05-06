@@ -823,17 +823,19 @@ class TestDatabaseCharIndexIntegrity(TestDatabaseChar, TestIndexIntegrity):
 
 class TestMissingValues(object):
     def test_missing_values(self):
-        self._row_buffer.commit_row()
+        for j in range(self.num_random_test_rows):
+            self._row_buffer.commit_row()
         self.open_reading()
-        r = self._database.get_row(0)
-        for c in self._columns:
-            if c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
-                self.assertEqual(r[c.name], tuple())
-            elif c.num_elements < 2:
-                self.assertEqual(r[c.name], None)
-            else:
-                v = [None for j in range(c.num_elements)]
-                self.assertEqual(tuple(v), r[c.name])
+        for j in range(self.num_random_test_rows):
+            r = self._database.get_row(j)
+            for c in self._columns:
+                if c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
+                    self.assertEqual(r[c.name], tuple())
+                elif c.num_elements < 2:
+                    self.assertEqual(r[c.name], None)
+                else:
+                    v = [None for j in range(c.num_elements)]
+                    self.assertEqual(tuple(v), r[c.name])
 
 
 class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
