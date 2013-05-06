@@ -335,44 +335,31 @@ unpack_double(void *src)
  *
  *************************************/
 
+static int64_t
+unpack_int(void *src, u_int8_t size) 
+{
+    int64_t dest = 0;
+    const int64_t m = 1LL << (size * 8 - 1);
+#ifdef WORDS_BIGENDIAN
+    memcpy(&dest + 8 - size, src, size);
+#else
+    bigendian_copy(&dest, src, size);
+#endif
+    /* flip the sign bit */
+    dest ^= m;
+    /* sign extend and return */
+    return (dest ^ m) - m;
+}
+
 static int 
 Column_unpack_elements_int(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = source;
-    void *dest;
     int64_t *elements = (int64_t *) self->element_buffer;
-    int64_t tmp;
+    int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
-        dest = &tmp;
-#ifdef WORDS_BIGENDIAN
-        dest += 8 - self->element_size;
-        memcpy(dest, v, self->element_size);
-#else
-        bigendian_copy(dest, v, self->element_size);
-#endif
-        v += self->element_size;
-        /* flip the sign bit */
-        tmp ^= 1LL << (self->element_size * 8 - 1);
-        
-        /* TODO fix this to work for all int sizes */
-        switch (self->element_size) {
-            case 1:
-                elements[j] = (int8_t) tmp;
-                break;
-            case 2:
-                elements[j] = (int16_t) tmp;
-                break;
-            case 4:
-                elements[j] = (int32_t) tmp;
-                break;
-            case 8:
-                elements[j] = (int64_t) tmp;
-                break;
-            default:
-                Py_FatalError("Complete int sizes not yet supported");
-        }
+        elements[j] = unpack_int(source + j * size, size); 
     }
     ret = 0;
     return ret; 

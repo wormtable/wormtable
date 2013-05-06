@@ -235,16 +235,13 @@ class TestDatabaseInteger(TestDatabase):
     """ 
     def get_columns(self):
         q = _wormtable.NUM_ELEMENTS_VARIABLE
-        columns = [
-                get_int_column(1, q), get_int_column(2, q), 
-                get_int_column(4, q), get_int_column(8, q),
-                get_int_column(1, 1), get_int_column(2, 1), 
-                get_int_column(4, 1), get_int_column(8, 1),
-                get_int_column(1, 2), get_int_column(2, 2), 
-                get_int_column(1, 3), get_int_column(2, 3), 
-                get_int_column(1, 4), get_int_column(2, 4), 
-                get_int_column(1, 10), get_int_column(2, 10), 
-                ]
+        columns = [get_int_column(j, q) for j in range(1, 9)] \
+            + [get_int_column(j, 1) for j in range(1, 9)] \
+            + [get_int_column(j, 2) for j in range(1, 9)] \
+            + [get_int_column(j, 3) for j in range(1, 9)] \
+            + [get_int_column(j, 4) for j in range(1, 9)] \
+            + [get_int_column(j, 10) for j in range(1, 9)] 
+               
         # randomise the columns so we don't have all the variable 
         # columns at the start.
         random.shuffle(columns)
