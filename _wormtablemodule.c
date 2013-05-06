@@ -339,16 +339,18 @@ static int64_t
 unpack_int(void *src, u_int8_t size) 
 {
     int64_t dest = 0;
+    void *v = &dest;
     const int64_t m = 1LL << (size * 8 - 1);
 #ifdef WORDS_BIGENDIAN
-    memcpy(&dest + 8 - size, src, size);
+    memcpy(v + 8 - size, src, size);
 #else
-    bigendian_copy(&dest, src, size);
+    bigendian_copy(v, src, size);
 #endif
     /* flip the sign bit */
     dest ^= m;
     /* sign extend and return */
-    return (dest ^ m) - m;
+    dest = (dest ^ m) - m;
+    return dest; 
 }
 
 static int 
@@ -941,7 +943,6 @@ out:
  * Packs the address and number of elements in a variable length column at the
  * specified pointer.
  * 
- * TODO Error checking here - this is a major opportunity for buffer overflows.
  */
 static int 
 Column_pack_variable_elements_address(Column *self, void *dest, 
@@ -951,15 +952,12 @@ Column_pack_variable_elements_address(Column *self, void *dest,
     uint16_t off = (uint16_t) offset;
     uint8_t n = (uint8_t) num_elements;
     void *v = dest;
-    /* TODO these are internal errors so should have a different 
-     * exception
-     */
     if (offset >= MAX_ROW_SIZE) {
-        PyErr_SetString(PyExc_ValueError, "Row overflow");
+        PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
     }
     if (num_elements > MAX_NUM_ELEMENTS) {
-        PyErr_SetString(PyExc_ValueError, "too many elements");
+        PyErr_SetString(PyExc_SystemError, "too many elements");
         goto out;
     }
 #if WORDS_BIGENDIAN
@@ -977,8 +975,6 @@ out:
 /*
  * Unpacks the address and number of elements in a variable length column at the
  * specified pointer.
- * 
- * TODO Error checking here - this is a major opportunity for buffer overflows.
  */
 static int 
 Column_unpack_variable_elements_address(Column *self, void *src, 
@@ -995,16 +991,12 @@ Column_unpack_variable_elements_address(Column *self, void *src,
     bigendian_copy(&off, v, sizeof(off)); 
     bigendian_copy(&n, v + sizeof(off), sizeof(n)); 
 #endif
-    /* These should really be considered to be internal 
-     * fatal errors, as they should only happen on database
-     * corruption
-     */
     if (off >= MAX_ROW_SIZE) {
-        PyErr_SetString(PyExc_ValueError, "Row overflow");
+        PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
     }
     if (n > MAX_NUM_ELEMENTS) {
-        PyErr_SetString(PyExc_ValueError, "too many elements");
+        PyErr_SetString(PyExc_SystemError, "too many elements");
         goto out;
     }
     *offset = (uint32_t) off;
