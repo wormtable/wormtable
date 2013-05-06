@@ -8,6 +8,8 @@ ext3: ${SRC}
 ext2: ${SRC}
 	python setup.py build_ext --inplace
 
+ctags:
+	ctags *.c *.py test/*.py
 
 figs:
 	cd docs/asy && make 

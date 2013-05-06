@@ -2,7 +2,6 @@
 #include <structmember.h>
 #include <db.h>
 
-
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
 #endif
@@ -41,6 +40,8 @@ typedef struct Column_t {
     PyObject *name;
     PyObject *description;
     PyObject *enum_values;
+    PyObject *min_element;
+    PyObject *max_element;
     int element_type;
     int element_size;
     int num_elements;
@@ -145,6 +146,53 @@ bigendian_copy(void* dest, void *source, size_t n)
 }
 #endif
 
+/* 
+ * Returns the missing value for a k byte integer.
+ */
+static int64_t 
+missing_int(u_int32_t k) 
+{
+    int64_t v = (-1) * (1ll << (8 * k - 1));
+    return v;
+}
+
+/* 
+ * Returns the minimum value for a k byte integer.
+ */
+static int64_t 
+min_int(u_int32_t k) 
+{
+    int64_t v = (-1) * (1ll << (8 * k - 1)) + 1;
+    return v;
+}
+
+/* 
+ * Returns the maximum value for a k byte integer.
+ */
+static int64_t 
+max_int(u_int32_t k) 
+{
+    int64_t v = (1ll << (8 * k - 1)) - 1;
+    return v;
+}
+
+
+/* 
+ * Returns the missing value for a k byte float.
+ */
+static double 
+missing_float(u_int32_t k) 
+{
+    u_int64_t u = 0ll;
+    double v;
+    memcpy(&v, &u, sizeof(double));
+    return v;
+}
+
+
+
+
+
 /*==========================================================
  * Column object 
  *==========================================================
@@ -161,7 +209,7 @@ Column_native_to_python_int(Column *self, int index)
 {
     PyObject *ret = NULL;
     int64_t *elements = (int64_t *) self->element_buffer;
-    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t missing_value = missing_int(self->element_size); 
     if (elements[index] == missing_value) {
         Py_INCREF(Py_None);
         ret = Py_None;
@@ -179,7 +227,10 @@ Column_native_to_python_float(Column *self, int index)
 {
     PyObject *ret = NULL;
     double *elements = (double *) self->element_buffer;
-    /* TODO figure out if this is portable */ 
+    /* TODO we should test directly for the missing value, by copying to 
+     * uint64_t and comparing to zero. Any other nans can then be shipped 
+     * back to Python.
+     */
     if (isnan(elements[index])) {
         Py_INCREF(Py_None);
         ret = Py_None;
@@ -274,7 +325,7 @@ unpack_double(void *src)
 #endif
     double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
     memcpy(&value, &double_bits, sizeof(double));
-    return (double) value;
+    return value;
 }
 
 
@@ -441,17 +492,23 @@ Column_pack_elements_char(Column *self, void *dest)
  * Verify elements in the buffer. 
  *
  *************************************/
+
+/* This doesn't really have any useful function any more, as we were forced
+ * to put the range checking functionality into the native_to_python_int
+ * function. This is was because there was no way to exclude the user 
+ * from using the missing_value as an input parameter, and this would 
+ * have led to very annoying bugs. This doesn't do any harm here though,
+ * so let's leave it in for now.
+ */
 static int 
 Column_verify_elements_int(Column *self)
 {
     int j;
     int ret = -1;
     int64_t *elements = (int64_t *) self->element_buffer;
-    /* TODO check this - probably not totally right */
-    /* This seems to be wrong - must get the correct formula */
-    int64_t min_value = (-1) * (1ll << (8 * self->element_size - 1)) + 1;
-    int64_t max_value = (1ll << (8 * self->element_size - 1)) - 1;
-    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t min_value = min_int(self->element_size); 
+    int64_t max_value = max_int(self->element_size); 
+    int64_t missing_value = missing_int(self->element_size); 
     for (j = 0; j < self->num_buffered_elements; j++) {
         if (elements[j] != missing_value && 
                 (elements[j] < min_value || elements[j] > max_value)) {
@@ -492,7 +549,7 @@ Column_truncate_elements_int(Column *self, double bin_width)
     unsigned int j;
     int64_t w = (int64_t) bin_width; 
     int64_t *elements = (int64_t *) self->element_buffer;
-    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t missing_value = missing_int(self->element_size); 
     int64_t u; 
     if (bin_width <= 0.0) {
         PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
@@ -515,12 +572,9 @@ Column_truncate_elements_float(Column *self, double bin_width)
 {
     int ret = -1;
     unsigned int j;
-    double missing_value;
+    double missing_value = missing_float(self->element_size);
     double *elements = (double *) self->element_buffer;
     double u; 
-    char zero[sizeof(double)];
-    memset(zero, 0, sizeof(double));
-    missing_value = unpack_double(zero);
     if (bin_width <= 0.0) {
         PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
                 PyBytes_AsString(self->name));
@@ -609,7 +663,9 @@ Column_python_to_native_int(Column *self, PyObject *elements)
 {
     int ret = -1;
     int64_t *native= (int64_t *) self->element_buffer; 
-    int64_t missing_value = (-1) * (1ll << (8 * self->element_size - 1));
+    int64_t missing_value = missing_int(self->element_size); 
+    int64_t min_value = min_int(self->element_size); 
+    int64_t max_value = max_int(self->element_size); 
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
@@ -635,6 +691,14 @@ Column_python_to_native_int(Column *self, PyObject *elements)
                     goto out;
                 }
             }
+            /* check if the values are in the right range for the column */
+            if (native[j] < min_value || native[j] > max_value) {
+                PyErr_Format(PyExc_OverflowError, 
+                        "Values for column '%s' must be between %lld and %lld",
+                        PyBytes_AsString(self->name), (long long) min_value, 
+                        (long long) max_value);
+                goto out;
+            }
         }
     }
     ret = 0;
@@ -647,12 +711,9 @@ Column_python_to_native_float(Column *self, PyObject *elements)
 {
     int ret = -1;
     double *native = (double *) self->element_buffer; 
-    double missing_value;
-    char zero[sizeof(double)];
+    double missing_value = missing_float(self->element_size);
     PyObject *v;
     int j;
-    memset(zero, 0, sizeof(double));
-    missing_value = unpack_double(zero);
     if (Column_parse_python_sequence(self, elements) < 0) {
         goto out;
     }
@@ -1160,6 +1221,8 @@ Column_dealloc(Column* self)
     Py_XDECREF(self->name); 
     Py_XDECREF(self->description); 
     Py_XDECREF(self->enum_values); 
+    Py_XDECREF(self->min_element); 
+    Py_XDECREF(self->max_element); 
     PyMem_Free(self->element_buffer);
     PyMem_Free(self->input_elements);
     Py_TYPE(self)->tp_free((PyObject*)self);
@@ -1176,6 +1239,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     Py_ssize_t native_element_size;
     PyObject *name = NULL;
     PyObject *description = NULL;
+    self->min_element = NULL;
+    self->max_element = NULL;
     self->element_buffer = NULL;
     self->input_elements = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
@@ -1201,6 +1266,12 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->unpack_elements = Column_unpack_elements_int;
         self->native_to_python = Column_native_to_python_int; 
         native_element_size = sizeof(int64_t);
+        self->min_element = PyLong_FromLongLong(min_int(self->element_size));
+        self->max_element = PyLong_FromLongLong(max_int(self->element_size));
+        if (self->min_element == NULL || self->max_element == NULL) {
+            PyErr_NoMemory();
+            goto out;
+        }
     } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
         if (self->element_size != sizeof(float)
                 && self->element_size != sizeof(double)) {
@@ -1215,6 +1286,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->unpack_elements = Column_unpack_elements_float;
         self->native_to_python = Column_native_to_python_float; 
         native_element_size = sizeof(double);
+        self->min_element = Py_None; 
+        self->max_element = Py_None; 
     } else if (self->element_type == ELEMENT_TYPE_CHAR) {
         if (self->element_size != 1) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -1228,6 +1301,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->unpack_elements = Column_unpack_elements_char;
         self->native_to_python = Column_native_to_python_char; 
         native_element_size = sizeof(char);
+        self->min_element = Py_None; 
+        self->max_element = Py_None; 
     } else if (self->element_type == ELEMENT_TYPE_ENUM) {
         if (self->element_size < 1 || self->element_size > 2) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -1240,6 +1315,9 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
     }
+    /* we have valid referenes to min and max values */ 
+    Py_INCREF(self->min_element);
+    Py_INCREF(self->max_element);
     if (self->num_elements > MAX_NUM_ELEMENTS) {
         PyErr_SetString(PyExc_ValueError, "Too many elements");
         goto out;
@@ -1282,6 +1360,8 @@ static PyMemberDef Column_members[] = {
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
     {"fixed_region_offset", T_INT, offsetof(Column, fixed_region_offset), 
         READONLY, "fixed_region_offset"},
+    {"min_element", T_OBJECT_EX, offsetof(Column, min_element), READONLY, "minimum element"},
+    {"max_element", T_OBJECT_EX, offsetof(Column, max_element), READONLY, "maximum element"},
     {NULL}  /* Sentinel */
 };
 

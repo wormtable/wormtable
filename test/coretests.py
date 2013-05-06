@@ -49,11 +49,6 @@ def get_char_column(num_elements):
     return _wormtable.Column(name.encode(), b"", _wormtable.ELEMENT_TYPE_CHAR, 1, 
             num_elements)
 
-
-
-
-# This must be wrong, as we're not triggering an overflow with this 
-# test code.
 def get_int_range(element_size):
     """
     Returns the tuple min, max defining the acceptable bounds for an
@@ -138,7 +133,7 @@ class TestElementParsers(TestDatabase):
         Throw bad types at all the columns and expect a type error.
         """
         f = self._row_buffer.insert_elements
-        values = [None, [], {}, self]
+        values = [[], {}, self, tuple()]
         for c in self._columns:
             for v in values:
                 self.assertRaises(TypeError, f, c, v)
@@ -341,14 +336,10 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
         for c in self._columns:
             min_v, max_v = get_int_range(c.element_size)
             for j in range(1, 5):
-                # TODO There is a problem with detecting bounds errors 
-                # in 64 bit numbers. This should be fixed or noted.
-                # See notes in python_to_native_int.
-                if c.element_size != 8:
-                    v = min_v - j
-                    self.insert_bad_value(c, v) 
-                    v = max_v + j
-                    self.insert_bad_value(c, v) 
+                v = min_v - j
+                self.insert_bad_value(c, v) 
+                v = max_v + j
+                self.insert_bad_value(c, v) 
 
     def test_inside_range(self):
         for c in self._columns:
@@ -359,6 +350,15 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
                 v = max_v - j
                 self.insert_good_value(c, v) 
 
+    def test_max_min(self):
+        """
+        Test the max and min values from the columns.
+        """
+        for j in range(1, 9):
+            c = get_int_column(j, 1) 
+            min_v, max_v = get_int_range(c.element_size)
+            self.assertEqual(min_v, c.min_element)
+            self.assertEqual(max_v, c.max_element)
 
 class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
 
