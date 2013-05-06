@@ -734,8 +734,7 @@ class TestIndexIntegrity(object):
             v = list(t[0] for t in dvi)
             self.assertEqual(u, v)
             for key, count in distinct_values.items():
-                #nr = index.get_num_rows() 
-                nr = count 
+                nr = index.get_num_rows((key,)) 
                 self.assertEqual(count, nr)
             index.close()
             k += 1
