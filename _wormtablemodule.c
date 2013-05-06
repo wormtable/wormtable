@@ -2211,8 +2211,9 @@ static PyTypeObject WriteBufferType = {
 static void
 Index_dealloc(Index* self)
 {
-    Py_XDECREF(self->filename);
-    Py_XDECREF(self->columns);
+    Py_DECREF(self->filename);
+    Py_DECREF(self->database);
+    Py_DECREF(self->columns);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->secondary_db != NULL) {
         self->secondary_db->close(self->secondary_db, 0);
