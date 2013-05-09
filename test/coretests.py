@@ -855,6 +855,52 @@ class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
             self.assertEqual(b"", r[c.name])
 
 
+class TestTableInitialisation(unittest.TestCase):
+    """ 
+    Tests the initialisation code for the Table class to make sure everything 
+    is checked correctly.
+    """
+    
+    def test_columns(self):
+        t = _wormtable.Table
+        c0 = get_uint_column(1, 1)
+        c1 = get_uint_column(1, 1)
+        self.assertRaises(TypeError, t, None, None, None) 
+        self.assertRaises(TypeError, t, "", [], 0) 
+        self.assertRaises(TypeError, t, b"", {}, 0) 
+        f = b"file.db"
+        self.assertRaises(TypeError, t, f, [None, None], 0) 
+        self.assertRaises(TypeError, t, f, [None, c0], 0) 
+        self.assertRaises(TypeError, t, f, [c1, ""], 0) 
+        # check number of columns.
+        self.assertRaises(ValueError, t, f, [], 0) 
+        self.assertRaises(ValueError, t, f, [c0], 0) 
+        # Make sure the row_id column is of the right type.
+        for j in range(2, 5):
+            self.assertRaises(ValueError, t, f, [get_uint_column(1, j), c0], 0) 
+        for j in range(5):
+            self.assertRaises(ValueError, t, f, [get_int_column(1, j), c0], 0) 
+            self.assertRaises(ValueError, t, f, [get_float_column(4, j), c0], 0) 
+            self.assertRaises(ValueError, t, f, [get_char_column(j), c0], 0) 
+        # check for duplicate columns
+        n = 10
+        self.assertRaises(ValueError, t, f, [c0, c0], 0) 
+        cols = [c1, c1] + [get_int_column(1, 1) for j in range(n)]
+        self.assertRaises(ValueError, t, f, [c0] + cols, 0) 
+        for j in range(n):
+            random.shuffle(cols) 
+            self.assertRaises(ValueError, t, f, [c0] + cols, 0) 
+        def g(j):
+            s = "c_{0}".format(j)
+            return s.encode()
+        # Try duplicate names
+        cols = [_wormtable.Column(g(j), b"", _wormtable.ELEMENT_TYPE_UINT, 1, 1)
+                for j in range(n)]
+        for j in range(n):
+            c = _wormtable.Column(g(j), b"", _wormtable.ELEMENT_TYPE_UINT, 1, 1) 
+            cp = cols + [c]
+            random.shuffle(cp)
+            self.assertRaises(ValueError, t, f, cp, 0) 
 
 
 

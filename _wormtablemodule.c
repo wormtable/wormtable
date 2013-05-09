@@ -87,6 +87,17 @@ typedef struct {
     u_int64_t record_id; 
 } WriteBuffer;
 
+
+typedef struct {
+    PyObject_HEAD
+    DB *db;
+    Column **columns;
+    void *write_buffer;
+    u_int32_t write_buffer_size;
+    u_int32_t num_columns;
+} Table;
+
+
 typedef struct {
     PyObject_HEAD
     BerkeleyDatabase *database;
@@ -1415,8 +1426,9 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     self->max_element = NULL;
     self->element_buffer = NULL;
     self->input_elements = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOiii", kwlist, 
-            &name, &description, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!iii", kwlist, 
+            &PyBytes_Type, &name, 
+            &PyBytes_Type, &description, 
             &self->element_type, &self->element_size, 
             &self->num_elements)) {  
         goto out;
@@ -2202,7 +2214,205 @@ static PyTypeObject WriteBufferType = {
     0,                         /* tp_dictoffset */
     (initproc)WriteBuffer_init,      /* tp_init */
 };
+
+/*==========================================================
+ * Table object 
+ *==========================================================
+ */
+
+static void
+Table_dealloc(Table* self)
+{
+    u_int32_t j;
+    /* make sure that the DB handles are closed. We can ignore errors here. */ 
+    if (self->db != NULL) {
+        self->db->close(self->db, 0);
+    }
+    if (self->write_buffer != NULL) {
+        PyMem_Free(self->write_buffer);
+    }
+    if (self->columns != NULL) {
+        /* columns must be decref'd but may be null */
+        for (j = 0; j < self->num_columns; j++) {
+            Py_XDECREF(self->columns[j]);   
+        }
+        PyMem_Free(self->columns);
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+/*
+ * Checks the columns to ensure sanity.
+ */
+static int 
+Table_verify_columns(Table *self)
+{
+    int ret = -1;
+    Column *col;
+    u_int32_t j, k;
+    char *cj, *ck;
+    if (self->num_columns < 2) {
+        PyErr_SetString(PyExc_ValueError, "Two or more columns required");
+        goto out;
+    }
+    for (j = 0; j < self->num_columns; j++) {
+        if (!PyObject_TypeCheck(self->columns[j], &ColumnType)) {
+            PyErr_SetString(PyExc_TypeError, "Must be Column objects");
+            goto out;
+        }
+    }
+    /* check the row_id column */
+    col = self->columns[0];
+    if (col->element_type != ELEMENT_TYPE_UINT || col->num_elements != 1) {
+        PyErr_SetString(PyExc_ValueError, 
+                "row_id column must be 1 element uint");
+        goto out;
+    }
+    /* check for duplicate columns */
+    for (j = 0; j < self->num_columns; j++) {
+        cj = PyBytes_AsString(self->columns[j]->name);
+        for (k = j + 1; k < self->num_columns; k++) {
+            ck = PyBytes_AsString(self->columns[k]->name);
+            if (self->columns[j] == self->columns[k]) {
+                PyErr_SetString(PyExc_ValueError, 
+                        "Duplicate columns not permitted");
+                goto out;
+            }
+            /* check for duplicate names */
+            if (strcmp(cj, ck) == 0) {
+                PyErr_SetString(PyExc_ValueError, 
+                        "Duplicate column names not permitted");
+                goto out;
+            }
+        }
+    }
+    ret = 0; 
+out:
+    return ret;
+}
+
+static int
+Table_init(Table *self, PyObject *args, PyObject *kwds)
+{
+    Column *col;
+    u_int32_t j;
+    int ret = -1;
+    static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
+    PyObject *filename = NULL;
+    PyObject *columns = NULL;
+    Py_ssize_t cache_size = 0;
+    self->db = NULL;
+    self->write_buffer = NULL; 
+    self->columns = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
+            &PyBytes_Type, &filename, 
+            &PyList_Type,  &columns, 
+            &cache_size)) {
+        goto out;
+    }
+    self->num_columns = PyList_GET_SIZE(columns);
+    self->columns = PyMem_Malloc(self->num_columns * sizeof(Column *));
+    for (j = 0; j < self->num_columns; j++) {
+        col = (Column *) PyList_GET_ITEM(columns, j);
+        Py_INCREF(col);
+        self->columns[j] = col; 
+    }
+    if (Table_verify_columns(self) != 0) {
+        goto out;
+    }
+
+    ret = 0;
+out:
+
+    return ret;
+}
+
+static PyMemberDef Table_members[] = {
+    {NULL}  /* Sentinel */
+};
+
+
+static PyObject *
+Table_open(Table* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Py_INCREF(Py_None);
+    ret = Py_None;
+    return ret;
+}
+
+
+static PyObject *
+Table_close(Table* self)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    DB *db = self->db;
+    if (db == NULL) {
+        PyErr_SetString(BerkeleyDatabaseError, "table closed");
+        goto out;
+    }
+    db_ret = db->close(db, 0); 
+    self->db = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+
+static PyMethodDef Table_methods[] = {
+    {"open", (PyCFunction) Table_open, METH_VARARGS, "Open the table" },
+    {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
+    {NULL}  /* Sentinel */
+};
+
+static PyTypeObject TableType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_wormtable.Table",             /* tp_name */
+    sizeof(Table),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)Table_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "Table objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    0,                     /* tp_iter */
+    0,                     /* tp_iternext */
+    Table_methods,             /* tp_methods */
+    Table_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)Table_init,      /* tp_init */
+};
  
+
+
+
 /*==========================================================
  * Index object 
  *==========================================================
@@ -3373,6 +3583,13 @@ init_wormtable(void)
     }
     Py_INCREF(&ColumnType);
     PyModule_AddObject(module, "Column", (PyObject *) &ColumnType);
+    /* Table */
+    TableType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&TableType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&TableType);
+    PyModule_AddObject(module, "Table", (PyObject *) &TableType);
     /* Index */
     IndexType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&IndexType) < 0) {
