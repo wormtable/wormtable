@@ -96,6 +96,7 @@ typedef struct {
     DB *db;
     PyObject *filename;
     Column **columns;
+    Py_ssize_t cache_size;
     void *write_buffer;
     u_int32_t write_buffer_size;
     u_int32_t num_columns;
@@ -2313,22 +2314,20 @@ static int
 Table_init(Table *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    int db_ret;
     static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
     Column *col;
     PyObject *filename = NULL;
     PyObject *columns = NULL;
-    Py_ssize_t cache_size = 0;
-    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
-    u_int32_t j, gigs, bytes;
+    u_int32_t j;
     self->db = NULL;
     self->write_buffer = NULL; 
     self->columns = NULL;
     self->filename = NULL;
+    self->cache_size = 0;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
-            &cache_size)) {
+            &self->cache_size)) {
         goto out;
     }
     self->filename = filename;
@@ -2350,27 +2349,25 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     }
     self->write_buffer_size = 0;
     self->fixed_region_size = 0;
-    /* Now we create the DB handle */
-    db_ret = db_create(&self->db, NULL, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    gigs = (u_int32_t) (cache_size / gigabyte);
-    bytes = (u_int32_t) (cache_size % gigabyte);
-    db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+    for (j = 0; j < self->num_columns; j++) {
+        col = self->columns[j]; 
+        col->fixed_region_offset = self->fixed_region_size;
+        self->fixed_region_size += Column_get_fixed_region_size(col);
+        if (self->fixed_region_size > MAX_ROW_SIZE) {
+            PyErr_SetString(WormtableError, "Columns exceed max row size");
+            goto out;
+        }
     }
     ret = 0;
 out:
-
     return ret;
 }
 
 static PyMemberDef Table_members[] = {
-    {"filename", T_OBJECT_EX, offsetof(BerkeleyDatabase, filename), READONLY, "filename"},
+    {"filename", T_OBJECT_EX, offsetof(Table, filename), READONLY, "filename"},
+    {"cache_size", T_PYSSIZET, offsetof(Table, cache_size), READONLY, "cache_size"},
+    {"fixed_region_size", T_INT, offsetof(Table, fixed_region_size), READONLY, 
+            "fixed_region_size"},
     {NULL}  /* Sentinel */
 };
 
@@ -2381,6 +2378,8 @@ Table_open(Table* self, PyObject *args)
     PyObject *ret = NULL;
     char *db_name = NULL;
     u_int32_t flags = 0; 
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    u_int32_t gigs, bytes;
     int db_ret, mode;
     if (!PyArg_ParseTuple(args, "i", &mode)) { 
         goto out;
@@ -2393,13 +2392,32 @@ Table_open(Table* self, PyObject *args)
         PyErr_Format(PyExc_ValueError, "mode must be WT_READ or WT_WRITE."); 
         goto out;
     }
+    if (self->db != NULL) {
+        PyErr_Format(WormtableError, "Table already open."); 
+        goto out;
+    }
     db_name = PyBytes_AsString(self->filename);
     if (db_name == NULL) {
         goto out;
     }
+    /* Now we create the DB handle */
+    db_ret = db_create(&self->db, NULL, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    gigs = (u_int32_t) (self->cache_size / gigabyte);
+    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
     db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
+        self->db->close(self->db, 0);
+        self->db = NULL;
         goto out;    
     }
     Py_INCREF(Py_None);
