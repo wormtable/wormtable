@@ -9,6 +9,11 @@ import string
 
 import _wormtable
 
+from _wormtable import WT_READ 
+from _wormtable import WT_WRITE
+from _wormtable import MAX_ROW_SIZE 
+from _wormtable import WormtableError 
+
 __column_id = 0
 
 # module variables used to control the number of tests that we do.
@@ -393,7 +398,7 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
     def test_small_int_retrieval(self):
         rb = self._row_buffer
         db = self._database
-        values = range(40)
+        values = range(1, 40)
         for v in values:
             for c in self._columns:
                 if c.num_elements == 1:
@@ -787,12 +792,9 @@ class TestIndexIntegrity(object):
         self.assertRaises(TypeError, index.get_num_rows, "string") 
         self.assertRaises(TypeError, index.get_num_rows, 0) 
         # try to do stuff before the index is opened. 
-        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
-                index.get_num_rows, tuple()) 
-        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
-                index.get_max, tuple()) 
-        self.assertRaises(_wormtable.BerkeleyDatabaseError, 
-                index.get_min, tuple()) 
+        self.assertRaises(WormtableError, index.get_num_rows, tuple()) 
+        self.assertRaises(WormtableError, index.get_max, tuple()) 
+        self.assertRaises(WormtableError, index.get_min, tuple()) 
         # check bin widths        
         self.assertRaises(TypeError, index.set_bin_widths) 
         self.assertRaises(TypeError, index.set_bin_widths, "str") 
@@ -860,18 +862,18 @@ class TestTableInitialisation(unittest.TestCase):
     Tests the initialisation code for the Table class to make sure everything 
     is checked correctly.
     """
+    def setUp(self):
+        fd, self._db_file = tempfile.mkstemp("-test.db") 
+        os.close(fd)
     
+    def tearDown(self):
+        os.unlink(self._db_file)
+
     def test_columns(self):
         t = _wormtable.Table
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
-        self.assertRaises(TypeError, t, None, None, None) 
-        self.assertRaises(TypeError, t, "", [], 0) 
-        self.assertRaises(TypeError, t, b"", {}, 0) 
         f = b"file.db"
-        self.assertRaises(TypeError, t, f, [None, None], 0) 
-        self.assertRaises(TypeError, t, f, [None, c0], 0) 
-        self.assertRaises(TypeError, t, f, [c1, ""], 0) 
         # check number of columns.
         self.assertRaises(ValueError, t, f, [], 0) 
         self.assertRaises(ValueError, t, f, [c0], 0) 
@@ -903,5 +905,85 @@ class TestTableInitialisation(unittest.TestCase):
             self.assertRaises(ValueError, t, f, cp, 0) 
 
 
+    def test_parameters(self):
+        # make sure the right types are accepted for the 
+        t = _wormtable.Table
+        c0 = get_uint_column(1, 1)
+        c1 = get_uint_column(1, 1)
+        self.assertRaises(TypeError, t, None, None, None) 
+        self.assertRaises(TypeError, t, [], [], 0) 
+        self.assertRaises(TypeError, t, b"", {}, 0) 
+        f = b"file.db"
+        self.assertRaises(TypeError, t, f, [None, None], 0) 
+        self.assertRaises(TypeError, t, f, [None, c0], 0) 
+        self.assertRaises(TypeError, t, f, [c1, ""], 0) 
+        self.assertRaises(TypeError, t, [], [c0, c1], 0) 
+        self.assertRaises(TypeError, t, TypeError, [c0, c1], 0) 
+        self.assertRaises(TypeError, t, f, [c0, c1], 0.123) 
+    
+
+    def test_column_limits(self):
+        """
+        See if we correctly catch an impossibly large column spec.
+        """
+
+        f = self._db_file.encode()
+        cols = [get_uint_column(8, 1) for k in range(MAX_ROW_SIZE // 8)]
+        # This should be fine
+        t = _wormtable.Table(f, cols, 0)
+        cols += [get_uint_column(1, 1)]
+        self.assertRaises(WormtableError, _wormtable.Table, f, cols, 0)
+
+    def test_open(self):
+        c0 = get_uint_column(1, 1)
+        c1 = get_uint_column(1, 1)
+        f = self._db_file.encode()
+        cache_size = 64 * 1024
+        t = _wormtable.Table(f, [c0, c1], cache_size) 
+        self.assertEqual(f, t.filename)
+        self.assertEqual(cache_size, t.cache_size)
+        self.assertEqual(2, t.fixed_region_size)
+        # Try bad mode values.
+        for j in range(-10, 10):
+            if j not in [WT_READ, WT_WRITE]:
+                self.assertRaises(ValueError, t.open, j) 
+        # Try to open table WT_READ that does not exist.
+        self.assertRaises(_wormtable.WormtableError, t.open, WT_READ) 
+        t.open(WT_WRITE)
+        # Try to open an open table
+        self.assertRaises(WormtableError, t.open, WT_READ) 
+        self.assertRaises(WormtableError, t.open, WT_WRITE) 
+
+    def test_close(self):
+        c0 = get_uint_column(1, 1)
+        c1 = get_uint_column(1, 1)
+        f = self._db_file.encode()
+        cache_size = 64 * 1024
+        t = _wormtable.Table(f, [c0, c1], cache_size) 
+        for j in range(10):
+            self.assertRaises(WormtableError, t.close) 
+            t.open(WT_WRITE)
+            t.close()
+            self.assertRaises(WormtableError, t.close) 
+
+    def test_write(self):
+        c0 = get_uint_column(1, 1)
+        c1 = get_uint_column(1, 1)
+        f = self._db_file.encode()
+        t = _wormtable.Table(f, [c0, c1], 0)
+        t.open(WT_WRITE)
+        n = 10
+        for j in range(n):
+            self.assertRaises(WormtableError, t.insert_elements, c0, j) 
+            t.insert_elements(c1, 2 * j)
+            t.commit_row()
+        t.close()
+        t.open(WT_READ)
+        self.assertEqual(t.get_num_rows(), n)
+        for j in range(n):
+            r = t.get_row(j)   
+            self.assertEqual(r[0], j)
+            self.assertEqual(r[1], 2 * j)
+        t.close()
 
 

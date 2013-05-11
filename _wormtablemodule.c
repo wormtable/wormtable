@@ -97,10 +97,12 @@ typedef struct {
     PyObject *filename;
     Column **columns;
     Py_ssize_t cache_size;
-    void *write_buffer;
-    u_int32_t write_buffer_size;
     u_int32_t num_columns;
     u_int32_t fixed_region_size;
+    void *row_buffer;
+    u_int32_t row_buffer_size;     /* max size */
+    u_int32_t current_row_size;    /* current size */
+    u_int64_t current_row_id;      
 } Table;
 
 
@@ -1417,6 +1419,38 @@ Column_get_fixed_region_size(Column *self)
     return ret;
 }
 
+/**************************************
+ *
+ * Special methods for the row_id column 
+ *
+ *************************************/
+
+static int 
+Column_get_row_id(Column *self, u_int64_t *key) 
+{
+    int ret = -1; 
+    u_int64_t *native = (u_int64_t *) self->element_buffer;
+    if (self->num_buffered_elements != 1) {
+        PyErr_Format(PyExc_SystemError, "key retrieval error."); 
+        goto out;
+    }
+    *key = native[0];
+    ret = 0; 
+out:
+    return ret;
+}
+
+static int 
+Column_set_row_id(Column *self, u_int64_t key) 
+{
+    int ret = -1;
+    u_int64_t *native = (u_int64_t *) self->element_buffer;
+    native[0] = key;
+    self->num_buffered_elements = 1;
+    ret = 0;
+    return ret;
+}
+
 static void
 Column_dealloc(Column* self)
 {
@@ -2247,8 +2281,8 @@ Table_dealloc(Table* self)
     if (self->db != NULL) {
         self->db->close(self->db, 0);
     }
-    if (self->write_buffer != NULL) {
-        PyMem_Free(self->write_buffer);
+    if (self->row_buffer != NULL) {
+        PyMem_Free(self->row_buffer);
     }
     if (self->columns != NULL) {
         /* columns must be decref'd but may be null */
@@ -2320,7 +2354,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     PyObject *columns = NULL;
     u_int32_t j;
     self->db = NULL;
-    self->write_buffer = NULL; 
+    self->row_buffer = NULL; 
     self->columns = NULL;
     self->filename = NULL;
     self->cache_size = 0;
@@ -2342,12 +2376,13 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     if (Table_verify_columns(self) != 0) {
         goto out;
     }
-    self->write_buffer = PyMem_Malloc(MAX_ROW_SIZE);
-    if (self->write_buffer == NULL) {
+    self->row_buffer = PyMem_Malloc(MAX_ROW_SIZE);
+    if (self->row_buffer == NULL) {
         PyErr_NoMemory();
         goto out;
     }
-    self->write_buffer_size = 0;
+    self->row_buffer_size = MAX_ROW_SIZE;
+    memset(self->row_buffer, 0, self->row_buffer_size);
     self->fixed_region_size = 0;
     for (j = 0; j < self->num_columns; j++) {
         col = self->columns[j]; 
@@ -2358,6 +2393,8 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
             goto out;
         }
     }
+    self->current_row_size = self->fixed_region_size;
+    self->current_row_id = 0; 
     ret = 0;
 out:
     return ret;
@@ -2450,9 +2487,204 @@ out:
 }
 
 
+static PyObject *
+Table_insert_elements(Table* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Column *column = NULL;
+    PyObject *elements = NULL;
+    int m;
+    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) { 
+        goto out;
+    }
+    /* No updates for the id column */
+    if (column == self->columns[0]) {
+        PyErr_Format(WormtableError, "Cannot update ID column."); 
+        goto out;
+    }
+    if (column->python_to_native(column, elements) < 0) {
+        goto out;   
+    }
+    m = Column_update_row(column, self->row_buffer, self->current_row_size); 
+    if (m < 0) {
+        goto out;
+    }
+    self->current_row_size += m;
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+
+
+static PyObject *
+Table_commit_row(Table* self)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    DBT key, data;
+    Column *id_col = self->columns[0];
+    u_int32_t key_size = id_col->element_size; 
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Table closed."); 
+        goto out;
+    }
+    if (Column_set_row_id(id_col, self->current_row_id) != 0) {
+        goto out;
+    }
+    if (Column_update_row(id_col, self->row_buffer, self->current_row_size) 
+            != 0) {
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    key.data = self->row_buffer;
+    key.size = key_size;
+    data.data = self->row_buffer + key_size;
+    data.size = self->current_row_size - key_size;
+    db_ret = self->db->put(self->db, NULL, &key, &data, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret); 
+        goto out;
+    } 
+    memset(self->row_buffer, 0, self->current_row_size); 
+    self->current_row_size = self->fixed_region_size;
+    self->current_row_id++;
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+static PyObject *
+Table_get_num_rows(Table* self)
+{
+    int db_ret;
+    Column *id_col = self->columns[0];
+    u_int64_t max_key = 0;
+    PyObject *ret = NULL;
+    DBC *cursor = NULL;
+    DBT key, data;
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Table closed");
+        goto out;
+    }
+    db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    /* retrieve the last key from the DB */
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));  
+    db_ret = cursor->get(cursor, &key, &data, DB_LAST);
+    if (db_ret == 0) {
+        if (key.size != id_col->element_size) {
+            PyErr_Format(PyExc_SystemError, "key size mismatch");
+            goto out;
+        }
+        if (Column_extract_elements(id_col, key.data) < 0) {
+            goto out;
+        } 
+        if (Column_get_row_id(id_col, &max_key) != 0) {
+            goto out;
+        }
+        max_key++;
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    /* Free the cursor */
+    db_ret = cursor->close(cursor);
+    cursor = NULL;
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = PyLong_FromUnsignedLongLong(max_key);
+out:
+    if (cursor != NULL) {
+        cursor->close(cursor);
+    }
+    return ret; 
+}
+static PyObject *
+Table_get_row(Table* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    int db_ret;
+    PyObject *t = NULL;
+    Column *col = NULL;
+    Column *id_col = self->columns[0];
+    u_int32_t key_size = id_col->element_size;
+    PyObject *value = NULL;
+    unsigned long long row_id = 0;
+    u_int32_t j;
+    DBT key, data;
+    if (!PyArg_ParseTuple(args, "K", &row_id)) {
+        goto out;
+    }
+    if (self->db == NULL) {
+        PyErr_SetString(WormtableError, "database closed");
+        goto out;
+    }
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));  
+    key.size = key_size;
+    key.data = self->row_buffer;
+    if (Column_set_row_id(id_col, row_id) != 0) {
+        goto out;
+    }
+    if (Column_update_row(id_col, self->row_buffer, self->current_row_size) 
+            != 0) {
+        goto out;
+    }
+    data.data = self->row_buffer + key_size;
+    data.ulen = self->row_buffer_size - key_size;
+    data.flags = DB_DBT_USERMEM;
+    db_ret = self->db->get(self->db, NULL, &key, &data, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    t = PyTuple_New(self->num_columns);
+    if (t == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (j = 0; j < self->num_columns; j++) {
+        col = self->columns[j]; 
+        if (Column_extract_elements(col, self->row_buffer) < 0) {
+            Py_DECREF(t);
+            goto out;
+        }
+        value = Column_get_python_elements(col); 
+        if (value == NULL) {
+            Py_DECREF(t);
+            goto out;
+        }
+        PyTuple_SET_ITEM(t, j, value);
+    }
+    ret = t;
+out:
+    return ret; 
+}
+
+
+
+
 static PyMethodDef Table_methods[] = {
+    {"get_num_rows", (PyCFunction) Table_get_num_rows, METH_NOARGS, 
+            "Returns the number of rows in the table" },
+    {"get_row", (PyCFunction) Table_get_row, METH_VARARGS, 
+            "Return the jth row as a tuple" },
     {"open", (PyCFunction) Table_open, METH_VARARGS, "Open the table" },
     {"close", (PyCFunction) Table_close, METH_NOARGS, "Close the table" },
+    {"commit_row", (PyCFunction) Table_commit_row, METH_NOARGS, 
+            "Commit a row to the table in write mode." },
+    {"insert_elements", (PyCFunction) Table_insert_elements, METH_VARARGS, 
+            "insert element values encoded as native Python objects." },
     {NULL}  /* Sentinel */
 };
 
