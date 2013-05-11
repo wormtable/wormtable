@@ -6,6 +6,9 @@
 #define IS_PY3K
 #endif
 
+#define WT_READ 0
+#define WT_WRITE 1
+
 #define ELEMENT_TYPE_UINT 0 
 #define ELEMENT_TYPE_INT 1 
 #define ELEMENT_TYPE_FLOAT 2
@@ -91,10 +94,12 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     DB *db;
+    PyObject *filename;
     Column **columns;
     void *write_buffer;
     u_int32_t write_buffer_size;
     u_int32_t num_columns;
+    u_int32_t fixed_region_size;
 } Table;
 
 
@@ -839,7 +844,19 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
                         PyBytes_AsString(self->name));
                 goto out;
             }
+#ifdef IS_PY3K
             native[j] = (u_int64_t) PyLong_AsUnsignedLongLong(v);
+#else
+            /* there's a problem with Python 2 in which we have to convert to 
+             * long first.
+             */
+            v = PyNumber_Long(v);
+            if (v == NULL) {
+                goto out;
+            }
+            native[j] = (u_int64_t) PyLong_AsUnsignedLongLong(v);
+            Py_DECREF(v);
+#endif
             if (native[j] == -1) {
                 /* PyLong_AsUnsignedLongLong return -1 and raises OverFlowError
                  * if the value cannot be represented as an unsigned long long 
@@ -2224,6 +2241,7 @@ static void
 Table_dealloc(Table* self)
 {
     u_int32_t j;
+    Py_XDECREF(self->filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->db != NULL) {
         self->db->close(self->db, 0);
@@ -2294,22 +2312,28 @@ out:
 static int
 Table_init(Table *self, PyObject *args, PyObject *kwds)
 {
-    Column *col;
-    u_int32_t j;
     int ret = -1;
+    int db_ret;
     static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
+    char *db_name = NULL;
+    Column *col;
     PyObject *filename = NULL;
     PyObject *columns = NULL;
     Py_ssize_t cache_size = 0;
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    u_int32_t j, gigs, bytes;
     self->db = NULL;
     self->write_buffer = NULL; 
     self->columns = NULL;
+    self->filename = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
             &cache_size)) {
         goto out;
     }
+    self->filename = filename;
+    Py_INCREF(self->filename);
     self->num_columns = PyList_GET_SIZE(columns);
     self->columns = PyMem_Malloc(self->num_columns * sizeof(Column *));
     for (j = 0; j < self->num_columns; j++) {
@@ -2320,7 +2344,37 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     if (Table_verify_columns(self) != 0) {
         goto out;
     }
-
+    self->write_buffer = PyMem_Malloc(MAX_ROW_SIZE);
+    if (self->write_buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    self->write_buffer_size = 0;
+    self->fixed_region_size = 0;
+    /* Now we create the DB handle */
+    db_ret = db_create(&self->db, NULL, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    gigs = (u_int32_t) (cache_size / gigabyte);
+    bytes = (u_int32_t) (cache_size % gigabyte);
+    db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    db_name = PyBytes_AsString(filename);
+    if (db_name == NULL) {
+        goto out;
+    }
+    /*
+    db_ret = db->open(self->db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    */
     ret = 0;
 out:
 
@@ -3632,6 +3686,9 @@ init_wormtable(void)
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_UINT", ELEMENT_TYPE_UINT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
     PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);
+    
+    PyModule_AddIntConstant(module, "WT_READ", WT_READ);
+    PyModule_AddIntConstant(module, "WT_WRITE", WT_WRITE);
     
     PyModule_AddIntConstant(module, "MAX_ROW_SIZE", MAX_ROW_SIZE);
     PyModule_AddIntConstant(module, "MAX_NUM_ELEMENTS", MAX_NUM_ELEMENTS);
