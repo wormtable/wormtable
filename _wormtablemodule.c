@@ -21,7 +21,7 @@
 #define MODULE_DOC \
 "Low level Berkeley DB interface for wormtable"
 
-static PyObject *BerkeleyDatabaseError;
+static PyObject *WormtableError;
 
 /* TODO:
  * 1) We need much better error reporting for the parsers. These should have a
@@ -139,7 +139,7 @@ typedef struct {
 static void 
 handle_bdb_error(int err)
 {
-    PyErr_SetString(BerkeleyDatabaseError, db_strerror(err));
+    PyErr_SetString(WormtableError, db_strerror(err));
 }
 
 #ifndef WORDS_BIGENDIAN
@@ -1702,7 +1702,7 @@ BerkeleyDatabase_open_helper(BerkeleyDatabase* self, u_int32_t flags)
     u_int32_t gigs, bytes;
     DB *db;
     if (self->primary_db != NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database already open");
+        PyErr_SetString(WormtableError, "database already open");
         goto out;
     }
     db_ret = db_create(&db, NULL, 0);
@@ -1780,7 +1780,7 @@ BerkeleyDatabase_get_num_rows(BerkeleyDatabase* self)
     DB *db = self->primary_db;
     DBT key, data;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -1832,7 +1832,7 @@ BerkeleyDatabase_get_row(BerkeleyDatabase* self, PyObject *args)
         goto out;
     }
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     memset(&key, 0, sizeof(DBT));
@@ -1884,7 +1884,7 @@ BerkeleyDatabase_close(BerkeleyDatabase* self)
     int db_ret;
     DB *db = self->primary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = db->close(db, 0); 
@@ -2056,7 +2056,7 @@ WriteBuffer_flush(WriteBuffer* self)
     DBT *key, *data;
     db = self->database->primary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     
@@ -2088,7 +2088,7 @@ WriteBuffer_insert_encoded_elements(WriteBuffer* self, PyObject *args)
     void *dest = self->data_buffer + self->current_data_offset;
     char *v;
     int  m;
-    PyErr_SetString(BerkeleyDatabaseError, "encoded elements not supported: use"
+    PyErr_SetString(WormtableError, "encoded elements not supported: use"
            " insert_elements instead. This method is being removed. ");
     goto out;
     
@@ -2315,7 +2315,6 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     int ret = -1;
     int db_ret;
     static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
-    char *db_name = NULL;
     Column *col;
     PyObject *filename = NULL;
     PyObject *columns = NULL;
@@ -2364,17 +2363,6 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    db_name = PyBytes_AsString(filename);
-    if (db_name == NULL) {
-        goto out;
-    }
-    /*
-    db_ret = db->open(self->db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    */
     ret = 0;
 out:
 
@@ -2382,6 +2370,7 @@ out:
 }
 
 static PyMemberDef Table_members[] = {
+    {"filename", T_OBJECT_EX, offsetof(BerkeleyDatabase, filename), READONLY, "filename"},
     {NULL}  /* Sentinel */
 };
 
@@ -2390,8 +2379,32 @@ static PyObject *
 Table_open(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
+    char *db_name = NULL;
+    u_int32_t flags = 0; 
+    int db_ret, mode;
+    if (!PyArg_ParseTuple(args, "i", &mode)) { 
+        goto out;
+    }
+    if (mode == WT_WRITE) {
+        flags = DB_CREATE|DB_TRUNCATE;
+    } else if (mode == WT_READ) {
+        flags = DB_RDONLY|DB_NOMMAP;
+    } else {
+        PyErr_Format(PyExc_ValueError, "mode must be WT_READ or WT_WRITE."); 
+        goto out;
+    }
+    db_name = PyBytes_AsString(self->filename);
+    if (db_name == NULL) {
+        goto out;
+    }
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
     Py_INCREF(Py_None);
     ret = Py_None;
+out:
     return ret;
 }
 
@@ -2403,7 +2416,7 @@ Table_close(Table* self)
     int db_ret;
     DB *db = self->db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "table closed");
+        PyErr_SetString(WormtableError, "table closed");
         goto out;
     }
     db_ret = db->close(db, 0); 
@@ -2558,7 +2571,7 @@ Index_open_helper(Index* self, u_int32_t flags)
     u_int32_t gigs, bytes;
     DB *db;
     if (self->secondary_db != NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database already open");
+        PyErr_SetString(WormtableError, "database already open");
         goto out;
     }
     db_ret = db_create(&db, NULL, 0);
@@ -2748,7 +2761,7 @@ Index_get_num_rows(Index *self, PyObject *args)
     memset(&data, 0, sizeof(DBT));
     db = self->secondary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -2797,7 +2810,7 @@ Index_get_min(Index* self, PyObject *args)
     memset(&data, 0, sizeof(DBT));
     db = self->secondary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -2844,7 +2857,7 @@ Index_get_max(Index* self, PyObject *args)
     memset(&data, 0, sizeof(DBT));
     db = self->secondary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -3002,7 +3015,7 @@ Index_create(Index* self, PyObject *args)
     pdb = self->database->primary_db;
     sdb = self->secondary_db;
     if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = pdb->cursor(pdb, NULL, &cursor, 0);
@@ -3077,7 +3090,7 @@ Index_open(Index* self)
     pdb = self->database->primary_db;
     sdb = self->secondary_db;
     if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = pdb->associate(pdb, NULL, sdb, NULL, 0);
@@ -3103,7 +3116,7 @@ Index_print(Index* self)
     pdb = self->database->primary_db;
     sdb = self->secondary_db;
     if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "database closed");
+        PyErr_SetString(WormtableError, "database closed");
         goto out;
     }
     db_ret = sdb->cursor(sdb, NULL, &cursor, 0);
@@ -3152,7 +3165,7 @@ Index_close(Index* self)
     int db_ret;
     DB *db = self->secondary_db;
     if (db == NULL) {
-        PyErr_SetString(BerkeleyDatabaseError, "index closed");
+        PyErr_SetString(WormtableError, "index closed");
         goto out;
     }
     db_ret = db->close(db, 0); 
@@ -3674,10 +3687,10 @@ init_wormtable(void)
     Py_INCREF(&WriteBufferType);
     PyModule_AddObject(module, "WriteBuffer", (PyObject *) &WriteBufferType);
     
-    BerkeleyDatabaseError = PyErr_NewException("_wormtable.BerkeleyDatabaseError", 
+    WormtableError = PyErr_NewException("_wormtable.WormtableError", 
             NULL, NULL);
-    Py_INCREF(BerkeleyDatabaseError);
-    PyModule_AddObject(module, "BerkeleyDatabaseError", BerkeleyDatabaseError);
+    Py_INCREF(WormtableError);
+    PyModule_AddObject(module, "WormtableError", WormtableError);
     
     PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE", 
             NUM_ELEMENTS_VARIABLE);
