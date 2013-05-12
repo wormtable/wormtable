@@ -856,11 +856,9 @@ class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
         for c in self._columns:
             self.assertEqual(b"", r[c.name])
 
-
-class TestTableInitialisation(unittest.TestCase):
-    """ 
-    Tests the initialisation code for the Table class to make sure everything 
-    is checked correctly.
+class TestTable(unittest.TestCase):
+    """
+    Base class for testing tables.
     """
     def setUp(self):
         fd, self._db_file = tempfile.mkstemp("-test.db") 
@@ -869,6 +867,12 @@ class TestTableInitialisation(unittest.TestCase):
     def tearDown(self):
         os.unlink(self._db_file)
 
+
+class TestTableInitialisation(TestTable):
+    """ 
+    Tests the initialisation code for the Table class to make sure everything 
+    is checked correctly.
+    """
     def test_columns(self):
         t = _wormtable.Table
         c0 = get_uint_column(1, 1)
@@ -967,23 +971,46 @@ class TestTableInitialisation(unittest.TestCase):
             self.assertRaises(WormtableError, t.close) 
 
     def test_write(self):
+        """
+        Tests if the correct exceptions are raised when we do silly things.
+        """
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
+        c2 = get_uint_column(1, 1)
         f = self._db_file.encode()
-        t = _wormtable.Table(f, [c0, c1], 0)
+        t = _wormtable.Table(f, [c0, c1, c2], 0)
         t.open(WT_WRITE)
         n = 10
         for j in range(n):
-            self.assertRaises(WormtableError, t.insert_elements, c0, j) 
-            t.insert_elements(c1, 2 * j)
+            b = b""
+            self.assertRaises(WormtableError, t.get_num_rows)
+            self.assertRaises(WormtableError, t.get_row, j)
+            self.assertRaises(WormtableError, t.insert_elements, 0, j) 
+            self.assertRaises(WormtableError, t.insert_encoded_elements, 0, b) 
+            self.assertRaises(WormtableError, t.insert_encoded_elements, -j, b) 
+            self.assertRaises(WormtableError, t.insert_elements, -j, j) 
+            self.assertRaises(WormtableError, t.insert_elements, 3 + j, j) 
+            self.assertRaises(WormtableError, 
+                    t.insert_encoded_elements, 3 + j, b) 
+            t.insert_elements(1, 2 * j)
+            s = "{0}".format(3 * j)
+            t.insert_encoded_elements(2, s.encode())
             t.commit_row()
         t.close()
+        self.assertRaises(WormtableError, t.insert_elements, 1, 0) 
+        self.assertRaises(WormtableError, t.commit_row) 
         t.open(WT_READ)
+        self.assertRaises(WormtableError, t.insert_elements, 1, 0) 
+        self.assertRaises(WormtableError, t.commit_row) 
         self.assertEqual(t.get_num_rows(), n)
         for j in range(n):
-            r = t.get_row(j)   
+            r = t.get_row(j)  
             self.assertEqual(r[0], j)
             self.assertEqual(r[1], 2 * j)
+            self.assertEqual(r[2], 3 * j)
+            self.assertRaises(WormtableError, t.insert_elements, 1, 0) 
+            self.assertRaises(WormtableError, t.commit_row) 
+            self.assertEqual(t.get_num_rows(), n)
         t.close()
 
 

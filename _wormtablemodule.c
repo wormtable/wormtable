@@ -1545,6 +1545,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         native_element_size = sizeof(double);
         self->min_element = Py_None; 
         self->max_element = Py_None; 
+        Py_INCREF(self->min_element);
+        Py_INCREF(self->max_element);
     } else if (self->element_type == ELEMENT_TYPE_CHAR) {
         if (self->element_size != 1) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -1560,13 +1562,12 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         native_element_size = sizeof(char);
         self->min_element = Py_None; 
         self->max_element = Py_None; 
+        Py_INCREF(self->min_element);
+        Py_INCREF(self->max_element);
     } else {    
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
     }
-    /* we have valid referenes to min and max values */ 
-    Py_INCREF(self->min_element);
-    Py_INCREF(self->max_element);
     if (self->num_elements > MAX_NUM_ELEMENTS) {
         PyErr_SetString(PyExc_ValueError, "Too many elements");
         goto out;
@@ -2413,11 +2414,28 @@ static PyMemberDef Table_members[] = {
 
 
 /* 
+ * Returns 0 if the column is value. Otherwise 
+ * -1 is returned with the appropriate Python exception set.
+ */
+static int 
+Table_check_column_index(Table *self, int col_index)
+{
+    int ret = -1;
+    if (col_index < 0 || col_index >= self->num_columns) {
+        PyErr_Format(WormtableError, "Column index out of range."); 
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+/* 
  * Returns 0 if the table is opened in write mode. Otherwise 
  * -1 is returned with the appropriate Python exception set.
  */
 static int 
-Table_opened_write_mode(Table *self)
+Table_check_write_mode(Table *self)
 {
     int ret = -1;
     int db_ret;
@@ -2446,7 +2464,7 @@ out:
  * -1 is returned with the appropriate Python exception set.
  */
 static int 
-Table_opened_read_mode(Table *self)
+Table_check_read_mode(Table *self)
 {
     int ret = -1;
     int db_ret;
@@ -2557,18 +2575,21 @@ Table_insert_elements(Table* self, PyObject *args)
     PyObject *ret = NULL;
     Column *column = NULL;
     PyObject *elements = NULL;
-    int m;
-    if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) { 
+    int m, col_index;
+    if (!PyArg_ParseTuple(args, "iO", &col_index, &elements)) { 
         goto out;
     }
-    if (Table_opened_write_mode(self) != 0) {
+    if (Table_check_column_index(self, col_index) != 0) {
         goto out;
     }
-    /* No updates for the id column */
-    if (column == self->columns[0]) {
+    if (col_index == 0) {
         PyErr_Format(WormtableError, "Cannot update ID column."); 
         goto out;
     }
+    if (Table_check_write_mode(self) != 0) {
+        goto out;
+    }
+    column = self->columns[col_index];
     if (column->python_to_native(column, elements) < 0) {
         goto out;   
     }
@@ -2590,14 +2611,22 @@ Table_insert_encoded_elements(Table* self, PyObject *args)
     Column *column = NULL;
     PyBytesObject *value = NULL;
     char *v;
-    int  m;
-    if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
+    int  m, col_index;
+    if (!PyArg_ParseTuple(args, "iO!", &col_index, &PyBytes_Type,
             &value)) {
         goto out;
     }
-    if (Table_opened_write_mode(self) != 0) {
+    if (Table_check_column_index(self, col_index) != 0) {
         goto out;
     }
+    if (col_index == 0) {
+        PyErr_Format(WormtableError, "Cannot update ID column."); 
+        goto out;
+    }
+    if (Table_check_write_mode(self) != 0) {
+        goto out;
+    }
+    column = self->columns[col_index];
     v = PyBytes_AsString((PyObject *) value);
     if (column->string_to_native(column, v) < 0) {
         goto out;   
@@ -2623,7 +2652,7 @@ Table_commit_row(Table* self)
     DBT key, data;
     Column *id_col = self->columns[0];
     u_int32_t key_size = id_col->element_size; 
-    if (Table_opened_write_mode(self) != 0) {
+    if (Table_check_write_mode(self) != 0) {
         goto out;
     }
     if (Column_set_row_id(id_col, self->current_row_id) != 0) {
@@ -2662,7 +2691,7 @@ Table_get_num_rows(Table* self)
     PyObject *ret = NULL;
     DBC *cursor = NULL;
     DBT key, data;
-    if (Table_opened_read_mode(self) != 0) {
+    if (Table_check_read_mode(self) != 0) {
         goto out;
     }
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
@@ -2720,7 +2749,7 @@ Table_get_row(Table* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "K", &row_id)) {
         goto out;
     }
-    if (Table_opened_read_mode(self) != 0) {
+    if (Table_check_read_mode(self) != 0) {
         goto out;
     }
     memset(&key, 0, sizeof(DBT));
