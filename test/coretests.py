@@ -12,6 +12,7 @@ import _wormtable
 from _wormtable import WT_READ 
 from _wormtable import WT_WRITE
 from _wormtable import MAX_ROW_SIZE 
+from _wormtable import NUM_ELEMENTS_VARIABLE as WT_VARIABLE 
 from _wormtable import WormtableError 
 
 __column_id = 0
@@ -97,6 +98,7 @@ class TestDatabase(unittest.TestCase):
     method.
     """
     def setUp(self):
+        """
         fd, self._db_file = tempfile.mkstemp("-test.db") 
         self._columns = self.get_columns()
         self._database = _wormtable.BerkeleyDatabase(self._db_file.encode(), 
@@ -107,17 +109,26 @@ class TestDatabase(unittest.TestCase):
         buffer_size = 64 * 1024
         self._row_buffer = _wormtable.WriteBuffer(self._database, buffer_size, 1)
         self.num_random_test_rows = num_random_test_rows 
+        """
+        fd, self._db_file = tempfile.mkstemp("-test.db") 
+        os.close(fd)
+        self._key_size = 4
+        self._columns = [get_uint_column(self._key_size, 1)] + self.get_columns()
+        self._database = _wormtable.Table(self._db_file.encode(), self._columns, 
+                cache_size=1024)
+        self._database.open(WT_WRITE)
+        self._row_buffer = self._database 
+        self.num_random_test_rows = num_random_test_rows 
+        self.num_columns = len(self._columns) 
 
     def open_reading(self):
         """
         Flushes any records and opens the database for reading.
         """
-        self._row_buffer.flush()
         self._database.close()
-        self._database.open()
+        self._database.open(WT_READ)
 
     def tearDown(self):
-        self._row_buffer.flush()
         self._database.close()
         os.unlink(self._db_file)
 
@@ -125,19 +136,15 @@ class TestDatabase(unittest.TestCase):
 class TestEmptyDatabase(TestDatabase):
     """
     Tests to see if an empty database is correctly handled.
-    
-    TODO: there is some nasty bug lurking here somewhere - it caused a crash
-    when looking for another bug.
     """
    
     def get_columns(self):
-        return []
+        return [get_uint_column(1, 1)]
 
     def test_empty_rows(self):
         self._row_buffer.commit_row()
         self.open_reading()
         self.assertEqual(self._database.get_num_rows(), 1)
-        
 
   
 class TestElementParsers(TestDatabase):
@@ -201,11 +208,18 @@ class TestListParsers(TestDatabase):
         self._uint_columns = {}
         self._int_columns = {}
         self._float_columns = {}
+        k = 1
+        cols = []
         for j in range(1, 5):
-            self._uint_columns[j] = get_uint_column(1, j)
-            self._int_columns[j] = get_int_column(1, j)
-            self._float_columns[j] = get_float_column(4, j)
-        cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
+            self._uint_columns[j] = k
+            cols.append(get_uint_column(1, j))
+            k += 1
+            self._int_columns[j] = k
+            cols.append(get_int_column(1, j))
+            k += 1
+            self._float_columns[j] = k
+            cols.append(get_float_column(4, j))
+            k += 1
         return cols
      
     def test_malformed_python_lists(self):
@@ -223,9 +237,10 @@ class TestDatabaseLimits(TestDatabase):
     are flagged correctly.
     """ 
     def get_columns(self):
-        n = _wormtable.MAX_ROW_SIZE // (_wormtable.MAX_NUM_ELEMENTS * 8 
+        n = (_wormtable.MAX_ROW_SIZE - self._key_size) // (
+                _wormtable.MAX_NUM_ELEMENTS * 8 
                 + _wormtable.NUM_ELEMENTS_VARIABLE_OVERHEAD)
-        columns = [get_int_column(8) for j in range(n + 1)]
+        columns = [get_int_column(8) for j in range(n)]
         return columns
     
     def test_column_overflow(self):
@@ -236,12 +251,10 @@ class TestDatabaseLimits(TestDatabase):
         rb = self._row_buffer
         v = [j for j in range(_wormtable.MAX_NUM_ELEMENTS)]
         n = len(self._columns)
-        for k in range(n - 1):
-            rb.insert_elements(self._columns[k], v) 
-        self.assertRaises(ValueError, rb.insert_elements,
-                self._columns[0], v)  
-        self.assertRaises(ValueError, rb.insert_elements,
-                self._columns[0], v)
+        for k in range(1, n):
+            rb.insert_elements(k, v) 
+        self.assertRaises(ValueError, rb.insert_elements, 1, v)  
+        self.assertRaises(ValueError, rb.insert_elements, 2, v)
         rb.commit_row()
 
     def test_column_allocation_limits(self):
@@ -287,25 +300,28 @@ class TestDatabaseInteger(TestDatabase):
         db = self._database
         cols = self._columns
         num_cols = len(cols)
-        num_rows = 2
-        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
-        for j in range(num_rows):
-            for k in range(num_cols): 
+        self.num_rows = 2
+        self.rows = []
+        for j in range(self.num_rows):
+            row = [None for c in self._columns]
+            row[0] = j
+            for k in range(1, num_cols): 
                 c = cols[k]
                 min_v, max_v = c.min_element, c.max_element
                 v = min_v
                 if j == 1:
                     v = max_v
                 if c.num_elements == 1:
-                    self.rows[j][k] = v 
+                    row[k] = v 
                 else:
                     n = c.num_elements
                     if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([v for l in range(n)])
-                    self.rows[j][k] = v
-                rb.insert_elements(c, self.rows[j][k]) 
+                    row[k] = v
+                rb.insert_elements(k, row[k]) 
             rb.commit_row()
+            self.rows.append(tuple(row))
 
     def populate_randomly(self, num_rows):
         """
@@ -317,21 +333,27 @@ class TestDatabaseInteger(TestDatabase):
         db = self._database
         cols = self._columns
         num_cols = len(cols)
-        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
+        self.num_rows = num_rows
+        self.rows = []
         for j in range(num_rows):
-            for k in range(num_cols): 
+            row = [None for c in self._columns]
+            row[0] = j
+            for k in range(1, num_cols): 
                 c = cols[k]
                 min_v, max_v = c.min_element, c.max_element
                 if c.num_elements == 1:
-                    self.rows[j][k] = random.randint(min_v, max_v) 
+                    row[k] = random.randint(min_v, max_v) 
                 else:
                     n = c.num_elements
                     if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
-                    self.rows[j][k] = v
-                rb.insert_elements(c, self.rows[j][k]) 
+                    row[k] = v
+                rb.insert_elements(k, row[k]) 
             rb.commit_row()
+            self.rows.append(tuple(row))
+
+
 
 class TestDatabaseIntegerLimits(TestDatabaseInteger):
     """
@@ -345,8 +367,9 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
+        index = self._columns.index(column)
         def f():
-            rb.insert_elements(column, v)
+            rb.insert_elements(index, v)
         self.assertRaises(OverflowError, f)
 
     def insert_good_value(self, column, value):
@@ -356,11 +379,12 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
-        self.assertEqual(rb.insert_elements(column, v), None)
+        index = self._columns.index(column)
+        self.assertEqual(rb.insert_elements(index, v), None)
 
 
     def test_outside_range(self):
-        for c in self._columns:
+        for c in self._columns[1:]:
             min_v, max_v = c.min_element, c.max_element
             for j in range(1, 5):
                 v = min_v - j
@@ -369,7 +393,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
                 self.insert_bad_value(c, v) 
 
     def test_inside_range(self):
-        for c in self._columns:
+        for c in self._columns[1:]:
             min_v, max_v = c.min_element, c.max_element
             for j in range(0, 5):
                 v = min_v + j
@@ -400,40 +424,34 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
         db = self._database
         values = range(1, 40)
         for v in values:
-            for c in self._columns:
-                if c.num_elements == 1:
-                    rb.insert_elements(c, v)
+            for k in range(1, self.num_columns): 
+                if self._columns[k].num_elements == 1:
+                    rb.insert_elements(k, v)
             rb.commit_row()
         self.open_reading()
         self.assertEqual(db.get_num_rows(), len(values))
         j = 0
         for v in values:
             r = self._database.get_row(j)
-            for c in self._columns:
-                if c.num_elements == 1:
-                    self.assertEqual(v, r[c.name])
+            for k in range(1, self.num_columns): 
+                if self._columns[k].num_elements == 1:
+                    self.assertEqual(v, r[k])
             j += 1
 
     def test_boundary_int_retrieval(self):
         self.populate_boundary_values()
         self.open_reading()
-        for j in range(len(self.rows)):
+        for j in range(self.num_rows):
             r = self._database.get_row(j)
-            for k in range(len(self._columns)): 
-                c = self._columns[k]
-                self.assertEqual(self.rows[j][k], r[c.name])
-
-
+            self.assertEqual(r, self.rows[j])
+    
     def test_random_int_retrieval(self):
-        num_rows = self.num_random_test_rows 
-        self.populate_randomly(num_rows)
+        self.populate_randomly(self.num_random_test_rows)
         self.open_reading()
-        self.assertEqual(self._database.get_num_rows(), num_rows)
-        for j in range(num_rows): 
+        self.assertEqual(self._database.get_num_rows(), self.num_rows)
+        for j in range(self.num_rows): 
             r = self._database.get_row(j)
-            for k in range(len(self._columns)): 
-                c = self._columns[k]
-                self.assertEqual(self.rows[j][k], r[c.name])
+            self.assertEqual(self.rows[j], r)
 
 
 class TestDatabaseFloat(TestDatabase):
@@ -465,44 +483,45 @@ class TestDatabaseFloat(TestDatabase):
         rb = self._row_buffer
         db = self._database
         cols = self._columns
-        num_cols = len(cols)
-        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
-        for j in range(num_rows):
-            for k in range(num_cols): 
+        self.num_rows = num_rows
+        self.rows = []
+        for j in range(self.num_rows):
+            row = [0 for c in cols]
+            for k in range(1, self.num_columns): 
                 c = cols[k]
                 min_v, max_v = -10, 10 
                 if c.num_elements == 1:
-                    self.rows[j][k] = random.uniform(min_v, max_v) 
+                    row[k] = random.uniform(min_v, max_v) 
                 else:
                     n = c.num_elements
                     if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.uniform(min_v, max_v) for l in range(n)])
-                    self.rows[j][k] = v
-                rb.insert_elements(c, self.rows[j][k]) 
+                    row[k] = v
+                rb.insert_elements(k, row[k]) 
             rb.commit_row()
+            self.rows.append(tuple(row))
 
 class TestDatabaseFloatIntegrity(TestDatabaseFloat):
 
     def test_random_float_retrieval(self):
-        num_rows = self.num_random_test_rows 
         cols = self._columns
-        num_cols = len(cols)
-        self.populate_randomly(num_rows)
+        self.populate_randomly(self.num_random_test_rows)
         self.open_reading()
-        self.assertEqual(self._database.get_num_rows(), num_rows)
-        for j in range(num_rows):
+        self.assertEqual(self._database.get_num_rows(), self.num_rows)
+        for j in range(self.num_rows):
             r = self._database.get_row(j)
-            for k in range(num_cols): 
+            self.assertEqual(j, r[0])
+            for k in range(1, self.num_columns): 
                 c = cols[k]
                 if c.element_size == 8:
-                    self.assertEqual(self.rows[j][k], r[c.name])
+                    self.assertEqual(self.rows[j][k], r[k])
                 else:
                     #print(rows[j][k])
                     if c.num_elements == 1:
-                        self.assertAlmostEqual(self.rows[j][k], r[c.name], places=6)
+                        self.assertAlmostEqual(self.rows[j][k], r[k], places=6)
                     else:
-                        for u, v in zip(self.rows[j][k], r[c.name]):
+                        for u, v in zip(self.rows[j][k], r[k]):
                             self.assertAlmostEqual(u, v, places=6)
 
 
@@ -520,7 +539,7 @@ class TestDatabaseChar(TestDatabase):
         random.shuffle(columns)
         return columns
     
-    def populate_randomly(self, num_rows):
+    def populate_randomly(self):
         """
         Generates random values for the columns and inserts them
         into database. Store these as lists in the instance variable
@@ -528,17 +547,19 @@ class TestDatabaseChar(TestDatabase):
         """
         rb = self._row_buffer
         db = self._database
-        cols = self._columns
-        num_cols = len(cols)
-        self.rows = [[0 for c in self._columns] for j in range(num_rows)]
-        for j in range(num_rows):
-            for k in range(num_cols): 
-                c = cols[k]
+        self.rows = []
+        self.num_rows = self.num_random_test_rows
+        for j in range(self.num_random_test_rows):
+            row = [0 for i in range(self.num_columns)]
+            row[0] = j
+            for k in range(1, self.num_columns): 
+                c = self._columns[k]
                 n = c.num_elements
                 if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                     n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
-                self.rows[j][k] = random_string(n).encode() 
-                rb.insert_elements(c, self.rows[j][k]) 
+                row[k] = random_string(n).encode() 
+                rb.insert_elements(k, row[k]) 
+            self.rows.append(tuple(row))
             rb.commit_row()
 
 class TestDatabaseCharIntegrity(TestDatabaseChar):
@@ -548,74 +569,76 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         Test to ensure that long strings are trapped correctly.
         """
         rb = self._row_buffer
-        for c in self._columns:
+        for j in range(1, len(self._columns)):
+            c = self._columns[j]
             n = c.num_elements
             if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                 n = _wormtable.MAX_NUM_ELEMENTS
-            for j in [1, 2, 3, 10, 500, 1000]:
-                s = random_string(n + j).encode() 
-                self.assertRaises(ValueError, rb.insert_elements, c, s)
+            for k in [1, 2, 3, 10, 500, 1000]:
+                s = random_string(n + k).encode() 
+                self.assertRaises(ValueError, rb.insert_elements, j, s)
         
 
     def test_variable_char_retrieval(self):
         rb = self._row_buffer
         db = self._database
-        cols = [c for c in self._columns if 
-                c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE]
-        num_cols = len(cols)
+        cols = []
+        for j in range(1, len(self._columns)):
+            if self._columns[j].num_elements == WT_VARIABLE:
+                cols.append(j)
         num_rows = self.num_random_test_rows 
-        rows = [[None for c in self._columns] for j in range(num_rows)]
+        rows = []
         for j in range(num_rows):
-            for k in range(num_cols): 
-                c = cols[k]
-                rows[j][k] = random_string(min(j, 50)).encode() 
-                rb.insert_elements(c, rows[j][k]) 
+            row = [None for c in self._columns]
+            row[0] = j
+            for k in cols: 
+                row[k] = random_string(min(j, 50)).encode() 
+                rb.insert_elements(k, row[k]) 
             rb.commit_row()
+            rows.append(tuple(row))
         self.open_reading()
         self.assertEqual(db.get_num_rows(), num_rows)
         for j in range(num_rows):
             r = db.get_row(j)
-            for k in range(num_cols): 
-                c = cols[k]
-                self.assertEqual(rows[j][k], r[c.name])
+            for k in cols: 
+                self.assertEqual(rows[j][k], r[k])
     
     def test_short_char_retrieval(self):
         rb = self._row_buffer
         db = self._database
-        cols = [c for c in self._columns if 
-                c.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE]
+        cols = []
+        for j in range(1, len(self._columns)):
+            if self._columns[j].num_elements != WT_VARIABLE:
+                cols.append(j)
         num_cols = len(cols)
         num_rows = self.num_random_test_rows 
-        rows = [[None for c in self._columns] for j in range(num_rows)]
+        rows = []
         for j in range(num_rows):
-            for k in range(num_cols): 
-                c = cols[k]
+            row = [None for c in self._columns]
+            row[0] = j
+            for k in cols: 
+                c = self._columns[k] 
                 n = random.randint(0, c.num_elements)
-                rows[j][k] = random_string(n).encode() 
-                rb.insert_elements(c, rows[j][k]) 
+                row[k] = random_string(n).encode() 
+                rb.insert_elements(k, row[k]) 
             rb.commit_row()
+            rows.append(tuple(row))
         self.open_reading()
         self.assertEqual(db.get_num_rows(), num_rows)
         for j in range(num_rows):
             r = db.get_row(j)
-            for k in range(num_cols): 
-                c = cols[k]
-                self.assertEqual(rows[j][k], r[c.name])
+            for k in cols: 
+                self.assertEqual(rows[j][k], r[k])
     
     def test_random_char_retrieval(self):
-        num_rows = self.num_random_test_rows 
-        self.populate_randomly(num_rows)
+        self.populate_randomly()
         self.open_reading()
         cols = self._columns
         num_cols = len(cols)
-        self.assertEqual(self._database.get_num_rows(), num_rows)
-        for j in range(num_rows):
+        self.assertEqual(self._database.get_num_rows(), self.num_rows)
+        for j in range(self.num_rows):
             r = self._database.get_row(j)
-            for k in range(num_cols): 
-                c = cols[k]
-                self.assertEqual(self.rows[j][k], r[c.name])
-
-
+            self.assertEqual(self.rows[j], r)
     
 
 class TestIndexIntegrity(object):
