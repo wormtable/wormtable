@@ -2322,6 +2322,9 @@ Table_verify_columns(Table *self)
         goto out;
     }
     /* check for duplicate columns */
+    /* TODO this is very slow for large numbers of columns - we should use a 
+     * python dictionary to check instead
+     */
     for (j = 0; j < self->num_columns; j++) {
         cj = PyBytes_AsString(self->columns[j]->name);
         for (k = j + 1; k < self->num_columns; k++) {
@@ -2409,6 +2412,65 @@ static PyMemberDef Table_members[] = {
 };
 
 
+/* 
+ * Returns 0 if the table is opened in write mode. Otherwise 
+ * -1 is returned with the appropriate Python exception set.
+ */
+static int 
+Table_opened_write_mode(Table *self)
+{
+    int ret = -1;
+    int db_ret;
+    u_int32_t flags;
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Table closed."); 
+        goto out;
+    }
+    db_ret = self->db->get_open_flags(self->db, &flags);
+    if (db_ret != 0) {
+        handle_bdb_error(flags);
+        goto out;
+    }
+    if ((flags & DB_RDONLY) != 0) {
+        PyErr_Format(WormtableError, "Table must be opened WT_WRITE."); 
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+/* 
+ * Returns 0 if the table is opened in read mode. Otherwise 
+ * -1 is returned with the appropriate Python exception set.
+ */
+static int 
+Table_opened_read_mode(Table *self)
+{
+    int ret = -1;
+    int db_ret;
+    u_int32_t flags;
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Table closed."); 
+        goto out;
+    }
+    db_ret = self->db->get_open_flags(self->db, &flags);
+    if (db_ret != 0) {
+        handle_bdb_error(flags);
+        goto out;
+    }
+    if ((flags & DB_RDONLY) == 0) {
+        PyErr_Format(WormtableError, "Table must be opened WT_READ."); 
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+
 static PyObject *
 Table_open(Table* self, PyObject *args)
 {
@@ -2450,6 +2512,8 @@ Table_open(Table* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
+    /* Disable DB error messages */
+    self->db->set_errcall(self->db, NULL);
     db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -2497,12 +2561,45 @@ Table_insert_elements(Table* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O!O", &ColumnType, &column, &elements)) { 
         goto out;
     }
+    if (Table_opened_write_mode(self) != 0) {
+        goto out;
+    }
     /* No updates for the id column */
     if (column == self->columns[0]) {
         PyErr_Format(WormtableError, "Cannot update ID column."); 
         goto out;
     }
     if (column->python_to_native(column, elements) < 0) {
+        goto out;   
+    }
+    m = Column_update_row(column, self->row_buffer, self->current_row_size); 
+    if (m < 0) {
+        goto out;
+    }
+    self->current_row_size += m;
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret; 
+}
+
+static PyObject *
+Table_insert_encoded_elements(Table* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Column *column = NULL;
+    PyBytesObject *value = NULL;
+    char *v;
+    int  m;
+    if (!PyArg_ParseTuple(args, "O!O!", &ColumnType, &column, &PyBytes_Type,
+            &value)) {
+        goto out;
+    }
+    if (Table_opened_write_mode(self) != 0) {
+        goto out;
+    }
+    v = PyBytes_AsString((PyObject *) value);
+    if (column->string_to_native(column, v) < 0) {
         goto out;   
     }
     m = Column_update_row(column, self->row_buffer, self->current_row_size); 
@@ -2526,8 +2623,7 @@ Table_commit_row(Table* self)
     DBT key, data;
     Column *id_col = self->columns[0];
     u_int32_t key_size = id_col->element_size; 
-    if (self->db == NULL) {
-        PyErr_Format(WormtableError, "Table closed."); 
+    if (Table_opened_write_mode(self) != 0) {
         goto out;
     }
     if (Column_set_row_id(id_col, self->current_row_id) != 0) {
@@ -2566,8 +2662,7 @@ Table_get_num_rows(Table* self)
     PyObject *ret = NULL;
     DBC *cursor = NULL;
     DBT key, data;
-    if (self->db == NULL) {
-        PyErr_Format(WormtableError, "Table closed");
+    if (Table_opened_read_mode(self) != 0) {
         goto out;
     }
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
@@ -2625,8 +2720,7 @@ Table_get_row(Table* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "K", &row_id)) {
         goto out;
     }
-    if (self->db == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
+    if (Table_opened_read_mode(self) != 0) {
         goto out;
     }
     memset(&key, 0, sizeof(DBT));
@@ -2685,6 +2779,9 @@ static PyMethodDef Table_methods[] = {
             "Commit a row to the table in write mode." },
     {"insert_elements", (PyCFunction) Table_insert_elements, METH_VARARGS, 
             "insert element values encoded as native Python objects." },
+    {"insert_encoded_elements", (PyCFunction) Table_insert_encoded_elements, 
+            METH_VARARGS, 
+            "insert element values encoded as comma seperated byte values." },
     {NULL}  /* Sentinel */
 };
 
