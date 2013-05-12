@@ -1036,4 +1036,150 @@ class TestTableInitialisation(TestTable):
             self.assertEqual(t.get_num_rows(), n)
         t.close()
 
+class TestIndex(unittest.TestCase):
+    """
+    Base class for testing tables.
+    """
+    def setUp(self):
+        fd, self._table_db_file = tempfile.mkstemp("-test.db") 
+        self._columns = [get_uint_column(1, 1), get_uint_column(1, 1)]
+        self._table = _wormtable.Table(self._table_db_file.encode(), self._columns, 0)
+        os.close(fd)
+        fd, self._index_db_file = tempfile.mkstemp("-index.db") 
+        os.close(fd)
+    
+    def tearDown(self):
+        os.unlink(self._table_db_file)
+        os.unlink(self._index_db_file)
+
+
+class TestIndexInitialisation(TestIndex):
+    """ 
+    Tests the initialisation code for the Index class to make sure everything 
+    is checked correctly.
+    """
+    
+    def test_constructor(self):
+        t = self._table
+        f = self._index_db_file.encode()
+        g = _wormtable.Index
+        # See if a closed table throws an error
+        self.assertRaises(WormtableError, g, t, f, [1], 0)
+        self._table.open(WT_WRITE);
+        self.assertRaises(WormtableError, g, t, f, [1], 0)
+        self._table.close()
+        self._table.open(WT_READ);
+        
+        self.assertRaises(TypeError, g) 
+        self.assertRaises(TypeError, g, t) 
+        self.assertRaises(TypeError, g, t, f, []) 
+        self.assertRaises(TypeError, g, t, f, [], None) 
+        self.assertRaises(TypeError, g, t, f, None, 0) 
+        self.assertRaises(TypeError, g, f, t, None, 0) 
+        self.assertRaises(TypeError, g, None, t, [], 0) 
+        # Check out of bounds columns
+        self.assertRaises(ValueError, g, t, f, [0], 0) 
+        self.assertRaises(ValueError, g, t, f, [-1], 0) 
+        self.assertRaises(ValueError, g, t, f, [2], 0) 
+        self.assertRaises(ValueError, g, t, f, [2**32], 0) 
+        cache_size = 1024
+        index = g(t, f, [1], cache_size)
+        self.assertEqual(t, index.table)
+        self.assertEqual(f, index.filename)
+        self.assertEqual(cache_size, index.cache_size)
+
+    def test_open(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        self._table.close()
+        self._table.open(WT_READ);
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        # Try bad mode values.
+        for j in range(-10, 10):
+            if j not in [WT_READ, WT_WRITE]:
+                self.assertRaises(ValueError, index.open, j) 
+        self.assertRaises(WormtableError, index.open, WT_READ) 
+        self._table.close()
+        self.assertRaises(WormtableError, index.open, WT_WRITE) 
+        self.assertRaises(WormtableError, index.open, WT_READ) 
+
+    def test_build(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        n = 10
+        for j in range(n):
+            self._table.insert_elements(1, j)
+            self._table.commit_row()
+        self._table.close()
+        self._table.open(WT_READ)
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        index.open(WT_WRITE)
+        g = index.build
+        self.assertRaises(TypeError, g, None) 
+        self.assertRaises(TypeError, g, None, None) 
+        self.assertRaises(TypeError, g, lambda x: x, None) 
+        self.assertRaises(TypeError, g, lambda x: x, "") 
+        self.assertRaises(TypeError, g, "", "") 
+        def cb():
+            print("this has the wrong number of args")
+        self.assertRaises(TypeError, g, cb, 1) 
+        def cb(x, y):
+            print("this has the wrong number of args")
+        self.assertRaises(TypeError, g, cb, 4) 
+        def evil(x):
+            index.close()
+        self.assertRaises(WormtableError, g, evil, 4) 
+        index.open(WT_WRITE)
+        def evil(x):
+            self._table.close()
+        self.assertRaises(WormtableError, g, evil, 4) 
+            
+    def test_set_bin_widths(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        self._table.close()
+        self._table.open(WT_READ)
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        g = index.set_bin_widths
+        self.assertRaises(TypeError, g, None) 
+        self.assertRaises(TypeError, g, "") 
+        self.assertRaises(TypeError, g, 1) 
+        self.assertRaises(TypeError, g, ["sdf"]) 
+        self.assertRaises(TypeError, g, [None]) 
+        self.assertRaises(ValueError, g, []) 
+        self.assertRaises(ValueError, g, [1, 2]) 
+        index.open(WT_WRITE)
+        self.assertRaises(WormtableError, g, [1]) 
+        index.close()
+        index.open(WT_READ)
+        self.assertRaises(WormtableError, g, [1]) 
+    
+
+    def test_min_max(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        n = 10
+        for j in range(n):
+            self._table.insert_elements(1, j)
+            self._table.commit_row()
+        self._table.close()
+        self._table.open(WT_READ)
+        for j in range(n):
+            r = self._table.get_row(j)
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        t = tuple()
+        self.assertRaises(WormtableError, index.get_min, t) 
+        self.assertRaises(WormtableError, index.get_max, t) 
+        index.open(WT_WRITE)
+        self.assertRaises(WormtableError, index.get_min, t) 
+        self.assertRaises(WormtableError, index.get_max, t) 
+        index.build()
+        self.assertRaises(WormtableError, index.get_min, t) 
+        self.assertRaises(WormtableError, index.get_max, t) 
+        index.close()
+        self.assertRaises(WormtableError, index.get_min, t) 
+        self.assertRaises(WormtableError, index.get_max, t) 
+        index.open(WT_READ)
+        self.assertEqual(0, index.get_min(t)[0])
+        self.assertEqual(n - 1, index.get_max(t)[0])
 

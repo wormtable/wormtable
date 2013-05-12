@@ -108,20 +108,19 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
-    BerkeleyDatabase *database;
-    DB *secondary_db;
+    Table *table;
+    DB *db;
     PyObject *filename;
-    PyObject *columns;
     Py_ssize_t cache_size;
+    u_int32_t *columns;
+    u_int32_t num_columns;
     void *key_buffer;
-    uint32_t key_buffer_size;
-    unsigned int num_columns;
+    u_int32_t key_buffer_size;
     double *bin_widths;
 } Index;
 
 typedef struct {
     PyObject_HEAD
-    BerkeleyDatabase *database;
     Index *index;
     PyObject *columns;
     DBC *cursor;
@@ -133,7 +132,6 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
-    BerkeleyDatabase *database;
     Index *index;
     DBC *cursor;
 } DistinctValueIterator;
@@ -2469,6 +2467,10 @@ Table_check_read_mode(Table *self)
     int ret = -1;
     int db_ret;
     u_int32_t flags;
+    if (self == NULL) {
+        PyErr_Format(PyExc_SystemError, "Null table."); 
+        goto out;
+    }
     if (self->db == NULL) {
         PyErr_Format(WormtableError, "Table closed."); 
         goto out;
@@ -2864,12 +2866,14 @@ static PyTypeObject TableType = {
 static void
 Index_dealloc(Index* self)
 {
-    Py_DECREF(self->filename);
-    Py_DECREF(self->database);
-    Py_DECREF(self->columns);
+    Py_XDECREF(self->table);
+    Py_XDECREF(self->filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
-    if (self->secondary_db != NULL) {
-        self->secondary_db->close(self->secondary_db, 0);
+    if (self->db != NULL) {
+        self->db->close(self->db, 0);
+    }
+    if (self->columns != NULL) {
+        PyMem_Free(self->columns);
     }
     if (self->bin_widths != NULL) {
         PyMem_Free(self->bin_widths);
@@ -2884,41 +2888,63 @@ static int
 Index_init(Index *self, PyObject *args, PyObject *kwds)
 {
     int j;
-    Column *col;
+    long k;
     int ret = -1;
-    static char *kwlist[] = {"database", "filename", "columns", "cache_size", NULL}; 
+    static char *kwlist[] = {"table", "filename", "columns", "cache_size", NULL}; 
+    PyObject *v;
     PyObject *filename = NULL;
     PyObject *columns = NULL;
-    BerkeleyDatabase *database = NULL;
-    self->secondary_db = NULL;
-    self->database = NULL;
+    Table *table = NULL;
+    self->db = NULL;
+    self->table = NULL;
+    self->filename = NULL;
     self->bin_widths = NULL; 
     self->key_buffer = NULL; 
+    self->columns = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
-            &BerkeleyDatabaseType, &database, 
+            &TableType, &table, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
             &self->cache_size)) {
         goto out;
     }
-    self->database = database;
-    Py_INCREF(self->database);
+    self->table = table;
+    Py_INCREF(self->table);
     self->filename = filename;
     Py_INCREF(self->filename);
-    self->columns = columns;
-    Py_INCREF(self->columns);
-    self->num_columns = PyList_GET_SIZE(self->columns);
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    self->num_columns = PyList_GET_SIZE(columns);
+    self->columns = PyMem_Malloc(self->num_columns * sizeof(u_int32_t));
+    if (self->columns == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     self->bin_widths = PyMem_Malloc(self->num_columns * sizeof(double));
+    if (self->bin_widths == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     memset(self->bin_widths, 0, self->num_columns * sizeof(double));
     self->key_buffer_size = MAX_ROW_SIZE; /* TODO work out the right size */
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
-    /* TODO there should be a function to verify columns */ 
+    if (self->key_buffer == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     for (j = 0; j < self->num_columns; j++) {
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
-        if (!PyObject_TypeCheck(col, &ColumnType)) {
-            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+        v = PyList_GET_ITEM(columns, j);
+        if (!PyNumber_Check(v)) {
+            PyErr_SetString(PyExc_ValueError, "Column indexes must be int");
             goto out;
         }
+        k = PyLong_AsLong(v);
+        if (k < 1 || k >= self->table->num_columns) {
+            PyErr_SetString(PyExc_ValueError, "Column indexes out of bounds");
+            goto out;
+        }
+        self->columns[j] = (u_int32_t) k;
     }
     ret = 0;
 out:
@@ -2928,59 +2954,72 @@ out:
 
 
 static PyMemberDef Index_members[] = {
-    {"database", T_OBJECT_EX, offsetof(Index, database), READONLY, "database"},
+    {"table", T_OBJECT_EX, offsetof(Index, table), READONLY, "table"},
     {"filename", T_OBJECT_EX, offsetof(Index, filename), READONLY, "filename"},
-    {"columns", T_OBJECT_EX, offsetof(Index, columns), READONLY, "columns"},
     {"cache_size", T_PYSSIZET, offsetof(Index, cache_size), READONLY, "cache_size"},
     {NULL}  /* Sentinel */
 };
 
 
-
-static PyObject *
-Index_open_helper(Index* self, u_int32_t flags)
+/* 
+ * Returns 0 if the table is opened in write mode. Otherwise 
+ * -1 is returned with the appropriate Python exception set.
+ */
+static int 
+Index_check_write_mode(Index *self)
 {
-    PyObject *ret = NULL;
+    int ret = -1;
     int db_ret;
-    char *db_name = NULL;
-    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
-    u_int32_t gigs, bytes;
-    DB *db;
-    if (self->secondary_db != NULL) {
-        PyErr_SetString(WormtableError, "database already open");
+    u_int32_t flags;
+    if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
-    db_ret = db_create(&db, NULL, 0);
-    self->secondary_db = db;
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Index closed."); 
+        goto out;
     }
-    gigs = (u_int32_t) (self->cache_size / gigabyte);
-    bytes = (u_int32_t) (self->cache_size % gigabyte);
-    db_ret = db->set_cachesize(db, gigs, bytes, 1); 
+    db_ret = self->db->get_open_flags(self->db, &flags);
     if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+        handle_bdb_error(flags);
+        goto out;
     }
-    db_ret = db->set_flags(db, DB_DUPSORT); 
+    if ((flags & DB_RDONLY) != 0) {
+        PyErr_Format(WormtableError, "Index must be opened WT_WRITE."); 
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
+
+/* 
+ * Returns 0 if the table is opened in read mode. Otherwise 
+ * -1 is returned with the appropriate Python exception set.
+ */
+static int 
+Index_check_read_mode(Index *self)
+{
+    int ret = -1;
+    int db_ret;
+    u_int32_t flags;
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    if (self->db == NULL) {
+        PyErr_Format(WormtableError, "Index closed."); 
+        goto out;
+    }
+    db_ret = self->db->get_open_flags(self->db, &flags);
     if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+        handle_bdb_error(flags);
+        goto out;
     }
-    db_ret = db->set_bt_compress(db, NULL, NULL); 
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
+    if ((flags & DB_RDONLY) == 0) {
+        PyErr_Format(WormtableError, "Index must be opened WT_READ."); 
+        goto out;
     }
-    
-    db_name = PyBytes_AsString(self->filename);
-    db_ret = db->open(db, NULL, db_name, NULL, DB_BTREE,  flags,  0);         
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    ret = Py_BuildValue("");
+    ret = 0;
 out:
     return ret;
 }
@@ -2997,12 +3036,8 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
     int len;
     void *v = skey->data;
     skey->size = 0;
-    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
-        if (!PyObject_TypeCheck(col, &ColumnType)) {
-            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-            goto out;
-        }
+    for (j = 0; j < self->num_columns; j++) {
+        col = self->table->columns[self->columns[j]]; 
         len = 0;
         if (self->bin_widths[j] == 0.0) {
             /* we can just copy the values directly here */
@@ -3040,17 +3075,16 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
     n = PyTuple_GET_SIZE(elements);
     if (n > self->num_columns) {
         PyErr_Format(PyExc_ValueError, "More key values than columns."); 
         goto out;
     }
     for (j = 0; j < n; j++) {
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
-        if (!PyObject_TypeCheck(col, &ColumnType)) {
-            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-            goto out;
-        }
+        col = self->table->columns[self->columns[j]]; 
         v = PyTuple_GetItem(elements, j);
         if (v == NULL) {
             goto out;
@@ -3091,13 +3125,11 @@ Index_row_to_python(Index *self, DBT *data) {
         PyErr_NoMemory();
         goto out;
     }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
     for (j = 0; j < self->num_columns; j++) {
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
-        if (!PyObject_TypeCheck(col, &ColumnType)) {
-            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-            Py_DECREF(t);
-            goto out;
-        }
+        col = self->table->columns[self->columns[j]]; 
         if (Column_extract_elements(col, data->data) < 0) {
             Py_DECREF(t);
             goto out;
@@ -3133,11 +3165,14 @@ Index_get_num_rows(Index *self, PyObject *args)
     if (key_size < 0) {
         goto out;
     }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    db = self->secondary_db;
+    db = self->db;
     if (db == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
+        PyErr_SetString(WormtableError, "table closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -3182,11 +3217,14 @@ Index_get_min(Index* self, PyObject *args)
     if (key_size < 0) {
         goto out;
     }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    db = self->secondary_db;
+    db = self->db;
     if (db == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
+        PyErr_SetString(WormtableError, "table closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -3229,11 +3267,14 @@ Index_get_max(Index* self, PyObject *args)
     if (key_size < 0) {
         goto out;
     }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    db = self->secondary_db;
+    db = self->db;
     if (db == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
+        PyErr_SetString(WormtableError, "table closed");
         goto out;
     }
     db_ret = db->cursor(db, NULL, &cursor, 0);
@@ -3301,6 +3342,13 @@ Index_set_bin_widths(Index* self, PyObject *args)
     if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &bin_widths)) {
         goto out;
     }
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out; 
+    }
+    if (self->db != NULL) {
+        PyErr_Format(WormtableError, "Cannot set bin_widths after open()"); 
+        goto out;
+    }
     if (PyList_GET_SIZE(bin_widths) != self->num_columns) {
         PyErr_Format(PyExc_ValueError, 
                 "Number of bins must equal to the number of columns"); 
@@ -3308,7 +3356,7 @@ Index_set_bin_widths(Index* self, PyObject *args)
     }
     for (j = 0; j < PyList_GET_SIZE(bin_widths); j++) {
         w = PyList_GET_ITEM(bin_widths, j);
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
+        col = self->table->columns[self->columns[j]];
         if (!PyNumber_Check(w)) {
             PyErr_Format(PyExc_TypeError, 
                     "Bad bin width for '%s': bin widths must be numeric",
@@ -3348,20 +3396,18 @@ out:
     return ret;
 }
 
-
-
 static PyObject *
-Index_create(Index* self, PyObject *args)
+Index_build(Index* self, PyObject *args)
 {
     int db_ret;
-    u_int32_t flags = DB_CREATE|DB_TRUNCATE;
     PyObject *ret = NULL;
-    PyObject *tmp = NULL;
     PyObject *arglist, *result;
     PyObject *progress_callback = NULL;
     DBC *cursor = NULL;
-    DB *pdb, *sdb;
+    DB *pdb = NULL;
+    DB *sdb = NULL;
     DBT pkey, pdata, skey, sdata;
+    u_int32_t truncate_count;
     uint64_t callback_interval = 1000;
     uint64_t records_processed = 0;
     void *buffer = PyMem_Malloc(MAX_ROW_SIZE);
@@ -3371,9 +3417,13 @@ Index_create(Index* self, PyObject *args)
     }
     if (!PyArg_ParseTuple(args, "|OK", &progress_callback, 
             &callback_interval)) { 
+        progress_callback = NULL;
         goto out;
     }
     Py_XINCREF(progress_callback);
+    if (Index_check_write_mode(self) != 0) {
+        goto out;
+    }
     if (progress_callback != NULL) {
         if (!PyCallable_Check(progress_callback)) {
             PyErr_SetString(PyExc_TypeError, "progress_callback must be callable");
@@ -3384,19 +3434,12 @@ Index_create(Index* self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "callback interval cannot be 0");
         goto out;
     }
-    tmp = Index_open_helper(self, flags);
-    if (tmp == NULL) {
-        goto out;
-    }
-    pdb = self->database->primary_db;
-    sdb = self->secondary_db;
-    if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
-        goto out;
-    }
+    pdb = self->table->db;
+    sdb = self->db;
     db_ret = pdb->cursor(pdb, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
+        cursor = NULL;
         goto out;    
     }
     memset(&pkey, 0, sizeof(DBT));
@@ -3420,12 +3463,21 @@ Index_create(Index* self, PyObject *args)
         if (records_processed % callback_interval == 0) {
             if (progress_callback != NULL) {
                 arglist = Py_BuildValue("(K)", records_processed);
+                if (arglist == NULL) {
+                    goto out;
+                }
                 result = PyObject_CallObject(progress_callback, arglist);
                 Py_DECREF(arglist);
                 if (result == NULL) {
                     goto out;
                 }
                 Py_DECREF(result);
+                /* Anything might have happened in the mean time, so 
+                 * check the state of the DBs again!
+                 */
+                if (Index_check_write_mode(self) != 0) {
+                    goto out;
+                }
             }
         }
     }
@@ -3433,132 +3485,137 @@ Index_create(Index* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-
-
-    /* Free the cursor */
     db_ret = cursor->close(cursor);
     cursor = NULL;
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    
     ret = Py_BuildValue(""); 
 
 out:
+    Py_XDECREF(progress_callback);
     if (buffer != NULL) {
         PyMem_Free(buffer);
     }
-    Py_XDECREF(progress_callback);
-    return ret;
-}
-
-static PyObject *
-Index_open(Index* self)
-{
-    int db_ret;
-    PyObject *ret = NULL;
-    u_int32_t flags = DB_RDONLY|DB_NOMMAP;
-    DB *pdb, *sdb;
-    if (Index_open_helper(self, flags) == NULL) {
-        goto out;   
-    }
-    pdb = self->database->primary_db;
-    sdb = self->secondary_db;
-    if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
-        goto out;
-    }
-    db_ret = pdb->associate(pdb, NULL, sdb, NULL, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    ret = Py_BuildValue(""); 
-out:
-    return ret;
-}
-
-static PyObject *
-Index_print(Index* self)
-{
-    int db_ret, j;
-    Column *col;
-    PyObject *value;
-    PyObject *ret = NULL;
-    DBC *cursor = NULL;
-    DB *pdb, *sdb;
-    DBT key, data; 
-    pdb = self->database->primary_db;
-    sdb = self->secondary_db;
-    if (pdb == NULL || sdb == NULL) {
-        PyErr_SetString(WormtableError, "database closed");
-        goto out;
-    }
-    db_ret = sdb->cursor(sdb, NULL, &cursor, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    while ((db_ret = cursor->get(cursor, &key, &data, DB_NEXT)) == 0) {
-        for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
-            col = (Column *) PyList_GET_ITEM(self->columns, j);
-            if (!PyObject_TypeCheck(col, &ColumnType)) {
-                PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-                goto out;
+    if (cursor != NULL) {
+        /* ignore errors in this case, as we're already handling one */
+        if (self->table != NULL) {
+            if (self->table->db != NULL) {
+                cursor->close(cursor);
             }
-            if (Column_extract_elements(col, data.data) < 0) {
-                goto out;
-            }
-            value = Column_get_python_elements(col); 
-            if (value == NULL) {
-                goto out;
-            }
-            PyObject_Print(value, stdout, 0); 
-            printf("\t");
+        }   
+        if (self->db != NULL) {
+            sdb = self->db; 
+            db_ret = sdb->truncate(sdb, NULL, &truncate_count, 0); 
         }
-        printf("\n");
-
     }
-    if (db_ret != DB_NOTFOUND) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    ret = Py_BuildValue(""); 
-out:
     return ret;
 }
 
-
-
+static PyObject *
+Index_open(Index* self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    char *db_name = NULL;
+    u_int32_t flags = 0; 
+    Py_ssize_t gigabyte = 1024 * 1024 * 1024;
+    u_int32_t gigs, bytes;
+    int db_ret, mode;
+    DB *pdb;
+    if (!PyArg_ParseTuple(args, "i", &mode)) { 
+        goto out;
+    }
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    pdb = self->table->db;
+    if (mode == WT_WRITE) {
+        flags = DB_CREATE|DB_TRUNCATE;
+    } else if (mode == WT_READ) {
+        flags = DB_RDONLY|DB_NOMMAP;
+    } else {
+        PyErr_Format(PyExc_ValueError, "mode must be WT_READ or WT_WRITE."); 
+        goto out;
+    }
+    if (self->db != NULL) {
+        PyErr_Format(WormtableError, "Index already open."); 
+        goto out;
+    }
+    db_name = PyBytes_AsString(self->filename);
+    if (db_name == NULL) {
+        goto out;
+    }
+    /* Now we create the DB handle */
+    db_ret = db_create(&self->db, NULL, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    gigs = (u_int32_t) (self->cache_size / gigabyte);
+    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    db_ret = self->db->set_flags(self->db, DB_DUPSORT); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    db_ret = self->db->set_bt_compress(self->db, NULL, NULL); 
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    /* Disable DB error messages */
+    self->db->set_errcall(self->db, NULL);
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        self->db->close(self->db, 0);
+        self->db = NULL;
+        goto out;    
+    }
+    if (mode == WT_READ) {
+        db_ret = pdb->associate(pdb, NULL, self->db, NULL, 0);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+    }
+    Py_INCREF(Py_None);
+    ret = Py_None;
+out:
+    return ret;
+}
 
 static PyObject *
 Index_close(Index* self)
 {
     PyObject *ret = NULL;
     int db_ret;
-    DB *db = self->secondary_db;
+    DB *db = self->db;
     if (db == NULL) {
         PyErr_SetString(WormtableError, "index closed");
         goto out;
     }
     db_ret = db->close(db, 0); 
-    self->secondary_db = NULL;
+    self->db = NULL;
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    ret = Py_BuildValue("");
+    Py_INCREF(Py_None);
+    ret = Py_None;
 out:
-    self->secondary_db = NULL;
     return ret; 
 }
 
 
 static PyMethodDef Index_methods[] = {
-    {"create", (PyCFunction) Index_create, METH_VARARGS, "Create the index" },
+    {"build", (PyCFunction) Index_build, METH_VARARGS, "Build the index" },
     {"set_bin_widths", (PyCFunction) Index_set_bin_widths, METH_VARARGS, 
         "Sets the bin widths for the columns" },
     {"get_min", (PyCFunction) Index_get_min, METH_VARARGS, 
@@ -3567,9 +3624,8 @@ static PyMethodDef Index_methods[] = {
         "Returns the maxumum key value in this index" },
     {"get_num_rows", (PyCFunction) Index_get_num_rows, METH_VARARGS, 
         "Returns the number of rows in the index with the specified key." },
-    {"open", (PyCFunction) Index_open, METH_NOARGS, "Open the index for reading" },
+    {"open", (PyCFunction) Index_open, METH_VARARGS, "Open the index" },
     {"close", (PyCFunction) Index_close, METH_NOARGS, "Close the index" },
-    {"print", (PyCFunction) Index_print, METH_NOARGS, "TEMP" },
     {NULL}  /* Sentinel */
 };
 
@@ -3621,7 +3677,6 @@ static PyTypeObject IndexType = {
 static void
 RowIterator_dealloc(RowIterator* self)
 {
-    Py_XDECREF(self->database);
     Py_XDECREF(self->index);
     Py_XDECREF(self->columns);
     if (self->cursor != NULL) {
@@ -3638,22 +3693,17 @@ RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
     int j;
     Column *col;
     int ret = -1;
-    static char *kwlist[] = {"database", "columns", "index", NULL}; 
+    static char *kwlist[] = {"table", "columns", "index", NULL}; 
     PyObject *columns = NULL;
-    BerkeleyDatabase *database = NULL;
     Index *index = NULL;
-    self->database = NULL;
     self->columns = NULL;
     self->index = NULL;
     self->cursor = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!", kwlist, 
-            &BerkeleyDatabaseType, &database, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
             &PyList_Type, &columns, 
             &IndexType, &index)) {
         goto out;
     }
-    self->database = database;
-    Py_INCREF(self->database);
     self->columns = columns;
     Py_INCREF(self->columns);
     self->index = index;
@@ -3708,7 +3758,7 @@ RowIterator_next(RowIterator *self)
     flags = DB_NEXT;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
-        db = self->index->secondary_db;
+        db = self->index->db;
         db_ret = db->cursor(db, NULL, &self->cursor, 0);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
@@ -3853,7 +3903,6 @@ static PyTypeObject RowIteratorType = {
 static void
 DistinctValueIterator_dealloc(DistinctValueIterator* self)
 {
-    Py_XDECREF(self->database);
     Py_XDECREF(self->index);
     if (self->cursor != NULL) {
         self->cursor->close(self->cursor);
@@ -3865,19 +3914,14 @@ static int
 DistinctValueIterator_init(DistinctValueIterator *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    static char *kwlist[] = {"database", "index", NULL}; 
-    BerkeleyDatabase *database = NULL;
+    static char *kwlist[] = {"table", "index", NULL}; 
     Index *index = NULL;
-    self->database = NULL;
     self->index = NULL;
     self->cursor = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
-            &BerkeleyDatabaseType, &database, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!", kwlist, 
             &IndexType, &index)) {
         goto out;
     }
-    self->database = database;
-    Py_INCREF(self->database);
     self->index = index;
     Py_INCREF(self->index);
     ret = 0;
@@ -3903,7 +3947,7 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     flags = DB_NEXT_NODUP;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
-        db = self->index->secondary_db;
+        db = self->index->db;
         db_ret = db->cursor(db, NULL, &self->cursor, 0);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
