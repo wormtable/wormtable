@@ -116,6 +116,8 @@ typedef struct {
     u_int32_t num_columns;
     void *key_buffer;
     u_int32_t key_buffer_size;
+    void *row_buffer;
+    u_int32_t row_buffer_size;
     double *bin_widths;
 } Index;
 
@@ -2881,6 +2883,9 @@ Index_dealloc(Index* self)
     if (self->key_buffer != NULL) {
         PyMem_Free(self->key_buffer);
     }
+    if (self->row_buffer != NULL) {
+        PyMem_Free(self->row_buffer);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -2900,6 +2905,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     self->filename = NULL;
     self->bin_widths = NULL; 
     self->key_buffer = NULL; 
+    self->row_buffer = NULL; 
     self->columns = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
             &TableType, &table, 
@@ -2929,7 +2935,9 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     memset(self->bin_widths, 0, self->num_columns * sizeof(double));
     self->key_buffer_size = MAX_ROW_SIZE; /* TODO work out the right size */
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
-    if (self->key_buffer == NULL) {
+    self->row_buffer_size = MAX_ROW_SIZE; 
+    self->row_buffer = PyMem_Malloc(self->row_buffer_size);
+    if (self->key_buffer == NULL || self->row_buffer == NULL) {
         PyErr_NoMemory();
         goto out;
     }
@@ -3024,11 +3032,31 @@ out:
     return ret;
 }
 
+/*
+ * Sets up the specified DBTs so that the underlying memory for each points
+ * to the complete row_buffer. 
+ */
+static int 
+Index_init_dbts(Index *self, DBT *primary_key, DBT *primary_data)
+{
+    Column *id_col = self->table->columns[0];
+    u_int32_t primary_key_size = id_col->element_size;
+    memset(primary_key, 0, sizeof(DBT));
+    memset(primary_data, 0, sizeof(DBT));
+    primary_key->data = self->row_buffer;
+    primary_key->ulen = primary_key_size; 
+    primary_key->flags = DB_DBT_USERMEM;
+    primary_data->data = self->row_buffer + primary_key_size;
+    primary_data->ulen = self->row_buffer_size - primary_key_size; 
+    primary_data->flags = DB_DBT_USERMEM;
+    return 0;
+}
+
 /* extract values from the specified row and push them into the specified 
  * secondary key. This has valid memory associated with it.
  */
 static int 
-Index_fill_key(Index *self, DBT *row, DBT *skey)
+Index_fill_key(Index *self, void *row, DBT *skey)
 {
     int ret = -1;
     Column *col;
@@ -3041,10 +3069,10 @@ Index_fill_key(Index *self, DBT *row, DBT *skey)
         len = 0;
         if (self->bin_widths[j] == 0.0) {
             /* we can just copy the values directly here */
-            len = Column_copy_row_values(col, v, row->data);
+            len = Column_copy_row_values(col, v, row);
         } else {
             /* we must bin the values correctly here */
-            len = Column_truncate_values(col, self->bin_widths[j], v, row->data);
+            len = Column_truncate_values(col, self->bin_widths[j], v, row);
         }
         if (len < 0) {
             goto out;
@@ -3115,7 +3143,7 @@ out:
  * values from the buffer, returning a tuple.
  */
 static PyObject *
-Index_row_to_python(Index *self, DBT *data) {
+Index_row_to_python(Index *self, void *row) {
     PyObject *ret = NULL;
     PyObject *value;
     unsigned int j;
@@ -3130,7 +3158,7 @@ Index_row_to_python(Index *self, DBT *data) {
     }
     for (j = 0; j < self->num_columns; j++) {
         col = self->table->columns[self->columns[j]]; 
-        if (Column_extract_elements(col, data->data) < 0) {
+        if (Column_extract_elements(col, row) < 0) {
             Py_DECREF(t);
             goto out;
         }
@@ -3202,17 +3230,13 @@ out:
     return ret;
 }
 
-
-
-
 static PyObject *
 Index_get_min(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
     int db_ret;
-    DB *db;
     DBC *cursor = NULL;
-    DBT key, data;
+    DBT primary_key, primary_data, secondary_key;
     int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
@@ -3220,23 +3244,19 @@ Index_get_min(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    db = self->db;
-    if (db == NULL) {
-        PyErr_SetString(WormtableError, "table closed");
-        goto out;
-    }
-    db_ret = db->cursor(db, NULL, &cursor, 0);
+    Index_init_dbts(self, &primary_key, &primary_data);
+    memset(&secondary_key, 0, sizeof(DBT));
+    db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    key.data = self->key_buffer;
-    key.size = (u_int32_t) key_size; 
-    db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+    secondary_key.data = self->key_buffer;
+    secondary_key.size = (u_int32_t) key_size; 
+    db_ret = cursor->pget(cursor, &secondary_key, &primary_key, &primary_data, 
+            DB_SET_RANGE);
     if (db_ret == 0) {
-        ret = Index_row_to_python(self, &data);
+        ret = Index_row_to_python(self, self->row_buffer);
         if (ret == NULL) {
             goto out;
         }
@@ -3259,9 +3279,8 @@ Index_get_max(Index* self, PyObject *args)
     u_int32_t j;
     u_int32_t flags;
     int db_ret;
-    DB *db;
     DBC *cursor = NULL;
-    DBT key, data;
+    DBT primary_key, primary_data, secondary_key;
     int key_size = Index_set_key(self, args, self->key_buffer);
     unsigned char *key_buffer = self->key_buffer;
     if (key_size < 0) {
@@ -3270,30 +3289,26 @@ Index_get_max(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    db = self->db;
-    if (db == NULL) {
-        PyErr_SetString(WormtableError, "table closed");
-        goto out;
-    }
-    db_ret = db->cursor(db, NULL, &cursor, 0);
+    Index_init_dbts(self, &primary_key, &primary_data);
+    memset(&secondary_key, 0, sizeof(DBT));
+    db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    key.data = key_buffer;
-    key.size = (u_int32_t) key_size; 
+    secondary_key.data = key_buffer;
+    secondary_key.size = (u_int32_t) key_size; 
     if (key_size == 0) {
         /* An empty list has been passed so we want the last value */
-        db_ret = cursor->get(cursor, &key, &data, DB_LAST);
+        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
+                &primary_data, DB_LAST);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
             goto out;    
         }
     } else {
         /* find the last non-zero value in the key buffer and increment it */
-        j = key.size - 1;
+        j = primary_key.size - 1;
         while (j > 0 && key_buffer[j] == 0) {
             j--;
         }
@@ -3304,7 +3319,8 @@ Index_get_max(Index* self, PyObject *args)
         }
         key_buffer[j] += 1;
         /* Seek to the first record >= to this */
-        db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
+                &primary_data, DB_SET_RANGE);
         /* If this is not found, we want the last record in the 
          * index; otherwise, we want the record immediately before
          */
@@ -3315,14 +3331,15 @@ Index_get_max(Index* self, PyObject *args)
             handle_bdb_error(db_ret);
             goto out;    
         }
-        db_ret = cursor->get(cursor, &key, &data, flags);
+        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
+                &primary_data, flags);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
             goto out;    
         }
     }
     /* data points to the correct row */
-    ret = Index_row_to_python(self, &data);
+    ret = Index_row_to_python(self, self->row_buffer);
 out:
     if (cursor != NULL) {
         cursor->close(cursor);
@@ -3403,6 +3420,8 @@ Index_build(Index* self, PyObject *args)
     PyObject *ret = NULL;
     PyObject *arglist, *result;
     PyObject *progress_callback = NULL;
+    Column *id_col;
+    u_int32_t primary_key_size;
     DBC *cursor = NULL;
     DB *pdb = NULL;
     DB *sdb = NULL;
@@ -3410,11 +3429,6 @@ Index_build(Index* self, PyObject *args)
     u_int32_t truncate_count;
     uint64_t callback_interval = 1000;
     uint64_t records_processed = 0;
-    void *buffer = PyMem_Malloc(MAX_ROW_SIZE);
-    if (buffer == NULL) {
-        PyErr_NoMemory();
-        goto out;
-    }
     if (!PyArg_ParseTuple(args, "|OK", &progress_callback, 
             &callback_interval)) { 
         progress_callback = NULL;
@@ -3434,6 +3448,8 @@ Index_build(Index* self, PyObject *args)
         PyErr_SetString(PyExc_ValueError, "callback interval cannot be 0");
         goto out;
     }
+    id_col = self->table->columns[0];
+    primary_key_size = id_col->element_size; 
     pdb = self->table->db;
     sdb = self->db;
     db_ret = pdb->cursor(pdb, NULL, &cursor, 0);
@@ -3446,13 +3462,19 @@ Index_build(Index* self, PyObject *args)
     memset(&pdata, 0, sizeof(DBT));
     memset(&skey, 0, sizeof(DBT));
     memset(&sdata, 0, sizeof(DBT));
-    skey.data = buffer;
+    pkey.data = self->row_buffer;
+    pkey.ulen = primary_key_size; 
+    pkey.flags = DB_DBT_USERMEM;
+    pdata.data = self->row_buffer + primary_key_size;
+    pdata.ulen = MAX_ROW_SIZE - primary_key_size; 
+    pdata.flags = DB_DBT_USERMEM;
+    skey.data = self->key_buffer;
+    sdata.data = self->row_buffer;
+    sdata.size = primary_key_size;
     while ((db_ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
-        if (Index_fill_key(self, &pdata, &skey) < 0 ) {
+        if (Index_fill_key(self, self->row_buffer, &skey) < 0 ) {
             goto out;
         }
-        sdata.data = pkey.data;
-        sdata.size = pkey.size;
         db_ret = sdb->put(sdb, NULL, &skey, &sdata, 0);
         if (db_ret != 0) {
             handle_bdb_error(db_ret); 
@@ -3491,13 +3513,10 @@ Index_build(Index* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    ret = Py_BuildValue(""); 
-
+    Py_INCREF(Py_None);
+    ret = Py_None;
 out:
     Py_XDECREF(progress_callback);
-    if (buffer != NULL) {
-        PyMem_Free(buffer);
-    }
     if (cursor != NULL) {
         /* ignore errors in this case, as we're already handling one */
         if (self->table != NULL) {
@@ -3914,7 +3933,7 @@ static int
 DistinctValueIterator_init(DistinctValueIterator *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    static char *kwlist[] = {"table", "index", NULL}; 
+    static char *kwlist[] = {"index", NULL}; 
     Index *index = NULL;
     self->index = NULL;
     self->cursor = NULL;
@@ -3940,11 +3959,14 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     PyObject *ret = NULL;
     int db_ret;
     DB *db;
-    DBT key, data;
-    uint32_t flags;
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    flags = DB_NEXT_NODUP;
+    DBT primary_key, primary_data, secondary_key;
+    if (Index_check_read_mode(self->index) != 0) {
+        goto out;
+    }
+    /* TODO There are varios problems here - needs to be thought through
+     * quite a lot! */
+    Index_init_dbts(self->index, &primary_key, &primary_data);
+    memset(&secondary_key, 0, sizeof(DBT));
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
         db = self->index->db;
@@ -3954,9 +3976,10 @@ DistinctValueIterator_next(DistinctValueIterator *self)
             goto out;    
         }
     }
-    db_ret = self->cursor->get(self->cursor, &key, &data, flags);
+    db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
+            &primary_data, DB_NEXT_NODUP);
     if (db_ret == 0) {
-        ret = Index_row_to_python(self->index, &data);
+        ret = Index_row_to_python(self->index, self->index->row_buffer);
         if (ret == NULL) {
             goto out;
         }

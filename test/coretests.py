@@ -1042,7 +1042,7 @@ class TestIndex(unittest.TestCase):
     """
     def setUp(self):
         fd, self._table_db_file = tempfile.mkstemp("-test.db") 
-        self._columns = [get_uint_column(1, 1), get_uint_column(1, 1)]
+        self._columns = [get_uint_column(2, 1), get_uint_column(1, 1)]
         self._table = _wormtable.Table(self._table_db_file.encode(), self._columns, 0)
         os.close(fd)
         fd, self._index_db_file = tempfile.mkstemp("-index.db") 
@@ -1183,3 +1183,28 @@ class TestIndexInitialisation(TestIndex):
         self.assertEqual(0, index.get_min(t)[0])
         self.assertEqual(n - 1, index.get_max(t)[0])
 
+
+    def test_distinct_values(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        n = 10
+        for j in range(n):
+            self._table.insert_elements(1, j)
+            self._table.commit_row()
+        self._table.close()
+        self._table.open(WT_READ)
+        for j in range(n):
+            r = self._table.get_row(j)
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        index.open(WT_WRITE)
+        index.build()
+        index.close()
+        index.open(WT_READ)
+        dvi = _wormtable.DistinctValueIterator(index)
+        c = 0
+        for v in dvi:
+            c += 1
+            print(v)
+            # TODO this current causes a segfault
+            #print(v, index.count(v))
+        self.assertEqual(c, n)
