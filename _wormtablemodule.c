@@ -124,12 +124,13 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     Index *index;
-    PyObject *columns;
     DBC *cursor;
+    u_int32_t *read_columns;
+    u_int32_t num_read_columns; 
     void *min_key;
-    uint32_t min_key_size;
+    u_int32_t min_key_size;
     void *max_key;
-    uint32_t max_key_size;
+    u_int32_t max_key_size;
 } RowIterator;
 
 typedef struct {
@@ -2948,7 +2949,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
             goto out;
         }
         k = PyLong_AsLong(v);
-        if (k < 1 || k >= self->table->num_columns) {
+        if (k < 0 || k >= self->table->num_columns) {
             PyErr_SetString(PyExc_ValueError, "Column indexes out of bounds");
             goto out;
         }
@@ -3696,44 +3697,73 @@ static PyTypeObject IndexType = {
 static void
 RowIterator_dealloc(RowIterator* self)
 {
-    Py_XDECREF(self->index);
-    Py_XDECREF(self->columns);
     if (self->cursor != NULL) {
-        self->cursor->close(self->cursor);
+        if (self->index != NULL) {
+            if (self->index->db != NULL) {
+                self->cursor->close(self->cursor);
+            }
+        }
     }
-    PyMem_Free(self->min_key);
-    PyMem_Free(self->max_key);
+    Py_XDECREF(self->index);
+    if (self->min_key != NULL) {
+        PyMem_Free(self->min_key);
+    }
+    if (self->max_key != NULL) {
+        PyMem_Free(self->max_key);
+    }
+    if (self->read_columns != NULL) {
+        PyMem_Free(self->read_columns);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
+
 }
 
 static int
 RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
 {
     int j;
-    Column *col;
     int ret = -1;
-    static char *kwlist[] = {"table", "columns", "index", NULL}; 
+    long k;
+    static char *kwlist[] = {"index", "columns", NULL}; 
+    PyObject *v = NULL; 
     PyObject *columns = NULL;
     Index *index = NULL;
-    self->columns = NULL;
+    self->read_columns = NULL;
     self->index = NULL;
     self->cursor = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
-            &PyList_Type, &columns, 
-            &IndexType, &index)) {
+            &IndexType, &index,
+            &PyList_Type, &columns)) {
         goto out;
     }
-    self->columns = columns;
-    Py_INCREF(self->columns);
     self->index = index;
     Py_INCREF(self->index);
-    /* TODO there should be a function to verify columns */ 
-    for (j = 0; j < PyList_GET_SIZE(self->columns); j++) {
-        col = (Column *) PyList_GET_ITEM(self->columns, j);
-        if (!PyObject_TypeCheck(col, &ColumnType)) {
-            PyErr_SetString(PyExc_ValueError, "Must be Column objects");
+    if (Index_check_read_mode(self->index) != 0) {
+        goto out;
+    }
+    self->num_read_columns = PyList_GET_SIZE(columns);
+    if (self->num_read_columns < 1) {
+        PyErr_SetString(PyExc_ValueError, "At least one read column required");
+        goto out;
+    }
+    self->read_columns = PyMem_Malloc(self->num_read_columns 
+            * sizeof(u_int32_t));
+    if (self->read_columns == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (j = 0; j < self->num_read_columns; j++) {
+        v = PyList_GET_ITEM(columns, j);
+        if (!PyNumber_Check(v)) {
+            PyErr_SetString(PyExc_ValueError, "Column indexes must be int");
             goto out;
         }
+        k = PyLong_AsLong(v);
+        if (k < 0 || k >= self->index->table->num_columns) {
+            PyErr_SetString(PyExc_ValueError, "Column indexes out of bounds");
+            goto out;
+        }
+        self->read_columns[j] = (u_int32_t) k;
     }
     /* TODO this is wasteful - work out how much we really need above */
     self->min_key = PyMem_Malloc(MAX_ROW_SIZE);
@@ -3744,7 +3774,6 @@ RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
     }
     self->min_key_size = 0;
     self->max_key_size = 0;
-
     ret = 0;
 out:
 
@@ -3767,13 +3796,14 @@ RowIterator_next(RowIterator *self)
     Column *col;
     int db_ret, j;
     DB *db;
-    DBT key, data;
+    DBT primary_key, primary_data, secondary_key;
     uint32_t flags, cmp_size;
     int max_exceeded = 0;
-    int num_columns = PyList_GET_SIZE(self->columns);
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));
-    
+    if (Index_check_read_mode(self->index) != 0) {
+        goto out;
+    }
+    Index_init_dbts(self->index, &primary_key, &primary_data);
+    memset(&secondary_key, 0, sizeof(DBT));
     flags = DB_NEXT;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
@@ -3784,35 +3814,32 @@ RowIterator_next(RowIterator *self)
             goto out;    
         }
         if (self->min_key_size != 0) {
-            key.data = self->min_key;
-            key.size = self->min_key_size;
+            secondary_key.data = self->min_key;
+            secondary_key.size = self->min_key_size;
             flags = DB_SET_RANGE;
         }
     } 
-    db_ret = self->cursor->get(self->cursor, &key, &data, flags);
+    db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
+            &primary_data, flags);
     if (db_ret == 0) {
         /* Now, check if we've hit or gone past max_key */
         if (self->max_key_size > 0) {
             cmp_size = self->max_key_size;
-            if (key.size < cmp_size) {
+            if (secondary_key.size < cmp_size) {
                 cmp_size = self->max_key_size;
             }
-            max_exceeded = memcmp(self->max_key, key.data, cmp_size) <= 0;
+            max_exceeded = memcmp(self->max_key, secondary_key.data, 
+                    cmp_size) <= 0;
         }
         if (!max_exceeded) { 
-            t = PyTuple_New(num_columns);
+            t = PyTuple_New(self->num_read_columns);
             if (t == NULL) {
                 PyErr_NoMemory();
                 goto out;
             }
-            for (j = 0; j < num_columns; j++) {
-                col = (Column *) PyList_GET_ITEM(self->columns, j);
-                if (!PyObject_TypeCheck(col, &ColumnType)) {
-                    PyErr_SetString(PyExc_ValueError, "Must be Column objects");
-                    Py_DECREF(t);
-                    goto out;
-                }
-                if (Column_extract_elements(col, data.data) < 0) {
+            for (j = 0; j < self->num_read_columns; j++) {
+                col = self->index->table->columns[self->read_columns[j]]; 
+                if (Column_extract_elements(col, self->index->row_buffer) < 0) {
                     Py_DECREF(t);
                     goto out;
                 }
@@ -3922,10 +3949,14 @@ static PyTypeObject RowIteratorType = {
 static void
 DistinctValueIterator_dealloc(DistinctValueIterator* self)
 {
-    Py_XDECREF(self->index);
     if (self->cursor != NULL) {
-        self->cursor->close(self->cursor);
+        if (self->index != NULL) {
+            if (self->index->db != NULL) {
+                self->cursor->close(self->cursor);
+            }
+        }
     }
+    Py_XDECREF(self->index);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -3943,6 +3974,9 @@ DistinctValueIterator_init(DistinctValueIterator *self, PyObject *args, PyObject
     }
     self->index = index;
     Py_INCREF(self->index);
+    if (Index_check_read_mode(self->index) != 0) {
+        goto out;
+    }
     ret = 0;
 out:
     return ret;
@@ -3963,8 +3997,6 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     if (Index_check_read_mode(self->index) != 0) {
         goto out;
     }
-    /* TODO There are varios problems here - needs to be thought through
-     * quite a lot! */
     Index_init_dbts(self->index, &primary_key, &primary_data);
     memset(&secondary_key, 0, sizeof(DBT));
     if (self->cursor == NULL) {

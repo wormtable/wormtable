@@ -323,12 +323,13 @@ class TestDatabaseInteger(TestDatabase):
             rb.commit_row()
             self.rows.append(tuple(row))
 
-    def populate_randomly(self, num_rows):
+    def populate_randomly(self):
         """
         Generates random values for the columns and inserts them
         into database. Store these as lists in the instance variable
         self.rows.
         """
+        num_rows = self.num_random_test_rows
         rb = self._row_buffer
         db = self._database
         cols = self._columns
@@ -446,7 +447,7 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
             self.assertEqual(r, self.rows[j])
     
     def test_random_int_retrieval(self):
-        self.populate_randomly(self.num_random_test_rows)
+        self.populate_randomly()
         self.open_reading()
         self.assertEqual(self._database.get_num_rows(), self.num_rows)
         for j in range(self.num_rows): 
@@ -474,12 +475,13 @@ class TestDatabaseFloat(TestDatabase):
         random.shuffle(columns)
         return columns
 
-    def populate_randomly(self, num_rows):
+    def populate_randomly(self):
         """
         Generates random values for the columns and inserts them
         into database. Store these as lists in the instance variable
         self.rows.
         """
+        num_rows = self.num_random_test_rows
         rb = self._row_buffer
         db = self._database
         cols = self._columns
@@ -506,7 +508,7 @@ class TestDatabaseFloatIntegrity(TestDatabaseFloat):
 
     def test_random_float_retrieval(self):
         cols = self._columns
-        self.populate_randomly(self.num_random_test_rows)
+        self.populate_randomly()
         self.open_reading()
         self.assertEqual(self._database.get_num_rows(), self.num_rows)
         for j in range(self.num_rows):
@@ -650,19 +652,19 @@ class TestIndexIntegrity(object):
         """
         Creates a bunch of indexes.
         """
-        num_rows = self.num_random_test_rows 
-        self.populate_randomly(num_rows)
+        self.populate_randomly()
         self.open_reading()
         cache_size = 64 * 1024
         self._indexes = [[], [], []]
         self._index_files = []
         # make the single column indexes
-        for c in self._columns:
+        for j in range(1, len(self._columns)):
             fd, index_file = tempfile.mkstemp("-index-test.db") 
-            index = _wormtable.Index(self._database, index_file.encode(), [c], 
+            index = _wormtable.Index(self._database, index_file.encode(), [j], 
                     cache_size)
             os.close(fd)
-            index.create()
+            index.open(WT_WRITE)
+            index.build()
             index.close()
             self._index_files.append(index_file)
             self._indexes[1].append(index)
@@ -679,7 +681,7 @@ class TestIndexIntegrity(object):
          for j in range(len(self._columns)):
             col = self._columns[j]
             index = self._indexes[1][j]
-            index.open()
+            index.open(WT_READ)
             row_iter = _wormtable.RowIterator(self._database, [col], index)
             l = [row[0] for row in row_iter]
             l2 = sorted(l)
@@ -695,15 +697,15 @@ class TestIndexIntegrity(object):
 
     def test_column_min_max(self):
         self.create_indexes()
-        for j in range(len(self._columns)):
+        for j in range(1, len(self._columns)):
             col = self._columns[j]
             index = self._indexes[1][j]
-            index.open()
+            index.open(WT_READ)
             original = [row[j] for row in self.rows] 
             s = random.sample(original, 2)
             min_val = min(s),
             max_val = max(s),
-            row_iter = _wormtable.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(index, [j])
             row_iter.set_min(max_val)
             row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
@@ -712,7 +714,7 @@ class TestIndexIntegrity(object):
                 print(min_val, max_val)
             self.assertEqual(len(l), 0)
             # Check if the correct lists are returned. 
-            row_iter = _wormtable.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(index, [j])
             row_iter.set_min(min_val)
             row_iter.set_max(max_val)
             l = [row[0] for row in row_iter]
@@ -730,7 +732,7 @@ class TestIndexIntegrity(object):
 
     def test_two_column_sort_order(self):
         num_rows = self.num_random_test_rows 
-        self.populate_randomly(num_rows)
+        self.populate_randomly()
         self.open_reading()
         cache_size = 64 * 1024
         indexes = []
@@ -761,7 +763,7 @@ class TestIndexIntegrity(object):
                 original_values.append([(row[j], row[k]) for row in self.rows])
 
         for index, original in zip(indexes, original_values):
-            index.open()
+            index.open(WT_READ)
             row_iter = _wormtable.RowIterator(self._database, index.columns, index)
             l = [row for row in row_iter]
             l2 = sorted(original) 
@@ -789,7 +791,7 @@ class TestIndexIntegrity(object):
                     distinct_values[v] = 0
                 distinct_values[v] += 1
             index = self._indexes[1][k]
-            index.open()
+            index.open(WT_READ)
             u = sorted(distinct_values.keys())
             dvi = _wormtable.DistinctValueIterator(self._database, index)
             v = list(t[0] for t in dvi)
@@ -1078,7 +1080,6 @@ class TestIndexInitialisation(TestIndex):
         self.assertRaises(TypeError, g, f, t, None, 0) 
         self.assertRaises(TypeError, g, None, t, [], 0) 
         # Check out of bounds columns
-        self.assertRaises(ValueError, g, t, f, [0], 0) 
         self.assertRaises(ValueError, g, t, f, [-1], 0) 
         self.assertRaises(ValueError, g, t, f, [2], 0) 
         self.assertRaises(ValueError, g, t, f, [2**32], 0) 
@@ -1195,16 +1196,71 @@ class TestIndexInitialisation(TestIndex):
         self._table.open(WT_READ)
         for j in range(n):
             r = self._table.get_row(j)
+        g = _wormtable.DistinctValueIterator
+        self.assertRaises(TypeError, g) 
+        self.assertRaises(TypeError, g, None) 
+        self.assertRaises(TypeError, g, self._table) 
         index = _wormtable.Index(self._table, f, [1],  8192)
+        self.assertRaises(WormtableError, g, index) 
         index.open(WT_WRITE)
+        self.assertRaises(WormtableError, g, index) 
         index.build()
+        self.assertRaises(WormtableError, g, index) 
         index.close()
+        self.assertRaises(WormtableError, g, index) 
         index.open(WT_READ)
         dvi = _wormtable.DistinctValueIterator(index)
+        index.close()
+        self.assertRaises(WormtableError, dvi.__next__) 
+        index.open(WT_READ)
         c = 0
         for v in dvi:
+            self.assertEqual(c, v[0])
+            self.assertEqual(index.get_num_rows(v), 1)
             c += 1
-            print(v)
-            # TODO this current causes a segfault
-            #print(v, index.count(v))
         self.assertEqual(c, n)
+        dvi.__next__()
+        del(dvi)
+       
+    def test_row_iterator(self):
+        f = self._index_db_file.encode()
+        self._table.open(WT_WRITE)
+        n = 10
+        for j in range(n):
+            self._table.insert_elements(1, j)
+            self._table.commit_row()
+        self._table.close()
+        self._table.open(WT_READ)
+        g = _wormtable.RowIterator
+        index = _wormtable.Index(self._table, f, [1],  8192)
+        self.assertRaises(TypeError, g) 
+        self.assertRaises(TypeError, g, None) 
+        self.assertRaises(TypeError, g, self._table) 
+        self.assertRaises(TypeError, g, index, None) 
+        self.assertRaises(TypeError, g, None, index) 
+        self.assertRaises(TypeError, g, index, "") 
+        self.assertRaises(WormtableError, g, index, [0, 1]) 
+        index.open(WT_WRITE)
+        self.assertRaises(WormtableError, g, index, [0, 1]) 
+        index.build()
+        self.assertRaises(WormtableError, g, index, [0, 1]) 
+        index.close()
+        self.assertRaises(WormtableError, g, index, [0, 1]) 
+        index.open(WT_READ)
+        self.assertRaises(ValueError, g, index, []) 
+        self.assertRaises(ValueError, g, index, [-1]) 
+        self.assertRaises(ValueError, g, index, [0, 1, -1]) 
+        self.assertRaises(ValueError, g, index, [2**32, 0, 1]) 
+        ri = _wormtable.RowIterator(index, [0, 1])
+        index.close()
+        self.assertRaises(WormtableError, ri.__next__) 
+        index.open(WT_READ)
+        c = 0
+        for v in ri:
+            self.assertEqual((c, c), v)
+            c += 1
+        self.assertEqual(c, n)
+        ri.__next__()
+        del(ri)
+       
+
