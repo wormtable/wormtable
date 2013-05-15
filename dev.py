@@ -69,9 +69,7 @@ def dump_table(homedir):
     print("num rows = ", table.get_num_rows())
     for j in range(table.get_num_rows()):
         row = table.get_row(j)
-        print("row", j)
-        for k, v in row.items():
-            print("\t", k, "->", v)
+        print("row", j, ":", row)
     table.close()
 
 def allele_frequency_example(homedir):

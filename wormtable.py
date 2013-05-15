@@ -13,15 +13,19 @@ from xml.dom import minidom
 import _wormtable
 
 __version__ = '0.0.1-dev'
-SCHEMA_VERSION = "0.4-dev"
+SCHEMA_VERSION = "0.1-dev"
 INDEX_METADATA_VERSION = "0.1-dev"
 
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
 WT_VARIABLE = _wormtable.NUM_ELEMENTS_VARIABLE 
+WT_UINT   = _wormtable.ELEMENT_TYPE_UINT   
 WT_INT   = _wormtable.ELEMENT_TYPE_INT   
 WT_FLOAT = _wormtable.ELEMENT_TYPE_FLOAT 
 WT_CHAR  = _wormtable.ELEMENT_TYPE_CHAR 
+
+WT_READ = _wormtable.WT_READ
+WT_WRITE = _wormtable.WT_WRITE
 
 
 class Schema(object):
@@ -30,10 +34,10 @@ class Schema(object):
     Column objects.
     """
     ELEMENT_TYPE_STRING_MAP = {
-        _wormtable.ELEMENT_TYPE_INT: "int",
-        _wormtable.ELEMENT_TYPE_CHAR: "char",
-        _wormtable.ELEMENT_TYPE_FLOAT: "float",
-        _wormtable.ELEMENT_TYPE_ENUM: "enum"
+        WT_INT:"int",
+        WT_UINT:"uint",
+        WT_CHAR: "char",
+        WT_FLOAT: "float",
     }
 
     def __init__(self, columns):
@@ -63,9 +67,6 @@ class Schema(object):
         for c in self.__columns:
             t = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
             print(s.format(c.name, t, c.element_size, c.num_elements))
-            if c.element_type == _wormtable.ELEMENT_TYPE_ENUM:
-                for k, v in c.enum_values.items():
-                    print("\t\t", k, "\t", v)
 
     def write_xml(self, filename):
         """
@@ -86,13 +87,6 @@ class Schema(object):
             }
             element = ElementTree.Element("column", d)
             columns.append(element)
-            if c.element_type == _wormtable.ELEMENT_TYPE_ENUM:
-                enumeration_values = ElementTree.Element("enum_values")
-                element.append(enumeration_values)
-                for k, v in c.enum_values.items():
-                    d = {"key": str(k), "value": str(v)}
-                    value = ElementTree.Element("enum_value", d)
-                    enumeration_values.append(value)
 
         tree = ElementTree.ElementTree(root)
         raw_xml = ElementTree.tostring(root, 'utf-8')
@@ -135,16 +129,6 @@ class Schema(object):
             col = _wormtable.Column(name, description, element_type, element_size,
                     num_elements)
             columns.append(col)
-            if col.element_type == _wormtable.ELEMENT_TYPE_ENUM:
-                d = {}    
-                xml_enum_values = xmlcol.find("enum_values")
-                for xmlvalue in xml_enum_values.getchildren():
-                    if xmlvalue.tag != "enum_value":
-                        raise ValueError("invalid xml")
-                    k = xmlvalue.get("key")
-                    v = xmlvalue.get("value")
-                    d[k] = int(v)
-                col.enum_values = d 
         schema = theclass(columns)
         return schema
 
@@ -180,19 +164,16 @@ class TableBuilder(object):
         """
         Opens the database and gets ready for writing row.
         """
-        self._database = _wormtable.BerkeleyDatabase(self._build_db_name.encode(), 
+        self._database = _wormtable.Table(self._build_db_name.encode(), 
             self._schema.get_columns(), self._cache_size)
-        self._database.create()
-        max_rows = self._buffer_size // 256 
-        self._row_buffer = _wormtable.WriteBuffer(self._database, self._buffer_size, 
-                max_rows)
+        self._database.open(WT_WRITE)
+        self._row_buffer = self._database
 
     def close_database(self):
         """
         Closes the underlying database and moves the db file to its
         permenent name. 
         """
-        self._row_buffer.flush()
         self._database.close()
 
     def finalise(self):
@@ -214,10 +195,10 @@ class Table(object):
         self._schema_file = os.path.join(homedir, "schema.xml") 
         self._schema = Schema.read_xml(self._schema_file)
         self._cache_size = cache_size 
-        self._database = _wormtable.BerkeleyDatabase(
+        self._database = _wormtable.Table(
                 self._primary_db_file.encode(), 
                 self._schema.get_columns(), self._cache_size)
-        self._database.open()
+        self._database.open(WT_READ)
 
     
     def get_database(self):
@@ -279,13 +260,16 @@ class Index(object):
 
     def build(self, progress_callback=None, callback_interval=100):
         build_filename = self._db_filename + b".build" 
+        cols = self._table.get_schema().get_columns()
+        col_positions = [cols.index(c) for c in self._columns]
         self._index = _wormtable.Index(self._table.get_database(), build_filename, 
-                self._columns, self._cache_size)
+                col_positions, self._cache_size)
         self._index.set_bin_widths(self._bin_widths)
+        self._index.open(WT_WRITE)
         if progress_callback is not None:
-            self._index.create(progress_callback, callback_interval)
+            self._index.build(progress_callback, callback_interval)
         else:
-            self._index.create()
+            self._index.build()
         self._index.close()
         # Create the metadata file and move the build file to its final name
         self._write_metadata_file()
@@ -299,10 +283,13 @@ class Index(object):
             s += " run 'wtadmin add {0} {1}'".format(homedir, cols)
             raise IOError(s)
         self._read_metadata_file()
+        cols = self._table.get_schema().get_columns()
+        col_positions = [cols.index(c) for c in self._columns]
+        self.__num_columns = len(col_positions)
         self._index = _wormtable.Index(self._table.get_database(), 
-                self._db_filename, self._columns, self._cache_size)
+                self._db_filename, col_positions, self._cache_size)
         self._index.set_bin_widths(self._bin_widths)
-        self._index.open()
+        self._index.open(WT_READ)
     
     def close(self):
         self._index.close()
@@ -310,9 +297,9 @@ class Index(object):
     def get_rows(self, columns, min_val=None, max_val=None):
         s = self._table.get_schema()
         cols = [s.get_column(c.encode()) for c in columns]
-        row_iter = _wormtable.RowIterator(self._table.get_database(), cols, 
-                self._index)
-        n = len(self._index.columns)
+        col_positions = [s.get_columns().index(c) for c in cols]
+        row_iter = _wormtable.RowIterator(self._index, col_positions)
+        n = len(cols)
         if min_val is not None:
             v = min_val
             if n == 1:
@@ -332,7 +319,7 @@ class Index(object):
         Returns the number of rows in this index with value equal to v.
         """
         t = v
-        if len(self._index.columns) == 1:
+        if self.__num_columns == 1:
             t = (v,) 
         return self._index.get_num_rows(t) 
 
@@ -341,9 +328,8 @@ class Index(object):
         """
         Returns the distinct values in this index.
         """
-        dvi = _wormtable.DistinctValueIterator(self._table.get_database(), 
-                self._index)
-        if len(self._columns) == 1:
+        dvi = _wormtable.DistinctValueIterator(self._index)
+        if self.__num_columns == 1:
             for v in dvi:
                 yield v[0]
         else:

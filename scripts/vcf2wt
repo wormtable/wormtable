@@ -181,6 +181,7 @@ class VCFSchemaGenerator(object):
         # TODO These sizes have been changed until some bugs are fixed - they 
         # need to be gone through again.
         columns = [
+            _wormtable.Column(b"row_id", b"description", wt.WT_UINT, 4, 1),
             _wormtable.Column(CHROM, b"Chromosome", enum_type, 1, variable),
             _wormtable.Column(POS, b"position", int_type, 8, 1),
             _wormtable.Column(ID, b"ID", char_type, 1, variable),  
@@ -295,7 +296,7 @@ class VCFTableBuilder(wt.TableBuilder):
                 self._fixed_columns.append((all_columns[name], j))
         self._info_columns = {}
         self._genotype_columns = [{} for g in genotypes]
-        for c in self._schema.get_columns():
+        for c in self._schema.get_columns()[1:]:
             if b"_" in c.name:
                 split = c.name.split(b"_")
                 if split[0] == INFO:
@@ -313,18 +314,20 @@ class VCFTableBuilder(wt.TableBuilder):
         Insert the elements into the table after converting to the correct
         types.
         """
+        #FIXME this is temporary, obviously!
+        col_position = self._schema.get_columns().index(col)
         rb = self._row_buffer
         if col.element_type == wt.WT_CHAR:
-            rb.insert_elements(col, encoded)
+            rb.insert_elements(col_position, encoded)
         else:
             f = int
             if col.element_type == wt.WT_FLOAT:
                 f = float
             if col.num_elements == 1:
-                rb.insert_elements(col, f(encoded))
+                rb.insert_elements(col_position, f(encoded))
             else:
                 l = [f(s) for s in encoded.split(b",")]
-                rb.insert_elements(col, l)
+                rb.insert_elements(col_position, l)
                     
                 
 
@@ -351,8 +354,10 @@ class VCFTableBuilder(wt.TableBuilder):
                     if len(tokens) == 2:
                         self._insert_elements(col, tokens[1])
                     else:
+                        #FIXME this is temporary, obviously!
+                        col_position = self._schema.get_columns().index(col)
                         # This is a Flag column.
-                        self._row_buffer.insert_elements(col, [1])
+                        self._row_buffer.insert_elements(col_position, [1])
             # Process the genotype columns. 
             j = 0
             fmt = l[8].split(b":")
