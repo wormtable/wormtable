@@ -797,12 +797,16 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
         num_elements = PySequence_Fast_GET_SIZE(seq);
         if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
             if (num_elements > MAX_NUM_ELEMENTS) {
-                PyErr_SetString(PyExc_ValueError, "too many elements");
+                PyErr_Format(PyExc_ValueError, 
+                        "too many elements for column '%s'",
+                        PyBytes_AsString(self->name));
                 goto out;
             }
         } else {    
             if (num_elements != self->num_elements) {
-                PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+                PyErr_Format(PyExc_ValueError, 
+                        "incorrect number of elements for column '%s'",
+                        PyBytes_AsString(self->name));
                 goto out;
             }
         }
@@ -813,7 +817,9 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
     }
     if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
         if (num_elements != self->num_elements) {
-            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+            PyErr_Format(PyExc_ValueError, 
+                    "incorrect number of elements for column '%s'",
+                    PyBytes_AsString(self->name));
             goto out;
         }
     }

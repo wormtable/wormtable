@@ -655,7 +655,7 @@ class TestIndexIntegrity(object):
         self.populate_randomly()
         self.open_reading()
         cache_size = 64 * 1024
-        self._indexes = [[], [], []]
+        self._indexes = [[], [None], []]
         self._index_files = []
         # make the single column indexes
         for j in range(1, len(self._columns)):
@@ -678,11 +678,11 @@ class TestIndexIntegrity(object):
     
     def test_column_sort_order(self):
          self.create_indexes()
-         for j in range(len(self._columns)):
+         for j in range(1, len(self._columns)):
             col = self._columns[j]
             index = self._indexes[1][j]
             index.open(WT_READ)
-            row_iter = _wormtable.RowIterator(self._database, [col], index)
+            row_iter = _wormtable.RowIterator(index, [j])
             l = [row[0] for row in row_iter]
             l2 = sorted(l)
             self.assertEqual(l, l2)
@@ -709,9 +709,6 @@ class TestIndexIntegrity(object):
             row_iter.set_min(max_val)
             row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
-            if len(l) != 0:
-                print("TODO: fix this bug!")
-                print(min_val, max_val)
             self.assertEqual(len(l), 0)
             # Check if the correct lists are returned. 
             row_iter = _wormtable.RowIterator(index, [j])
@@ -738,8 +735,9 @@ class TestIndexIntegrity(object):
         indexes = []
         index_files = []
         original_values = []
+        col_positions = []
         n = len(self._columns)
-        pairs = [(j, k) for j in range(n) for k in range(j + 1, n)]
+        pairs = [[j, k] for j in range(1, n) for k in range(j + 1, n)]
         max_pairs = 100
         if len(pairs) > max_pairs:
             pairs = random.sample(pairs, max_pairs)
@@ -751,24 +749,28 @@ class TestIndexIntegrity(object):
             # verified and the correct sorting procedure used here.
             if c1.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE and \
                     c2.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE:
-            
                 fd, index_file = tempfile.mkstemp("-index-test.db") 
-                index = _wormtable.Index(self._database, index_file.encode(), [c1, c2], 
+                index = _wormtable.Index(self._database, index_file.encode(), [j, k], 
                         cache_size)
                 os.close(fd)
-                index.create()
+                index.open(WT_WRITE)
+                index.build()
                 index.close()
                 index_files.append(index_file)
                 indexes.append(index)
+                col_positions.append([j, k])
                 original_values.append([(row[j], row[k]) for row in self.rows])
 
-        for index, original in zip(indexes, original_values):
+        for index, original, cols in zip(indexes, original_values, col_positions):
             index.open(WT_READ)
-            row_iter = _wormtable.RowIterator(self._database, index.columns, index)
+            columns = [self._columns[j] for j in cols]
+            c1 = columns[0]
+            c2 = columns[1]
+            row_iter = _wormtable.RowIterator(index, cols)
             l = [row for row in row_iter]
             l2 = sorted(original) 
             o = [col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4
-                for col in index.columns]
+                for col in columns]
             if not any(o):
                 self.assertEqual(l, l2)
             index.close()
@@ -781,26 +783,24 @@ class TestIndexIntegrity(object):
         Test if the distinct values function works correctly on an index.
         """
         self.create_indexes()
-        k = 0
-        for c in self._columns:
+        for k in range(1, len(self._columns)):
             distinct_values = {}
             for j in range(self._database.get_num_rows()):
                 r = self._database.get_row(j)
-                v = r[c.name]
+                v = r[k]
                 if v not in distinct_values:
                     distinct_values[v] = 0
                 distinct_values[v] += 1
             index = self._indexes[1][k]
             index.open(WT_READ)
             u = sorted(distinct_values.keys())
-            dvi = _wormtable.DistinctValueIterator(self._database, index)
+            dvi = _wormtable.DistinctValueIterator(index)
             v = list(t[0] for t in dvi)
             self.assertEqual(u, v)
             for key, count in distinct_values.items():
                 nr = index.get_num_rows((key,)) 
                 self.assertEqual(count, nr)
             index.close()
-            k += 1
 
         self.destroy_indexes()
         
@@ -811,7 +811,7 @@ class TestIndexIntegrity(object):
         when passed different types of arguments.
         """
         self.create_indexes()
-        index = self._indexes[1][0] 
+        index = self._indexes[1][1] 
         self.assertRaises(TypeError, index.open, "string") 
         self.assertRaises(TypeError, index.get_num_rows) 
         self.assertRaises(TypeError, index.get_num_rows, "string") 
@@ -825,7 +825,6 @@ class TestIndexIntegrity(object):
         self.assertRaises(TypeError, index.set_bin_widths, "str") 
         self.assertRaises(TypeError, index.set_bin_widths, b"str") 
         self.assertRaises(TypeError, index.set_bin_widths, [b"str"]) 
-
         self.destroy_indexes()
         
 
@@ -855,14 +854,15 @@ class TestMissingValues(object):
         self.open_reading()
         for j in range(self.num_random_test_rows):
             r = self._database.get_row(j)
-            for c in self._columns:
+            for k in range(1, len(self._columns)):
+                c = self._columns[k]
                 if c.num_elements == _wormtable.NUM_ELEMENTS_VARIABLE:
-                    self.assertEqual(r[c.name], tuple())
+                    self.assertEqual(r[k], tuple())
                 elif c.num_elements < 2:
-                    self.assertEqual(r[c.name], None)
+                    self.assertEqual(r[k], None)
                 else:
                     v = [None for j in range(c.num_elements)]
-                    self.assertEqual(tuple(v), r[c.name])
+                    self.assertEqual(tuple(v), r[k])
 
 
 class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
@@ -878,8 +878,8 @@ class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
         self._row_buffer.commit_row()
         self.open_reading()
         r = self._database.get_row(0)
-        for c in self._columns:
-            self.assertEqual(b"", r[c.name])
+        for k in range(1, len(self._columns)):
+            self.assertEqual(b"", r[k])
 
 class TestTable(unittest.TestCase):
     """
