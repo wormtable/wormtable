@@ -88,7 +88,7 @@ def random_string(n):
     """
     Returns a random string of length n.
     """
-    s = ''.join(random.choice(string.printable) for x in range(n)) 
+    s = ''.join(random.choice(string.ascii_letters) for x in range(n)) 
     return s
 
 class TestDatabase(unittest.TestCase):
@@ -844,8 +844,94 @@ class TestDatabaseCharIndexIntegrity(TestDatabaseChar, TestIndexIntegrity):
     Test the integrity of char indexes.
     """
 
-  
+ 
+class TestMultiColumnIndex(object):
+    """
+    Tests the integrity of multi column indexes. Concrete test should subclass 
+    this and one of the Test classes above to get an implementation of populate_randomly.
+    """
+    def create_indexes(self):
+        """
+        Creates a bunch of indexes.
+        """
+        self.populate_randomly()
+        self.open_reading()
+        self._indexes = {}  
+        self._index_files = []
+        # generate n indexes each with a random choice of 1,...,k columns.
+        v = []
+        # Variable length columns sort differently so we leave them out.
+        # TODO fix this!
+        for j in range(1, len(self._columns)):
+            c = self._columns[j]
+            if c.num_elements != _wormtable.NUM_ELEMENTS_VARIABLE:
+                v.append(j)
+        max_columns = 5
+        max_indexes = 10 
+        for j in range(2, max_columns):
+            for k in range(max_indexes):
+                cols = random.sample(v, j)
+                self._indexes[tuple(cols)] = None
 
+        for cols in self._indexes.keys():
+            fd, index_file = tempfile.mkstemp("-index-test.db") 
+            index = _wormtable.Index(self._database, index_file.encode(), 
+                    list(cols), 0)
+            os.close(fd)
+            index.open(WT_WRITE)
+            index.build()
+            index.close()
+            index.open(WT_READ)
+            self._index_files.append(index_file)
+            self._indexes[cols] = index
+    
+    def destroy_indexes(self):
+        """
+        Delete the index files.
+        """
+        for f in self._index_files:
+            os.unlink(f)
+    
+    def test_min_max(self):
+        self.create_indexes()
+        for cols, index in self._indexes.items():
+            rows = [tuple(row[j] for j in cols) for row in self.rows]
+            self.assertEqual(min(rows), index.get_min(tuple()))
+            self.assertEqual(max(rows), index.get_max(tuple()))
+            # pick a row at random with a given prefix and find the min 
+            # and max with this prefix
+            prefix_row = random.choice(rows)
+            #print("row = ", prefix_row)
+            ri = _wormtable.RowIterator(index, list(cols))
+            l1 = [r for r in ri]
+            l2 = sorted(rows)
+            self.assertEqual(l1, l2)
+            for k in range(1, len(cols) + 1):
+                prefix = prefix_row[:k]
+                m = index.get_min(prefix)
+                # find the first partial match in the sorted list
+                j = 0
+                while l2[j][:k] < prefix:
+                    j += 1
+                self.assertEqual(l2[j], m)
+                j = len(l2) - 1 
+                while l2[j][:k] > prefix:
+                    j -= 1
+                self.assertEqual(l2[j], index.get_max(prefix))
+        self.destroy_indexes()
+
+class TestDatabaseIntegerMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIndex):
+    """
+    Test multicolumn integer indexes 
+    """
+class TestDatabaseFloatMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIndex):
+    """
+    Test multicolumn integer indexes 
+    """
+class TestDatabaseCharMultiColumnIndex(TestDatabaseChar, TestMultiColumnIndex):
+    """
+    Test multicolumn integer indexes 
+    """
 
 class TestMissingValues(object):
     def test_missing_values(self):

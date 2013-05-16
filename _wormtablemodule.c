@@ -27,15 +27,10 @@ static PyObject *WormtableError;
  * 1) We need much better error reporting for the parsers. These should have a
  * top level variadic function that takes arguments and set the Python exception
  * appropriately.
- * 2) It seems we have a memory leak somewhere. If we run the test cases in a 
- * loop the memory usage keeps increasing. We need to track this down.
  * 3) The numerical types need a little cleaning up and thought put into. We
  * now have single and double floating point sizes and should export constants
  * to tell what they are. There should also be some constants telling range
  * of integers and so on.
- * 4) Integer limits are not correct and need to be fixed, and then tested 
- * properly.
- * 5) Insert check for duplicate column names and columns: this is a nasty bug!
  */
 
 typedef struct Column_t {
@@ -2671,7 +2666,7 @@ Index_get_max(Index* self, PyObject *args)
         }
     } else {
         /* find the last non-zero value in the key buffer and increment it */
-        j = primary_key.size - 1;
+        j = secondary_key.size - 1;
         while (j > 0 && key_buffer[j] == 0) {
             j--;
         }
