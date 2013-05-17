@@ -388,7 +388,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
         index = self._columns.index(column)
         def f():
             rb.insert_elements(index, v)
-        self.assertRaises(OverflowError, f)
+        self.assertRaises((OverflowError, TypeError), f)
 
     def insert_good_value(self, column, value):
         rb = self._row_buffer
