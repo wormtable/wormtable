@@ -3151,7 +3151,7 @@ RowIterator_next(RowIterator *self)
     PyObject *t = NULL;
     PyObject *value;
     Column *col;
-    int db_ret, j;
+    int db_ret, j, cmp;
     DB *db;
     DBT primary_key, primary_data, secondary_key;
     uint32_t flags, cmp_size;
@@ -3183,10 +3183,14 @@ RowIterator_next(RowIterator *self)
         if (self->max_key_size > 0) {
             cmp_size = self->max_key_size;
             if (secondary_key.size < cmp_size) {
-                cmp_size = self->max_key_size;
+                cmp_size = secondary_key.size;
             }
-            max_exceeded = memcmp(self->max_key, secondary_key.data, 
-                    cmp_size) <= 0;
+            cmp = memcmp(self->max_key, secondary_key.data, cmp_size);
+            max_exceeded = cmp <= 0;
+            if (secondary_key.size < self->max_key_size) {
+                max_exceeded = cmp < 0;
+            }
+            
         }
         if (!max_exceeded) { 
             t = PyTuple_New(self->num_read_columns);

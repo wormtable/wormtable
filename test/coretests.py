@@ -133,6 +133,23 @@ class TestDatabase(unittest.TestCase):
         os.unlink(self._db_file)
 
 
+    def assertRowListsEqual(self, l1, l2):
+        """
+        Verifies that the two specified lists of rows are equal.
+        """
+        self.assertEqual(l1, l2)
+
+    def verify_table(self):
+        """
+        Verifies that the table is equal to the rows stored locally.
+        """
+        self.assertEqual(self._database.get_num_rows(), len(self.rows))
+        for j in range(self._database.get_num_rows()):
+            rd = self._database.get_row(j)
+            rl = self.rows[j]
+            self.assertEqual(rd, rl)
+
+
 class TestEmptyDatabase(TestDatabase):
     """
     Tests to see if an empty database is correctly handled.
@@ -697,6 +714,7 @@ class TestIndexIntegrity(object):
 
     def test_column_min_max(self):
         self.create_indexes()
+        #self.verify_table()
         for j in range(1, len(self._columns)):
             col = self._columns[j]
             index = self._indexes[1][j]
@@ -716,10 +734,14 @@ class TestIndexIntegrity(object):
             row_iter.set_max(max_val)
             l = [row[0] for row in row_iter]
             l2 = sorted([v for v in original if min_val[0] <= v and v < max_val[0]])
+            ri2 = _wormtable.RowIterator(index, [j])
+            l3 = [row[0] for row in ri2 if min_val[0] <= row[0] and row[0] < max_val[0]]
             # TODO: push the comparison up into the superclass
             if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
-                if l != l2:
-                    self.assertEqual(l, l2)
+                self.assertRowListsEqual(l3, l2)
+                self.assertRowListsEqual(l, l2)
+                self.assertEqual(l, l3)
+                self.assertEqual(l2, l3)
                 min_value = index.get_min(tuple()) 
                 self.assertEqual(min(original), min_value[0]) 
                 max_value = index.get_max(tuple()) 
@@ -1297,7 +1319,10 @@ class TestIndexInitialisation(TestIndex):
         index.open(WT_READ)
         dvi = _wormtable.DistinctValueIterator(index)
         index.close()
-        self.assertRaises(WormtableError, dvi.__next__) 
+        def f():
+            for x in dvi:
+                pass
+        self.assertRaises(WormtableError, f) 
         index.open(WT_READ)
         c = 0
         for v in dvi:
@@ -1305,9 +1330,8 @@ class TestIndexInitialisation(TestIndex):
             self.assertEqual(index.get_num_rows(v), 1)
             c += 1
         self.assertEqual(c, n)
-        dvi.__next__()
-        del(dvi)
-       
+        f()
+
     def test_row_iterator(self):
         f = self._index_db_file.encode()
         self._table.open(WT_WRITE)
@@ -1339,14 +1363,15 @@ class TestIndexInitialisation(TestIndex):
         self.assertRaises(ValueError, g, index, [2**32, 0, 1]) 
         ri = _wormtable.RowIterator(index, [0, 1])
         index.close()
-        self.assertRaises(WormtableError, ri.__next__) 
+        def f():
+            for x in ri:
+                pass
+        self.assertRaises(WormtableError, f) 
         index.open(WT_READ)
         c = 0
         for v in ri:
             self.assertEqual((c, c), v)
             c += 1
         self.assertEqual(c, n)
-        ri.__next__()
-        del(ri)
-       
+        f() 
 
