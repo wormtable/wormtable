@@ -464,5 +464,84 @@ def parse_cache_size(s):
     n = int(value)
     return n * multiplier
 
+#######################################################################
 
+## New implementation.
+
+#######################################################################
+
+class Column(object):
+    """
+    Class representing a column in a table.
+    """
+
+class NewTable(object):
+    """
+    The table object.
+    """ 
+    def __init__(self, homedir, cache_size):
+        self.__homedir = homedir
+        self.__cache_size = cache_size
+        self.__primary_db_file = os.path.join(homedir, "primary.db")
+        self.__schema_file = os.path.join(homedir, "schema.xml") 
+        # this is temporary - we'll delegate most of this to the 
+        # column object.
+        self.__schema = Schema.read_xml(self.__schema_file)
+        self.__table = _wormtable.Table( self.__primary_db_file.encode(), 
+                self.__schema.get_columns(), self.__cache_size)
+
+    def get_homedir(self):
+        """
+        Returns the home directory of this table.
+        """ 
+        return self.__homedir
+
+    def get_cache_size(self):
+        """
+        Returns the cache size of this table in bytes.
+        """
+        return self.__cache_size
+
+    def open(self, mode):
+        """
+        Open the table in the specified mode.
+        """
+        modes = {'r': _wormtable.WT_READ, 'w': _wormtable.WT_WRITE}
+        if mode not in modes:
+            raise ValueError("mode string must be one of 'r' or 'w'")
+        self.__table.open(modes[mode])
+
+       
+    def close(self):
+        """
+        Closes the table, releasing cache and other resources. 
+        """
+        self.__table.close()
+
+    def __len__(self):
+        """
+        Implement the len(t) function.
+        """
+        # TODO this should be cached - verify what happens on calling 
+        # in write mode.
+        return self.__table.get_num_rows()
+    
+    def __getitem__(self, key):
+        """
+        Implements the t[key] function.
+        """
+        ret = None
+        n = len(self)
+        if isinstance(key, slice):
+            ret = [self[j] for j in range(*key.indices(n))]
+        elif isinstance(key, int):
+            k = key
+            if k < 0:
+                k = n + k
+            if k >= n:
+                raise IndexError("table index out of range")
+            ret = self.__table.get_row(k)    
+        else:
+            raise TypeError("table indices must be integers")
+        return ret
 

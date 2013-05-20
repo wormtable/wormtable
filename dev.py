@@ -147,6 +147,21 @@ def min_max_example(homedir):
     table.close()
 
 
+def new_api(homedir):
+    """
+    Code to exercise the new API.
+    """
+    t = wt.NewTable(homedir, 0)
+    t.open("r")
+    print(len(t))
+    n = 0
+    for r in t:
+        n += 1
+    print(n, len(t))
+    print(t[-1] == t[n - 1])
+    print([r[2] for r in t[0:10]])
+    t.close()
+
 
 def main():
     homedir = sys.argv[1]
@@ -162,7 +177,9 @@ def main():
     #read_position_index(homedir, b"1", 3220987)
     #read_filter_index(homedir)
     #allele_frequency_example(homedir)
-    min_max_example(homedir)
+    #min_max_example(homedir)
+    new_api(homedir)
+
 
 if __name__ == "__main__":
     main()
