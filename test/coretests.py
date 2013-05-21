@@ -367,7 +367,11 @@ class TestDatabaseInteger(TestDatabase):
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     row[k] = v
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 1:
+                    rb.insert_elements(k, row[k])
+                else:
+                    s = str(row[k]).strip("()")
+                    rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
 
@@ -517,7 +521,11 @@ class TestDatabaseFloat(TestDatabase):
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([random.uniform(min_v, max_v) for l in range(n)])
                     row[k] = v
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 0:
+                    rb.insert_elements(k, row[k]) 
+                else:
+                    s = str(row[k]).strip("()")
+                    rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
 
@@ -667,12 +675,12 @@ class TestIndexIntegrity(object):
     """
     def create_indexes(self):
         """
-        Creates a bunch of indexes.
+        Create some indexes.
         """
         self.populate_randomly()
         self.open_reading()
         cache_size = 64 * 1024
-        self._indexes = [[], [None], []]
+        self._indexes = [None]
         self._index_files = []
         # make the single column indexes
         for j in range(1, len(self._columns)):
@@ -684,7 +692,7 @@ class TestIndexIntegrity(object):
             index.build()
             index.close()
             self._index_files.append(index_file)
-            self._indexes[1].append(index)
+            self._indexes.append(index)
 
     def destroy_indexes(self):
         """
@@ -692,12 +700,13 @@ class TestIndexIntegrity(object):
         """
         for f in self._index_files:
             os.unlink(f)
+        self._indexes = None
     
     def test_column_sort_order(self):
          self.create_indexes()
          for j in range(1, len(self._columns)):
             col = self._columns[j]
-            index = self._indexes[1][j]
+            index = self._indexes[j]
             index.open(WT_READ)
             row_iter = _wormtable.RowIterator(index, [j])
             l = [row[0] for row in row_iter]
@@ -710,6 +719,7 @@ class TestIndexIntegrity(object):
             if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
                 self.assertEqual(l, l3)
             index.close()
+            del row_iter
          self.destroy_indexes()
 
     def test_column_min_max(self):
@@ -717,7 +727,7 @@ class TestIndexIntegrity(object):
         #self.verify_table()
         for j in range(1, len(self._columns)):
             col = self._columns[j]
-            index = self._indexes[1][j]
+            index = self._indexes[j]
             index.open(WT_READ)
             original = [row[j] for row in self.rows] 
             s = random.sample(original, 2)
@@ -813,7 +823,7 @@ class TestIndexIntegrity(object):
                 if v not in distinct_values:
                     distinct_values[v] = 0
                 distinct_values[v] += 1
-            index = self._indexes[1][k]
+            index = self._indexes[k]
             index.open(WT_READ)
             u = sorted(distinct_values.keys())
             dvi = _wormtable.DistinctValueIterator(index)
@@ -833,7 +843,7 @@ class TestIndexIntegrity(object):
         when passed different types of arguments.
         """
         self.create_indexes()
-        index = self._indexes[1][1] 
+        index = self._indexes[1] 
         self.assertRaises(TypeError, index.open, "string") 
         self.assertRaises(TypeError, index.get_num_rows) 
         self.assertRaises(TypeError, index.get_num_rows, "string") 
