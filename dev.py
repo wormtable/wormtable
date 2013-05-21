@@ -160,6 +160,20 @@ def new_api(homedir):
     print(n, len(t))
     print(t[-1] == t[n - 1])
     print([r[2] for r in t[0:10]])
+    print(t[1] in t)
+    print(t[-1] in t)
+    i = wt.NewIndex(t, "CHROM+FILTER")
+    i.open("r")
+    for k in i.keys():
+        print(k, "->", i[k] )
+    c = wt.Cursor(t, [0, 1, 2], i)
+    n = 0
+    for r in c:
+        n += 1
+    print(r, n)
+    print("len(i) = ", len(i))
+
+    i.close()
     t.close()
 
 
