@@ -39,6 +39,7 @@ typedef struct Column_t {
     PyObject *description;
     PyObject *min_element;
     PyObject *max_element;
+    int position;
     int element_type;
     int element_size;
     int num_elements;
@@ -1446,6 +1447,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     Py_ssize_t native_element_size;
     PyObject *name = NULL;
     PyObject *description = NULL;
+    self->position = -1;
     self->min_element = NULL;
     self->max_element = NULL;
     self->element_buffer = NULL;
@@ -1571,6 +1573,7 @@ out:
 static PyMemberDef Column_members[] = {
     {"name", T_OBJECT_EX, offsetof(Column, name), READONLY, "name"},
     {"description", T_OBJECT_EX, offsetof(Column, description), READONLY, "description"},
+    {"position", T_INT, offsetof(Column, position), READONLY, "position"},
     {"element_type", T_INT, offsetof(Column, element_type), READONLY, "element_type"},
     {"element_size", T_INT, offsetof(Column, element_size), READONLY, "element_size"},
     {"num_elements", T_INT, offsetof(Column, num_elements), READONLY, "num_elements"},
@@ -1748,6 +1751,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     self->fixed_region_size = 0;
     for (j = 0; j < self->num_columns; j++) {
         col = self->columns[j]; 
+        col->position = j;
         col->fixed_region_offset = self->fixed_region_size;
         self->fixed_region_size += Column_get_fixed_region_size(col);
         if (self->fixed_region_size > MAX_ROW_SIZE) {
