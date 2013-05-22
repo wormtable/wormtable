@@ -176,8 +176,6 @@ class VCFSchemaGenerator(object):
         # Get the fixed columns
         # TODO Add string constants at the top of the file for the descriptions 
         # of these columns.
-        # TODO These sizes have been changed until some bugs are fixed - they 
-        # need to be gone through again.
         columns = [
             _wormtable.Column(b"row_id", b"Row position", wt.WT_UINT, 5, 1),
             _wormtable.Column(CHROM, b"Chromosome", enum_type, 1, variable),
@@ -416,7 +414,13 @@ def main():
     schema.write_xml(input_schema)
     dbb = VCFTableBuilder(homedir, input_schema)
     dbb.set_cache_size(cache_size)
-    dbb.set_progress_update_rows(100)
+    # we want fluid progress for small files and to not
+    # waste time for large files.
+    progress_rows = 100
+    statinfo = os.stat(vcf_file)
+    if statinfo.st_size > 2**30:
+        progress_rows = 10000
+    dbb.set_progress_update_rows(progress_rows)
     dbb.build(vcf_file, options.progress)
     
 
