@@ -368,7 +368,7 @@ class VCFTableBuilder(wt.TableBuilder):
                     for k in range(len(fmt)):
                         if fmt[k] in genotype_columns[j]:
                             col = genotype_columns[j][fmt[k]]
-                            t.insert_encoded_elements(col.position, tokens[])
+                            t.insert_encoded_elements(col.position, tokens[k])
                             #self._insert_elements(col, tokens[k])
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
