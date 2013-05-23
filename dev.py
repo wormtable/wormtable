@@ -147,33 +147,78 @@ def min_max_example(homedir):
     table.close()
 
 
+def print_columns(table):
+    """
+    Print out the details of the columns in the table.
+    """
+    # get the max width for name
+    max_name_width = 0
+    for c in table.columns():
+        n = len(c.get_name()) 
+        if n > max_name_width:
+            max_name_width = n
+    for c in table.columns():
+        num_elements = c.get_num_elements()
+        s = "{0:>4}   {1:{name_width}} {2:6} {3:6} {4:>6}".format(c.get_position(),
+                c.get_name(), c.get_type_name(), c.get_element_size(), 
+                num_elements if num_elements > 0 else "V", 
+                name_width=max_name_width + 2)
+        print(s)
+
+    # TODO Check the get_columns here - move this to a test case!
+    for c in table.columns():
+        c2 = table.get_column(c.get_name())
+        c3 = table.get_column(c.get_position())
+        assert(c == c2)
+        assert(c == c3)
+
+def write_example():
+    """
+    An example of writing a new table from scratch.
+    """
+    t = wt.NewTable("test_tab")
+    t.add_uint_column("row_id")
+    t.add_uint_column("j")
+    t.add_int_column("k")
+    t.add_float_column("x", size=4)
+    t.add_char_column("s")
+    t.open("w")
+    for j in range(10):
+        s = "{0:4}".format(j) 
+        t.append([j, -j, j / 3, s.encode()]) 
+    t.close()
+    t.open("r")
+    for r in t:
+        print(r)
+    t.close()
+
 def new_api(homedir):
     """
     Code to exercise the new API.
     """
-    t = wt.NewTable(homedir, 0)
+    t = wt.NewTable(homedir)
     t.open("r")
+    print_columns(t)
     print(len(t))
     n = 0
     for r in t:
         n += 1
     print(n, len(t))
     print(t[-1] == t[n - 1])
-    print([r[2] for r in t[0:10]])
-    print(t[1] in t)
-    print(t[-1] in t)
-    i = wt.NewIndex(t, "CHROM+FILTER")
-    i.open("r")
-    for k in i.keys():
-        print(k, "->", i[k] )
-    c = wt.Cursor(t, [0, 1, 2], i)
-    n = 0
-    for r in c:
-        n += 1
-    print(r, n)
-    print("len(i) = ", len(i))
-
-    i.close()
+    #print([r[2] for r in t[0:10]])
+    #print(t[1] in t)
+    #print(t[-1] in t)
+    #i = wt.NewIndex(t, "CHROM+FILTER")
+    #i.open("r")
+    #for k in i.keys():
+    #    print(k, "->", i[k] )
+    #c = wt.Cursor(t, [0, 1, 2], i)
+    #n = 0
+    #for r in c:
+    #    n += 1
+    #print(r, n)
+    #print("len(i) = ", len(i))
+    #i.close()
     t.close()
 
 
@@ -192,8 +237,8 @@ def main():
     #read_filter_index(homedir)
     #allele_frequency_example(homedir)
     #min_max_example(homedir)
-    new_api(homedir)
-
+    #new_api(homedir)
+    write_example()
 
 if __name__ == "__main__":
     main()

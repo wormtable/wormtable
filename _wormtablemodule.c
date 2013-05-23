@@ -196,6 +196,11 @@ min_uint(u_int32_t k)
 
 /* 
  * Returns the missing value for a k byte float.
+ *
+ * TODO there is a problem here with missing value handling. 
+ * Assigning the missing value to a float column results in 
+ * 0.0 being returned back, whereas no assigning to the column
+ * returns None as expected. Fix.
  */
 static double 
 missing_float(u_int32_t k) 

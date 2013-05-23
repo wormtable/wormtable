@@ -476,22 +476,210 @@ class Column(object):
     """
     Class representing a column in a table.
     """
+    ELEMENT_TYPE_STRING_MAP = {
+        WT_INT: "int",
+        WT_UINT: "uint",
+        WT_CHAR: "char",
+        WT_FLOAT: "float",
+    }
 
+    def __init__(self, column):
+        self.__column = column 
+    
+    def TEMP_get_column(self):
+        return self.__column
+   
+    def get_position(self):
+        """
+        Returns the position of this column in the table.
+        """
+        return self.__column.position
+
+    def get_name(self):
+        """
+        Returns the name of this column.
+        """
+        return self.__column.name
+    
+    def get_type(self):
+        """
+        Returns the type code for this column.
+        """
+        return self.__column.element_type
+
+    def get_type_name(self):
+        """
+        Returns the string representation of the type of this Column.
+        """
+        return self.ELEMENT_TYPE_STRING_MAP[self.__column.element_type]
+    
+    def get_element_size(self):
+        """
+        Returns the size of each element in the column in bytes.
+        """
+        return self.__column.element_size
+
+    def get_num_elements(self):
+        """
+        Returns the number of elements in this column; 0 means the number 
+        of elements is variable.
+        """
+        return self.__column.num_elements
+   
+    def get_xml(self):
+        """
+        Returns an ElementTree.Element representing this Column.
+        """
+        c = self.__column
+        element_type = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
+        d = {
+            "name":c.name.decode(), 
+            "description":c.description.decode(),
+            "element_size":str(c.element_size),
+            "num_elements":str(c.num_elements),
+            "element_type":element_type
+        }
+        return ElementTree.Element("column", d)
+
+    # Factory methods for creating Columns
+
+    @classmethod 
+    def parse_xml(theclass, xmlcol):
+        """
+        Parses the specified XML column description and returns a new 
+        Column instance.
+        """
+        reverse = {}
+        for k, v in theclass.ELEMENT_TYPE_STRING_MAP.items():
+            reverse[v] = k
+        if xmlcol.tag != "column":
+            raise ValueError("invalid xml")
+        name = xmlcol.get("name").encode()
+        description = xmlcol.get("description").encode()
+        # TODO some error checking here.
+        element_size = int(xmlcol.get("element_size"))
+        num_elements = int(xmlcol.get("num_elements"))
+        element_type = reverse[xmlcol.get("element_type")]
+        col = _wormtable.Column(name, description, element_type, element_size,
+                num_elements)
+        return theclass(col) 
+    
 class NewTable(object):
     """
     The table object.
     """ 
-    def __init__(self, homedir, cache_size):
+    def __init__(self, homedir):
         self.__homedir = homedir
-        self.__cache_size = cache_size
+        self.__cache_size = DEFAULT_READ_CACHE_SIZE 
         self.__primary_db_file = os.path.join(homedir, "primary.db")
         self.__schema_file = os.path.join(homedir, "schema.xml") 
-        # this is temporary - we'll delegate most of this to the 
-        # column object.
-        self.__schema = Schema.read_xml(self.__schema_file)
-        self.__table = _wormtable.Table( self.__primary_db_file.encode(), 
-                self.__schema.get_columns(), self.__cache_size)
+        self.__columns = []
+        self.__column_name_map = {}
+        self.__num_rows = 0
+        self.__table = None
+   
+    def __read_schema(self):
+        """
+        Reads the schema from the schema_file and sets up the columns 
+        appropriately.
+        """
+        tree = ElementTree.parse(self.__schema_file)
+        root = tree.getroot()
+        if root.tag != "schema":
+            raise ValueError("invalid xml")
+        version = root.get("version")
+        if version is None:
+            raise ValueError("invalid xml")
+        if version != SCHEMA_VERSION:
+            raise ValueError("Unsupported schema version - rebuild required.")
+        xml_columns = root.find("columns")
+        for xmlcol in xml_columns.getchildren():
+            col = Column.parse_xml(xmlcol)
+            self.__column_name_map[col.get_name()]= len(self.__columns)
+            self.__columns.append(col)
+
+    def __write_schema(self):
+        """
+        Writes the schema in XML format to the schema_file.
+        """
+        d = {"version":SCHEMA_VERSION}
+        root = ElementTree.Element("schema", d)
+        columns = ElementTree.Element("columns")
+        root.append(columns)
+        for c in self.__columns:
+            columns.append(c.get_xml())
+        tree = ElementTree.ElementTree(root)
+        raw_xml = ElementTree.tostring(root, 'utf-8')
+        reparsed = minidom.parseString(raw_xml)
+        pretty = reparsed.toprettyxml(indent="  ")
+        with open(self.__schema_file, "w") as f:
+            f.write(pretty)
+   
+    # Helper methods for adding Columns of the various types.
+    def __add_column(self, column):
+        """
+        Adds a new Column to this wormtable. Can only be called before the table 
+        has been opened in write mode.
+        """
+        if self.__table is not None:
+            raise ValueError("Cannot add columns to open table")
+        self.__columns.append(column)
     
+    def add_uint_column(self, name, description="", size=2, num_elements=1):
+        """
+        Creates a new unsigned integer column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_UINT, size, num_elements)
+        self.__add_column(Column(col)) 
+
+    def add_int_column(self, name, description="", size=2, num_elements=1):
+        """
+        Creates a new integer column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_INT, size, num_elements)
+        self.__add_column(Column(col)) 
+    
+    def add_float_column(self, name, description="", size=4, num_elements=1):
+        """
+        Creates a new float column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements. Only 4 and 
+        8 byte floats are supported by wormtable; these correspond to the 
+        usual float and double types.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_FLOAT, size, num_elements)
+        self.__add_column(Column(col)) 
+
+    def add_char_column(self, name, description="", num_elements=0):
+        """
+        Creates a new character column with the specified name, description 
+        and number of elements. If num_elements=0 then the column can hold 
+        variable length strings; otherwise, it can contain strings of a fixed 
+        length only.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_CHAR, 1, num_elements)
+        self.__add_column(Column(col)) 
+
+    # Methods for accessing the columns
+    def columns(self):
+        """
+        Returns an iterator over the list of columns.
+        """
+        for c in self.__columns:
+            yield c
+
     def get_column(self, col_id):
         """
         Returns a column corresponding to the specified id. If this is an
@@ -500,9 +688,10 @@ class NewTable(object):
         """
         ret = None
         if isinstance(col_id, int):
-            ret = self.__schema.get_columns()[col_id]
+            ret = self.__columns[col_id]
         elif isinstance(col_id, str):
-            ret = self.__schema.get_column(col_id.encode())
+            k = self.__column_name_map[col_id]
+            ret = self.__columns[k]
         else:
             raise TypeError("column ids must be strings or integers")
         return ret
@@ -526,22 +715,32 @@ class NewTable(object):
         modes = {'r': _wormtable.WT_READ, 'w': _wormtable.WT_WRITE}
         if mode not in modes:
             raise ValueError("mode string must be one of 'r' or 'w'")
-        self.__table.open(modes[mode])
+        m = modes[mode]
+        if m == WT_READ:
+            self.__read_schema()
+        else:
+            self.__write_schema()
+        columns = [c.TEMP_get_column() for c in self.__columns]
+        self.__table = _wormtable.Table(self.__primary_db_file.encode(), 
+                    columns, self.__cache_size)
+        self.__table.open(m)
+        self.__num_rows = 0
+        if m == WT_READ:
+            self.__num_rows = self.__table.get_num_rows()
 
-       
     def close(self):
         """
         Closes the table, releasing cache and other resources. 
         """
         self.__table.close()
+        self.__table = None
+        self.__columns = []
 
     def __len__(self):
         """
         Implement the len(t) function.
         """
-        # TODO this should be cached - verify what happens on calling 
-        # in write mode.
-        return self.__table.get_num_rows()
+        return self.__num_rows
     
     def __getitem__(self, key):
         """
@@ -561,7 +760,18 @@ class NewTable(object):
         else:
             raise TypeError("table indices must be integers")
         return ret
-   
+  
+    def append(self, row):
+        """
+        Appends the specified row to this table.
+        """
+        j = 1 
+        for v in row:
+            self.__table.insert_elements(j, v)
+            j += 1
+        self.__table.commit_row()
+        self.__num_rows += 1
+
     def TEMP_get_table(self):
         return self.__table
 
