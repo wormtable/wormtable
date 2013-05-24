@@ -1136,9 +1136,21 @@ out:
 static int 
 Column_string_to_native_char(Column *self, char *string)
 {
+    int ret = -1;
     size_t n = strlen(string);
+    Py_ssize_t max_length = self->num_elements == NUM_ELEMENTS_VARIABLE?
+            MAX_NUM_ELEMENTS: self->num_elements;
+    if (n > max_length) {
+        PyErr_Format(PyExc_ValueError, 
+                "String too long for column '%s'",
+                PyBytes_AsString(self->name));
+        goto out;
+    }
     memcpy(self->element_buffer, string, n); 
-    return n;
+    self->num_buffered_elements = n;
+    ret = 0;
+out:
+    return ret;
 }
 
 

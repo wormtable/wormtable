@@ -336,7 +336,11 @@ class TestDatabaseInteger(TestDatabase):
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                     v = tuple([v for l in range(n)])
                     row[k] = v
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 0:
+                    rb.insert_elements(k, row[k]) 
+                else:
+                    s = str(row[k]).strip("()")
+                    rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
 
@@ -585,7 +589,10 @@ class TestDatabaseChar(TestDatabase):
                 if n == _wormtable.NUM_ELEMENTS_VARIABLE:
                     n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
                 row[k] = random_string(n).encode() 
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 0:
+                    rb.insert_elements(k, row[k]) 
+                else:
+                    rb.insert_encoded_elements(k, row[k]) 
             self.rows.append(tuple(row))
             rb.commit_row()
 
@@ -604,6 +611,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             for k in [1, 2, 3, 10, 500, 1000]:
                 s = random_string(n + k).encode() 
                 self.assertRaises(ValueError, rb.insert_elements, j, s)
+                self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
         
 
     def test_variable_char_retrieval(self):
@@ -620,7 +628,10 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             row[0] = j
             for k in cols: 
                 row[k] = random_string(min(j, 50)).encode() 
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 0:
+                    rb.insert_elements(k, row[k]) 
+                else:
+                    rb.insert_encoded_elements(k, row[k])
             rb.commit_row()
             rows.append(tuple(row))
         self.open_reading()
@@ -647,7 +658,10 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
                 c = self._columns[k] 
                 n = random.randint(0, c.num_elements)
                 row[k] = random_string(n).encode() 
-                rb.insert_elements(k, row[k]) 
+                if j % 2 == 0:
+                    rb.insert_elements(k, row[k]) 
+                else:
+                    rb.insert_encoded_elements(k, row[k]) 
             rb.commit_row()
             rows.append(tuple(row))
         self.open_reading()
