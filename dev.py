@@ -157,11 +157,19 @@ def print_columns(table):
         n = len(c.get_name()) 
         if n > max_name_width:
             max_name_width = n
+    fmt = "{0:>4}   {1:{name_width}} {2:<6} {3:>6} {4:>6}   |   {5}"
+    s = fmt.format("", "name", "type", "size", "n", "description",
+                name_width=max_name_width + 2)
+    print("=" * (len(s) + 2))
+    print(s)
+    print("=" * (len(s) + 2))
     for c in table.columns():
         num_elements = c.get_num_elements()
-        s = "{0:>4}   {1:{name_width}} {2:6} {3:6} {4:>6}".format(c.get_position(),
-                c.get_name(), c.get_type_name(), c.get_element_size(), 
-                num_elements if num_elements > 0 else "V", 
+        name = c.get_name().decode()
+        desc = c.get_description().decode()
+        s = fmt.format(c.get_position(), name, c.get_type_name(), 
+                c.get_element_size(), 
+                num_elements if num_elements > 0 else "V", desc, 
                 name_width=max_name_width + 2)
         print(s)
 
@@ -196,15 +204,33 @@ def new_api(homedir):
     """
     Code to exercise the new API.
     """
-    t = wt.NewTable(homedir)
-    t.open("r")
-    print_columns(t)
-    print(len(t))
-    n = 0
-    for r in t:
-        n += 1
-    print(n, len(t))
-    print(t[-1] == t[n - 1])
+    with wt.open_table(homedir) as t: 
+        #print_columns(t)
+        print(len(t))
+        n = 0
+        for r in t:
+            #print(r)
+            n += 1
+        print(n, len(t))
+        print(t[-1] == t[n - 1])
+    
+        i = wt.NewIndex(t, "CHROM+FILTER")
+        i.open("r")
+        
+        c = i.counter()
+        for k in c:
+            print(k, c[k])
+        print(len(c)) 
+
+        cursor = i.cursor(["row_id", "CHROM", "FILTER", "POS", "ALT"])
+        for r in cursor:
+            pass
+            #print(r)
+
+        cursor = t.cursor(["CHROM", "FILTER", "POS", "ALT"])
+        for r in cursor:
+            print(r)
+
     #print([r[2] for r in t[0:10]])
     #print(t[1] in t)
     #print(t[-1] in t)
@@ -219,7 +245,6 @@ def new_api(homedir):
     #print(r, n)
     #print("len(i) = ", len(i))
     #i.close()
-    t.close()
 
 
 def main():
@@ -237,8 +262,8 @@ def main():
     #read_filter_index(homedir)
     #allele_frequency_example(homedir)
     #min_max_example(homedir)
-    #new_api(homedir)
-    write_example()
+    new_api(homedir)
+    #write_example()
 
 if __name__ == "__main__":
     main()

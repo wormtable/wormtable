@@ -10,6 +10,8 @@ import time
 from xml.etree import ElementTree
 from xml.dom import minidom
 
+import contextlib
+
 import collections
 
 import _wormtable
@@ -472,6 +474,19 @@ def parse_cache_size(s):
 
 #######################################################################
 
+@contextlib.contextmanager
+def open_table(homedir):
+    """
+    Opens a table in read mode ready for use.
+    """
+    t = NewTable(homedir)
+    t.open("r")
+    try:
+        yield t
+    finally:
+        t.close()
+
+
 class Column(object):
     """
     Class representing a column in a table.
@@ -500,6 +515,12 @@ class Column(object):
         Returns the name of this column.
         """
         return self.__column.name
+   
+    def get_description(self):
+        """
+        Returns the description of this column.
+        """
+        return self.__column.description
     
     def get_type(self):
         """
@@ -689,11 +710,11 @@ class NewTable(object):
         ret = None
         if isinstance(col_id, int):
             ret = self.__columns[col_id]
-        elif isinstance(col_id, str):
+        elif isinstance(col_id, bytes):
             k = self.__column_name_map[col_id]
             ret = self.__columns[k]
         else:
-            raise TypeError("column ids must be strings or integers")
+            raise TypeError("column ids must be bytes or integers")
         return ret
 
     def get_homedir(self):
@@ -775,14 +796,68 @@ class NewTable(object):
     def TEMP_get_table(self):
         return self.__table
 
-class NewIndex(collections.Mapping):
+
+    def cursor(self, read_columns):
+        columns = [self.get_column(c.encode()) for c in read_columns]
+        return TableCursor(self.__table, [c.get_position() for c in columns])
+
+class IndexCounter(collections.Mapping):
+    """
+    A counter for Indexes, based on the collections.Counter class. This class 
+    is a dictionary-like object that represents a mapping of the distinct 
+    keys in the index to the number of times those keys appear.
+    """
+    def __init__(self, ll_index):
+        self.__ll_index = ll_index
+    
+    def __getitem__(self, key):
+        return self.__ll_index.get_num_rows(key) 
+   
+    def __iter__(self):
+        dvi = _wormtable.DistinctValueIterator(self.__ll_index)
+        return dvi
+    
+    def __len__(self):
+        n = 0
+        dvi = _wormtable.DistinctValueIterator(self.__ll_index)
+        for v in dvi:
+            n += 1
+        return n
+
+class Cursor(object):
+    """
+    Superclass of Cursor objects. Subclasses are responsible for allocating 
+    an iterator.
+    """
+
+    def __iter__(self):
+        for r in self._iterator:
+            yield r 
+
+class TableCursor(Cursor):
+    """
+    A cursor over the rows of the table in the order defined by an index. 
+    """
+    def __init__(self, ll_table, columns):
+        self._iterator = _wormtable.RowIterator(ll_table,  columns)
+
+class IndexCursor(Cursor):
+    """
+    A cursor over the rows of the table in the order defined by an index. 
+    """
+    def __init__(self, ll_index, columns):
+        self._iterator = _wormtable.RowIterator(ll_index,  columns)
+
+
+
+class NewIndex(object):
     """
     Class representing an Index for a set of columns.
     """
     def __init__(self, table, colspec):
         columns = colspec.split("+")
         self.__table = table 
-        self.__columns = [self.__table.get_column(c) for c in columns]
+        self.__columns = [self.__table.get_column(c.encode()) for c in columns]
         prefix = os.path.join(table.get_homedir().encode(), colspec.encode())
         self.__db_filename = prefix + b".db"
         self.__metadata_filename = prefix + b".xml"
@@ -790,40 +865,25 @@ class NewIndex(collections.Mapping):
 
     def open(self, mode="r"):
         self.__index = _wormtable.Index(self.__table.TEMP_get_table(),
-                self.__db_filename, [c.position for c in self.__columns], 
+                self.__db_filename, [c.get_position() for c in self.__columns], 
                 self.__cache_size)
         self.__index.open(_wormtable.WT_READ)
         
-    def __getitem__(self, key):
-        return self.__index.get_num_rows(key) 
     
-    def __iter__(self):
-        dvi = _wormtable.DistinctValueIterator(self.__index)
-        return dvi
-    def __len__(self):
-        n = 0
-        dvi = _wormtable.DistinctValueIterator(self.__index)
-        for v in dvi:
-            n += 1
-        return n
-
     def close(self):
         self.__index.close()
     
     def TEMP_get_index(self):
         return self.__index
 
-class Cursor(object):
-    """
-    A cursor provides an efficient means of iterating over a large number of 
-    rows.
-    """
-    def __init__(self, table, columns, index):
-        self.__table = table
-        self.__iterator = _wormtable.RowIterator(index.TEMP_get_index(),  columns)
+    def counter(self):
+        """
+        Returns an IndexCounter object for this index. This provides an efficient 
+        method of iterating over the keys in the index.
+        """
+        return IndexCounter(self.__index)
+    
+    def cursor(self, read_columns):
+        columns = [self.__table.get_column(c.encode()) for c in read_columns]
+        return IndexCursor(self.__index, [c.get_position() for c in columns])
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return self.__iterator.__next__()
