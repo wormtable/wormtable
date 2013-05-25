@@ -65,6 +65,9 @@ typedef struct {
     Py_ssize_t cache_size;
     u_int32_t num_columns;
     u_int32_t fixed_region_size;
+    /* this buffer isn't really necessary - we should just use the table's
+     * row buffer.
+     */
     void *row_buffer;
     u_int32_t row_buffer_size;     /* max size */
     u_int32_t current_row_size;    /* current size */
@@ -2289,11 +2292,9 @@ Index_dealloc(Index* self)
     if (self->key_buffer != NULL) {
         PyMem_Free(self->key_buffer);
     }
-    /*
     if (self->row_buffer != NULL) {
         PyMem_Free(self->row_buffer);
     }
-    */
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -2364,13 +2365,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     }
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     self->row_buffer_size = MAX_ROW_SIZE; 
-    /* FIXME For now we just point the row buffer here to the table's 
-     * row buffer. This might be confusing, so it should be made 
-     * explicit that they're all using the same buffer 
-     * getting rid of this field
-     */
-    self->row_buffer = self->table->row_buffer;
-    //self->row_buffer = PyMem_Malloc(self->row_buffer_size);
+    self->row_buffer = PyMem_Malloc(self->row_buffer_size);
     if (self->key_buffer == NULL || self->row_buffer == NULL) {
         PyErr_NoMemory();
         goto out;
