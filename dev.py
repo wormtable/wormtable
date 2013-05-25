@@ -216,6 +216,10 @@ def new_api(homedir):
     
         i = wt.NewIndex(t, "CHROM+FILTER")
         i.open("r")
+        print("min = ", i.get_min())
+        print("max = ", i.get_max())
+        print("min = ", i.get_min('Y'))
+        print("max = ", i.get_max('Y'))
         
         c = i.counter()
         for k in c:
@@ -223,11 +227,16 @@ def new_api(homedir):
         print(len(c)) 
 
         cursor = i.cursor(["row_id", "CHROM", "FILTER", "POS", "ALT"])
-        for r in cursor:
-            pass
-            #print(r)
+        cursor.set_min("1")
+        cursor.set_max("1", "PASS")
+        #for r in cursor:
+        #    print(r)
+        #for r in cursor:
+        #    print(r)
 
-        cursor = t.cursor(["CHROM", "FILTER", "POS", "ALT"])
+        cursor = t.cursor(["row_id", "CHROM", "FILTER", "POS", "ALT"])
+        cursor.set_min(7)
+        cursor.set_max(10)
         for r in cursor:
             print(r)
 

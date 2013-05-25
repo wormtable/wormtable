@@ -831,7 +831,7 @@ class Cursor(object):
     """
 
     def __iter__(self):
-        for r in self._iterator:
+        for r in self._row_iterator:
             yield r 
 
 class TableCursor(Cursor):
@@ -839,15 +839,32 @@ class TableCursor(Cursor):
     A cursor over the rows of the table in the order defined by an index. 
     """
     def __init__(self, ll_table, columns):
-        self._iterator = _wormtable.RowIterator(ll_table,  columns)
+        self._row_iterator = _wormtable.TableRowIterator(ll_table,  columns)
+
+    def set_min(self, v):
+        if v < 0:
+            raise ValueError("negative row_ids not supported")
+        self._row_iterator.set_min(v)
+    def set_max(self, v):
+        if v < 0:
+            raise ValueError("negative row_ids not supported")
+        self._row_iterator.set_max(v)
 
 class IndexCursor(Cursor):
     """
     A cursor over the rows of the table in the order defined by an index. 
     """
-    def __init__(self, ll_index, columns):
-        self._iterator = _wormtable.RowIterator(ll_index,  columns)
-
+    def __init__(self, index, ll_index, columns):
+        self.__index = index
+        self._row_iterator = _wormtable.IndexRowIterator(ll_index,  columns)
+    
+    def set_min(self, *v):
+        key = self.__index.translate_key(v)
+        self._row_iterator.set_min(key)
+    
+    def set_max(self, *v):
+        key = self.__index.translate_key(v)
+        self._row_iterator.set_max(key)
 
 
 class NewIndex(object):
@@ -876,6 +893,33 @@ class NewIndex(object):
     def TEMP_get_index(self):
         return self.__index
 
+    def translate_key(self, v):
+        """
+        Translates the specified arguments tuple as a key to a tuple ready to 
+        for use in the low-level API.
+        """
+        n = len(v)
+        l = [None for j in range(n)]
+        for j in range(n):
+            l[j] = v[j]
+            if isinstance(l[j], str):
+                l[j] = l[j].encode()
+        return tuple(l)
+
+    def get_min(self, *v):
+        key = self.translate_key(v)
+        return self.__index.get_min(key)
+
+    def get_max(self, *v):
+        """
+        Returns the maximum key in this index. If a partial key is specified,
+        we return the largest key with initial values less than or equal to 
+        the value provided.
+        """
+        key = self.translate_key(v)
+        return self.__index.get_max(key)
+
+
     def counter(self):
         """
         Returns an IndexCounter object for this index. This provides an efficient 
@@ -885,5 +929,5 @@ class NewIndex(object):
     
     def cursor(self, read_columns):
         columns = [self.__table.get_column(c.encode()) for c in read_columns]
-        return IndexCursor(self.__index, [c.get_position() for c in columns])
+        return IndexCursor(self, self.__index, [c.get_position() for c in columns])
 
