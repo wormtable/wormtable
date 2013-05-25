@@ -20,6 +20,9 @@ __version__ = '0.0.1-dev'
 SCHEMA_VERSION = "0.1-dev"
 INDEX_METADATA_VERSION = "0.1-dev"
 
+DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
+
+# Deprecated
 DEFAULT_READ_CACHE_SIZE = 32 * 2**20
 
 WT_VARIABLE = _wormtable.NUM_ELEMENTS_VARIABLE 
@@ -584,7 +587,61 @@ class Column(object):
         col = _wormtable.Column(name, description, element_type, element_size,
                 num_elements)
         return theclass(col) 
-    
+   
+class Database(object):
+    """
+    The superclass of database objects. Databases are located in a home 
+    directory and are backed by a two files: a database file and an 
+    xml metadata file. 
+    """
+    def __init__(self, homedir, name):
+        """
+        Allocates a new database object held in the specified homedir
+        with the specified name.
+        """
+        self.__homedir = homedir
+        self.__name = name
+        self.__cache_size = DEFAULT_CACHE_SIZE
+
+    def get_homedir(self):
+        """
+        Returns the home directory for this database object.
+        """
+        return self.__homedir
+
+    def get_name(self):
+        """
+        Returns the name of this database object.
+        """
+        return self.__name
+
+    def get_cache_size(self):
+        """
+        Returns the cache size for this database in bytes.
+        """
+        return self.__cache_size
+
+    def set_cache_size(self, cache_size):
+        """
+        Sets the cache size for this database object to the specified 
+        value. If cache_size is a string, it can be suffixed with 
+        K, M or G to specify units of Kibibytes, Mibibytes or Gibiytes.
+        """
+        if isinstance(cache_size, str):
+            s = cache_size
+            d = {"K":2**10, "M":2**20, "G":2**30}
+            multiplier = 1
+            value = s
+            if s.endswith(tuple(d.keys())):
+                value = s[:-1]
+                multiplier = d[s[-1]] 
+            n = int(value)
+            self.__cache_size = n * multiplier 
+        else:
+            self.__cache_size = cache_size
+
+
+
 class NewTable(object):
     """
     The table object.
@@ -829,16 +886,20 @@ class Cursor(object):
     Superclass of Cursor objects. Subclasses are responsible for allocating 
     an iterator.
     """
-
     def __iter__(self):
-        for r in self._row_iterator:
-            yield r 
+        if len(self._columns) == 1:
+            for r in self._row_iterator:
+                yield r[0]
+        else:
+            for r in self._row_iterator:
+                yield r
 
 class TableCursor(Cursor):
     """
     A cursor over the rows of the table in the order defined by an index. 
     """
     def __init__(self, ll_table, columns):
+        self._columns = columns
         self._row_iterator = _wormtable.TableRowIterator(ll_table,  columns)
 
     def set_min(self, v):
@@ -856,6 +917,7 @@ class IndexCursor(Cursor):
     """
     def __init__(self, index, ll_index, columns):
         self.__index = index
+        self._columns = columns
         self._row_iterator = _wormtable.IndexRowIterator(ll_index,  columns)
     
     def set_min(self, *v):
@@ -930,4 +992,31 @@ class NewIndex(object):
     def cursor(self, read_columns):
         columns = [self.__table.get_column(c.encode()) for c in read_columns]
         return IndexCursor(self, self.__index, [c.get_position() for c in columns])
+    
+    
+    def set_bin_widths(self, bin_widths):
+        """
+        Sets the bin widths for the columns to the specified values. Only has 
+        an effect if called before build.
+        """
+        self.__bin_widths = bin_widths
+
+
+    def build(self, progress_callback=None, callback_interval=100):
+        build_filename = self._db_filename + b".build" 
+        cols = self._table.get_schema().get_columns()
+        col_positions = [cols.index(c) for c in self._columns]
+        self._index = _wormtable.Index(self._table.get_database(), build_filename, 
+                col_positions, self._cache_size)
+        self._index.set_bin_widths(self._bin_widths)
+        self._index.open(WT_WRITE)
+        if progress_callback is not None:
+            self._index.build(progress_callback, callback_interval)
+        else:
+            self._index.build()
+        self._index.close()
+        # Create the metadata file and move the build file to its final name
+        self._write_metadata_file()
+        os.rename(build_filename, self._db_filename)
+
 

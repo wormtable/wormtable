@@ -3,8 +3,22 @@ from __future__ import division
 import unittest
 import random
 import optparse
+import glob
+import shutil 
+import os
 
-import test.coretests as coretests
+import test.lowlevel
+import test.highlevel
+
+def cleanup():
+    """
+    Remove temporary files after interrupt.
+    """
+    for f in glob.glob("/tmp/wthl_*"):
+        shutil.rmtree(f) 
+    # TODO make the low-level files more distinct with a prefix
+    for f in glob.glob("/tmp/*.db"):
+        os.unlink(f) 
 
 def main():
     usage = "usage: %prog [options] "
@@ -24,13 +38,17 @@ def main():
         parser.error("At least 2 rows must be used for random tests")
     random.seed(int(options.random_seed))
     testloader = unittest.TestLoader()
-    coretests.num_random_test_rows = num_rows 
+    test.lowlevel.num_random_test_rows = num_rows 
     if options.name is not None:
         suite = testloader.loadTestsFromName(options.name)
     else:
-        suite = testloader.loadTestsFromModule(coretests) 
-    for i in range(iterations):
-        unittest.TextTestRunner(verbosity=2).run(suite)
-
+        suite = testloader.loadTestsFromModule(test.highlevel) 
+        l = testloader.loadTestsFromModule(test.lowlevel) 
+        suite.addTests(l)
+    try:
+        for i in range(iterations):
+            unittest.TextTestRunner(verbosity=2).run(suite)
+    finally:
+        cleanup()
 if __name__ == '__main__':
     main()
