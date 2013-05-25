@@ -97,7 +97,21 @@ typedef struct {
     u_int32_t min_key_size;
     void *max_key;
     u_int32_t max_key_size;
-} RowIterator;
+} IndexRowIterator;
+
+
+typedef struct {
+    PyObject_HEAD
+    Table *table;
+    DBC *cursor;
+    u_int32_t *read_columns;
+    u_int32_t num_read_columns; 
+    void *min_key;
+    u_int32_t min_key_size;
+    void *max_key;
+    u_int32_t max_key_size;
+} TableRowIterator;
+
 
 typedef struct {
     PyObject_HEAD
@@ -1870,6 +1884,27 @@ out:
     return ret;
 }
 
+/*
+ * Sets up the specified DBTs so that the underlying memory for each points
+ * to the complete row_buffer. 
+ */
+static int 
+Table_init_dbts(Table *self, DBT *primary_key, DBT *primary_data)
+{
+    Column *id_col = self->columns[0];
+    u_int32_t primary_key_size = id_col->element_size;
+    memset(primary_key, 0, sizeof(DBT));
+    memset(primary_data, 0, sizeof(DBT));
+    primary_key->data = self->row_buffer;
+    primary_key->ulen = primary_key_size; 
+    primary_key->size = primary_key_size;
+    primary_key->flags = DB_DBT_USERMEM;
+    primary_data->data = self->row_buffer + primary_key_size;
+    primary_data->ulen = self->row_buffer_size - primary_key_size; 
+    primary_data->flags = DB_DBT_USERMEM;
+    return 0;
+}
+
 
 
 static PyObject *
@@ -2124,7 +2159,6 @@ Table_get_row(Table* self, PyObject *args)
     PyObject *t = NULL;
     Column *col = NULL;
     Column *id_col = self->columns[0];
-    u_int32_t key_size = id_col->element_size;
     PyObject *value = NULL;
     unsigned long long row_id = 0;
     u_int32_t j;
@@ -2135,20 +2169,13 @@ Table_get_row(Table* self, PyObject *args)
     if (Table_check_read_mode(self) != 0) {
         goto out;
     }
-    memset(&key, 0, sizeof(DBT));
-    memset(&data, 0, sizeof(DBT));  
-    key.size = key_size;
-    key.data = self->row_buffer;
+    Table_init_dbts(self, &key, &data); 
     if (Column_set_row_id(id_col, row_id) != 0) {
         goto out;
     }
-    if (Column_update_row(id_col, self->row_buffer, self->current_row_size) 
-            != 0) {
+    if (Column_update_row(id_col, self->row_buffer, 0) != 0) {
         goto out;
     }
-    data.data = self->row_buffer + key_size;
-    data.ulen = self->row_buffer_size - key_size;
-    data.flags = DB_DBT_USERMEM;
     db_ret = self->db->get(self->db, NULL, &key, &data, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -3067,13 +3094,302 @@ static PyTypeObject IndexType = {
     (initproc)Index_init,      /* tp_init */
 };
    
+
+
+
 /*==========================================================
- * RowIterator object 
+ * TableRowIterator object 
  *==========================================================
  */
 
 static void
-RowIterator_dealloc(RowIterator* self)
+TableRowIterator_dealloc(TableRowIterator* self)
+{
+    if (self->cursor != NULL) {
+        if (self->table != NULL) {
+            if (self->table->db != NULL) {
+                self->cursor->close(self->cursor);
+            }
+        }
+    }
+    Py_XDECREF(self->table);
+    if (self->min_key != NULL) {
+        PyMem_Free(self->min_key);
+    }
+    if (self->max_key != NULL) {
+        PyMem_Free(self->max_key);
+    }
+    if (self->read_columns != NULL) {
+        PyMem_Free(self->read_columns);
+    }
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int
+TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
+{
+    int j;
+    int ret = -1;
+    long k;
+    static char *kwlist[] = {"table", "columns", NULL}; 
+    PyObject *v = NULL; 
+    PyObject *columns = NULL;
+    Table *table = NULL;
+    Column *id_col = NULL;
+    self->read_columns = NULL;
+    self->table = NULL;
+    self->min_key = NULL;
+    self->max_key = NULL;
+    self->cursor = NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!", kwlist, 
+            &TableType, &table,
+            &PyList_Type, &columns)) {
+        goto out;
+    }
+    self->table = table;
+    Py_INCREF(self->table);
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    self->num_read_columns = PyList_GET_SIZE(columns);
+    if (self->num_read_columns < 1) {
+        PyErr_SetString(PyExc_ValueError, "At least one read column required");
+        goto out;
+    }
+    self->read_columns = PyMem_Malloc(self->num_read_columns 
+            * sizeof(u_int32_t));
+    if (self->read_columns == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    for (j = 0; j < self->num_read_columns; j++) {
+        v = PyList_GET_ITEM(columns, j);
+        if (!PyNumber_Check(v)) {
+            PyErr_SetString(PyExc_ValueError, "Column positions must be int");
+            goto out;
+        }
+        k = PyLong_AsLong(v);
+        if (k < 0 || k >= self->table->num_columns) {
+            PyErr_SetString(PyExc_ValueError, "Column positions out of bounds");
+            goto out;
+        }
+        self->read_columns[j] = (u_int32_t) k;
+    }
+    id_col = self->table->columns[0];
+    self->min_key = PyMem_Malloc(id_col->element_size);
+    self->max_key = PyMem_Malloc(id_col->element_size);
+    if (self->min_key == NULL || self->max_key == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    ret = 0;
+out:
+
+    return ret;
+}
+
+
+
+static PyMemberDef TableRowIterator_members[] = {
+    {NULL}  /* Sentinel */
+};
+
+
+static PyObject *
+TableRowIterator_next(TableRowIterator *self)
+{
+    PyObject *ret = NULL;
+    PyObject *t = NULL;
+    PyObject *value;
+    Column *col;
+    int db_ret, j;
+    DB *db;
+    DBT key, data;
+    uint32_t flags;
+    int max_exceeded = 0;
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    Table_init_dbts(self->table, &key, &data);
+    flags = DB_NEXT;
+    if (self->cursor == NULL) {
+        /* it's the first time through the loop, so set up the cursor */
+        db = self->table->db;
+        db_ret = db->cursor(db, NULL, &self->cursor, 0);
+        if (db_ret != 0) {
+            handle_bdb_error(db_ret);
+            goto out;    
+        }
+        if (self->min_key_size != 0) {
+            if (key.size != self->min_key_size) {
+                PyErr_Format(PyExc_SystemError, "key size mismatch."); 
+                goto out;
+            }
+            memcpy(key.data, self->min_key, self->min_key_size);
+            flags = DB_SET_RANGE;
+        }
+    } 
+    db_ret = self->cursor->get(self->cursor, &key, &data, flags);
+    if (db_ret == 0) {
+        /* Now, check if we've hit or gone past max_key */ 
+        if (self->max_key_size > 0) {
+            if (key.size != self->max_key_size) {
+                PyErr_Format(PyExc_SystemError, "key size mismatch."); 
+                goto out;
+            }
+            max_exceeded = memcmp(self->max_key, key.data, key.size) <= 0;
+        }
+        if (!max_exceeded) { 
+            t = PyTuple_New(self->num_read_columns);
+            if (t == NULL) {
+                PyErr_NoMemory();
+                goto out;
+            }
+            for (j = 0; j < self->num_read_columns; j++) {
+                col = self->table->columns[self->read_columns[j]]; 
+                if (Column_extract_elements(col, self->table->row_buffer) < 0) {
+                    Py_DECREF(t);
+                    goto out;
+                }
+                value = Column_get_python_elements(col); 
+                if (value == NULL) {
+                    Py_DECREF(t);
+                    goto out;
+                }
+                PyTuple_SET_ITEM(t, j, value);
+            }
+            ret = t;
+        }
+    } else if (db_ret != DB_NOTFOUND) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    if (ret == NULL) {
+        /* Iteration is finished - free the cursor */
+        self->cursor->close(self->cursor);
+        self->cursor = NULL;
+    }
+out:
+    return ret;
+}
+
+
+static PyObject *
+TableRowIterator_set_min(TableRowIterator *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Column *id_col = NULL; 
+    unsigned PY_LONG_LONG row_id = 0;
+    /* TODO: This is unsatisfactory as it doesn't check for overflow;
+     * -1 is accepted as a valid index value.
+     */
+    if (!PyArg_ParseTuple(args, "K", &row_id)) {
+        goto out;
+    }
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    id_col = self->table->columns[0];
+    if (Column_set_row_id(id_col, (u_int64_t) row_id) != 0) {
+        goto out;
+    }
+    /* this is safe because this column must be at offset 0 */
+    if (Column_update_row(id_col, self->min_key, 0) != 0) {
+        goto out;
+    }
+    self->min_key_size = id_col->element_size;
+    Py_INCREF(Py_None);
+    ret = Py_None; 
+out:
+    return ret;
+}
+
+static PyObject *
+TableRowIterator_set_max(TableRowIterator *self, PyObject *args)
+{
+    PyObject *ret = NULL;
+    Column *id_col = NULL; 
+    unsigned PY_LONG_LONG row_id = 0;
+    /* TODO: This is unsatisfactory as it doesn't check for overflow;
+     * -1 is accepted as a valid index value.
+     */
+    if (!PyArg_ParseTuple(args, "K", &row_id)) {
+        goto out;
+    }
+    if (Table_check_read_mode(self->table) != 0) {
+        goto out;
+    }
+    id_col = self->table->columns[0];
+    if (Column_set_row_id(id_col, (u_int64_t) row_id) != 0) {
+        goto out;
+    }
+    /* this is safe because this column must be at offset 0 */
+    if (Column_update_row(id_col, self->max_key, 0) != 0) {
+        goto out;
+    }
+    self->max_key_size = id_col->element_size;
+    Py_INCREF(Py_None);
+    ret = Py_None; 
+out:
+    return ret;
+}
+
+
+static PyMethodDef TableRowIterator_methods[] = {
+    {"set_min", (PyCFunction) TableRowIterator_set_min, METH_VARARGS, "Set the minimum key" },
+    {"set_max", (PyCFunction) TableRowIterator_set_max, METH_VARARGS, "Set the maximum key" },
+    {NULL}  /* Sentinel */
+};
+
+
+static PyTypeObject TableRowIteratorType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_wormtable.TableRowIterator",             /* tp_name */
+    sizeof(TableRowIterator),             /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    (destructor)TableRowIterator_dealloc, /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_reserved */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash  */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,        /* tp_flags */
+    "TableRowIterator objects",           /* tp_doc */
+    0,                     /* tp_traverse */
+    0,                     /* tp_clear */
+    0,                     /* tp_richcompare */
+    0,                     /* tp_weaklistoffset */
+    PyObject_SelfIter,               /* tp_iter */
+    (iternextfunc) TableRowIterator_next, /* tp_iternext */
+    TableRowIterator_methods,             /* tp_methods */
+    TableRowIterator_members,             /* tp_members */
+    0,                         /* tp_getset */
+    0,                         /* tp_base */
+    0,                         /* tp_dict */
+    0,                         /* tp_descr_get */
+    0,                         /* tp_descr_set */
+    0,                         /* tp_dictoffset */
+    (initproc)TableRowIterator_init,      /* tp_init */
+};
+
+
+
+/*==========================================================
+ * IndexRowIterator object 
+ *==========================================================
+ */
+
+static void
+IndexRowIterator_dealloc(IndexRowIterator* self)
 {
     if (self->cursor != NULL) {
         if (self->index != NULL) {
@@ -3097,7 +3413,7 @@ RowIterator_dealloc(RowIterator* self)
 }
 
 static int
-RowIterator_init(RowIterator *self, PyObject *args, PyObject *kwds)
+IndexRowIterator_init(IndexRowIterator *self, PyObject *args, PyObject *kwds)
 {
     int j;
     int ret = -1;
@@ -3160,13 +3476,13 @@ out:
 
 
 
-static PyMemberDef RowIterator_members[] = {
+static PyMemberDef IndexRowIterator_members[] = {
     {NULL}  /* Sentinel */
 };
 
 
 static PyObject *
-RowIterator_next(RowIterator *self)
+IndexRowIterator_next(IndexRowIterator *self)
 {
     PyObject *ret = NULL;
     PyObject *t = NULL;
@@ -3249,7 +3565,7 @@ out:
 
 
 static PyObject *
-RowIterator_set_min(RowIterator *self, PyObject *args)
+IndexRowIterator_set_min(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
     int size = Index_set_key(self->index, args, self->min_key);
@@ -3263,7 +3579,7 @@ out:
 }
 
 static PyObject *
-RowIterator_set_max(RowIterator *self, PyObject *args)
+IndexRowIterator_set_max(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
     int size = Index_set_key(self->index, args, self->max_key);
@@ -3277,19 +3593,19 @@ out:
 }
 
 
-static PyMethodDef RowIterator_methods[] = {
-    {"set_min", (PyCFunction) RowIterator_set_min, METH_VARARGS, "Set the minimum key" },
-    {"set_max", (PyCFunction) RowIterator_set_max, METH_VARARGS, "Set the maximum key" },
+static PyMethodDef IndexRowIterator_methods[] = {
+    {"set_min", (PyCFunction) IndexRowIterator_set_min, METH_VARARGS, "Set the minimum key" },
+    {"set_max", (PyCFunction) IndexRowIterator_set_max, METH_VARARGS, "Set the maximum key" },
     {NULL}  /* Sentinel */
 };
 
 
-static PyTypeObject RowIteratorType = {
+static PyTypeObject IndexRowIteratorType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_wormtable.RowIterator",             /* tp_name */
-    sizeof(RowIterator),             /* tp_basicsize */
+    "_wormtable.IndexRowIterator",             /* tp_name */
+    sizeof(IndexRowIterator),             /* tp_basicsize */
     0,                         /* tp_itemsize */
-    (destructor)RowIterator_dealloc, /* tp_dealloc */
+    (destructor)IndexRowIterator_dealloc, /* tp_dealloc */
     0,                         /* tp_print */
     0,                         /* tp_getattr */
     0,                         /* tp_setattr */
@@ -3305,22 +3621,22 @@ static PyTypeObject RowIteratorType = {
     0,                         /* tp_setattro */
     0,                         /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "RowIterator objects",           /* tp_doc */
+    "IndexRowIterator objects",           /* tp_doc */
     0,                     /* tp_traverse */
     0,                     /* tp_clear */
     0,                     /* tp_richcompare */
     0,                     /* tp_weaklistoffset */
     PyObject_SelfIter,               /* tp_iter */
-    (iternextfunc) RowIterator_next, /* tp_iternext */
-    RowIterator_methods,             /* tp_methods */
-    RowIterator_members,             /* tp_members */
+    (iternextfunc) IndexRowIterator_next, /* tp_iternext */
+    IndexRowIterator_methods,             /* tp_methods */
+    IndexRowIterator_members,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
     0,                         /* tp_dict */
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)RowIterator_init,      /* tp_init */
+    (initproc)IndexRowIterator_init,      /* tp_init */
 };
 
 /*==========================================================
@@ -3513,13 +3829,20 @@ init_wormtable(void)
     }
     Py_INCREF(&IndexType);
     PyModule_AddObject(module, "Index", (PyObject *) &IndexType);
-    /* RowIterator */
-    RowIteratorType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&RowIteratorType) < 0) {
+    /* TableRowIterator */
+    TableRowIteratorType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&TableRowIteratorType) < 0) {
         INITERROR;
     }
-    Py_INCREF(&RowIteratorType);
-    PyModule_AddObject(module, "RowIterator", (PyObject *) &RowIteratorType);
+    Py_INCREF(&TableRowIteratorType);
+    PyModule_AddObject(module, "TableRowIterator", (PyObject *) &TableRowIteratorType);
+    /* TableRowIterator */
+    IndexRowIteratorType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&IndexRowIteratorType) < 0) {
+        INITERROR;
+    }
+    Py_INCREF(&IndexRowIteratorType);
+    PyModule_AddObject(module, "IndexRowIterator", (PyObject *) &IndexRowIteratorType);
     /* DistinctValueIterator */
     DistinctValueIteratorType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&DistinctValueIteratorType) < 0) {

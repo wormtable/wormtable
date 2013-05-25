@@ -463,6 +463,13 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
                 if self._columns[k].num_elements == 1:
                     self.assertEqual(v, r[k])
             j += 1
+        j = 0
+        cols = list(range(self.num_columns))
+        ri = _wormtable.TableRowIterator(self._database, cols)
+        for r in ri:
+            self.assertEqual(r, self._database.get_row(j))
+            j += 1 
+
 
     def test_boundary_int_retrieval(self):
         self.populate_boundary_values()
@@ -470,7 +477,13 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
         for j in range(self.num_rows):
             r = self._database.get_row(j)
             self.assertEqual(r, self.rows[j])
-    
+        j = 0
+        cols = list(range(self.num_columns))
+        ri = _wormtable.TableRowIterator(self._database, cols)
+        for r in ri:
+            self.assertEqual(r, self._database.get_row(j))
+            j += 1 
+
     def test_random_int_retrieval(self):
         self.populate_randomly()
         self.open_reading()
@@ -478,6 +491,77 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
         for j in range(self.num_rows): 
             r = self._database.get_row(j)
             self.assertEqual(self.rows[j], r)
+        j = 0
+        cols = list(range(self.num_columns))
+        ri = _wormtable.TableRowIterator(self._database, cols)
+        for r in ri:
+            self.assertEqual(r, self._database.get_row(j))
+            j += 1 
+    
+    def test_row_iterator_ranges(self):
+        self.populate_randomly()
+        self.open_reading()
+        n = self.num_rows
+        cols = list(range(self.num_columns))
+        for j in range(10):
+            l = [random.randint(0, n - 1), random.randint(0, n - 1)]
+            bottom = min(l)
+            top = max(l)
+            ri = _wormtable.TableRowIterator(self._database, cols)
+            ri.set_min(top)
+            ri.set_max(bottom)
+            self.assertEqual([], [r for r in ri])
+            ri.set_min(bottom)
+            self.assertEqual([], [r for r in ri])
+            ri.set_min(bottom)
+            ri.set_max(top)
+            j = bottom
+            for r in ri:
+                self.assertEqual(r, self._database.get_row(j))
+                j += 1
+            self.assertEqual(j, top)
+            ri.set_min(0)
+            j = 0
+            for r in ri:
+                self.assertEqual(r, self._database.get_row(j))
+                j += 1
+            self.assertEqual(j, top)
+            ri.set_min(top)
+            ri.set_max(n + 1)
+            j = top 
+            for r in ri:
+                self.assertEqual(r, self._database.get_row(j))
+                j += 1
+            self.assertEqual(j, n)
+            
+    def test_row_iterator_columns(self):
+        self.populate_randomly()
+        self.open_reading()
+        n = self.num_rows
+        cols = list(range(self.num_columns))
+        ri = _wormtable.TableRowIterator(self._database, cols)
+        j = 0
+        for r1 in ri:
+            r2 = self._database.get_row(j)
+            self.assertEqual(r1, r2) 
+            j += 1
+        ri = _wormtable.TableRowIterator(self._database, list(reversed(cols)))
+        j = 0
+        for r1 in ri:
+            r2 = tuple(reversed(self._database.get_row(j)))
+            self.assertEqual(r1, r2) 
+            j += 1
+        # Get a subset of the columns.
+        for k in range(1, 10):
+            c = [random.randint(0, self.num_columns - 1) for j in range(k)]
+            ri = _wormtable.TableRowIterator(self._database, c)
+            j = 0
+            for r1 in ri:
+                r = self._database.get_row(j)
+                r2 = tuple(r[q] for q in c)
+                self.assertEqual(r1, r2) 
+                j += 1
+
 
 
 class TestDatabaseFloat(TestDatabase):
@@ -727,7 +811,7 @@ class TestIndexIntegrity(object):
             col = self._columns[j]
             index = self._indexes[j]
             index.open(WT_READ)
-            row_iter = _wormtable.RowIterator(index, [j])
+            row_iter = _wormtable.IndexRowIterator(index, [j])
             l = [row[0] for row in row_iter]
             l2 = sorted(l)
             self.assertEqual(l, l2)
@@ -752,18 +836,18 @@ class TestIndexIntegrity(object):
             s = random.sample(original, 2)
             min_val = min(s),
             max_val = max(s),
-            row_iter = _wormtable.RowIterator(index, [j])
+            row_iter = _wormtable.IndexRowIterator(index, [j])
             row_iter.set_min(max_val)
             row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
             self.assertEqual(len(l), 0)
             # Check if the correct lists are returned. 
-            row_iter = _wormtable.RowIterator(index, [j])
+            row_iter = _wormtable.IndexRowIterator(index, [j])
             row_iter.set_min(min_val)
             row_iter.set_max(max_val)
             l = [row[0] for row in row_iter]
             l2 = sorted([v for v in original if min_val[0] <= v and v < max_val[0]])
-            ri2 = _wormtable.RowIterator(index, [j])
+            ri2 = _wormtable.IndexRowIterator(index, [j])
             l3 = [row[0] for row in ri2 if min_val[0] <= row[0] and row[0] < max_val[0]]
             # TODO: push the comparison up into the superclass
             if not (col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4):
@@ -817,7 +901,7 @@ class TestIndexIntegrity(object):
             columns = [self._columns[j] for j in cols]
             c1 = columns[0]
             c2 = columns[1]
-            row_iter = _wormtable.RowIterator(index, cols)
+            row_iter = _wormtable.IndexRowIterator(index, cols)
             l = [row for row in row_iter]
             l2 = sorted(original) 
             o = [col.element_type == _wormtable.ELEMENT_TYPE_FLOAT and col.element_size == 4
@@ -953,7 +1037,7 @@ class TestMultiColumnIndex(object):
             # and max with this prefix
             prefix_row = random.choice(rows)
             #print("row = ", prefix_row)
-            ri = _wormtable.RowIterator(index, list(cols))
+            ri = _wormtable.IndexRowIterator(index, list(cols))
             l1 = [r for r in ri]
             l2 = sorted(rows)
             self.assertEqual(l1, l2)
@@ -1370,7 +1454,7 @@ class TestIndexInitialisation(TestIndex):
             self._table.commit_row()
         self._table.close()
         self._table.open(WT_READ)
-        g = _wormtable.RowIterator
+        g = _wormtable.IndexRowIterator
         index = _wormtable.Index(self._table, f, [1],  8192)
         self.assertRaises(TypeError, g) 
         self.assertRaises(TypeError, g, None) 
@@ -1390,7 +1474,7 @@ class TestIndexInitialisation(TestIndex):
         self.assertRaises(ValueError, g, index, [-1]) 
         self.assertRaises(ValueError, g, index, [0, 1, -1]) 
         self.assertRaises(ValueError, g, index, [2**32, 0, 1]) 
-        ri = _wormtable.RowIterator(index, [0, 1])
+        ri = _wormtable.IndexRowIterator(index, [0, 1])
         index.close()
         def f():
             for x in ri:
