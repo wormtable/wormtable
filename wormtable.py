@@ -621,6 +621,26 @@ class Database(object):
         """
         return self.__cache_size
 
+    def get_db_path(self):
+        """
+        Returns the path of the permanent file used to store the database.
+        """
+        return os.path.join(self.get_homedir(), self.get_name() + ".db")
+    
+    def get_db_build_path(self):
+        """
+        Returns the path of the file used to build the database.
+        """
+        return os.path.join(self.get_homedir(), self.get_name() + 
+            "__build__.db")
+
+    def get_metadata_path(self):
+        """
+        Returns the path of the file used to store metadata for the 
+        database.
+        """
+        return os.path.join(self.get_homedir(), self.get_name() + ".xml")
+
     def set_cache_size(self, cache_size):
         """
         Sets the cache size for this database object to the specified 
@@ -640,8 +660,27 @@ class Database(object):
         else:
             self.__cache_size = cache_size
 
-
-
+    def write_metadata(self, filename):
+        """
+        Writes the metadata for this database to the specified file. 
+        """
+        tree = self.get_metadata()
+        root = tree.getroot()
+        raw_xml = ElementTree.tostring(root, 'utf-8')
+        reparsed = minidom.parseString(raw_xml)
+        pretty = reparsed.toprettyxml(indent="  ")
+        with open(filename, "w") as f:
+            f.write(pretty)
+    
+    def finalise_build(self):
+        """
+        Move the build file to its final location and write the metadata file.
+        """
+        new = self.get_db_path()
+        old = self.get_db_build_path()
+        os.rename(old, new)
+        self.write_metadata(self.get_metadata_path())
+    
 class NewTable(object):
     """
     The table object.
