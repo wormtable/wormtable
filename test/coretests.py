@@ -528,7 +528,12 @@ class TestDatabaseFloat(TestDatabase):
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
                 else:
-                    s = str(row[k]).strip("()")
+                    # Use the exact hex encoding for floats to avoid loss of
+                    # precision by converting to base 10.
+                    if c.num_elements == 1:
+                        s = row[k].hex()
+                    else:
+                        s = ",".join(f.hex() for f in row[k])
                     rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
