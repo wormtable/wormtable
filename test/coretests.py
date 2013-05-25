@@ -339,7 +339,10 @@ class TestDatabaseInteger(TestDatabase):
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
                 else:
-                    s = str(row[k]).strip("()")
+                    if c.num_elements == 1:
+                        s = str(row[k])
+                    else:
+                        s = ",".join(str(v) for v in row[k])
                     rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
