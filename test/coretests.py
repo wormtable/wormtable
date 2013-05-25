@@ -1175,7 +1175,6 @@ class TestTableInitialisation(TestTable):
         self.assertRaises(TypeError, t, f, [c1, ""], 0) 
         self.assertRaises(TypeError, t, [], [c0, c1], 0) 
         self.assertRaises(TypeError, t, TypeError, [c0, c1], 0) 
-        self.assertRaises(TypeError, t, f, [c0, c1], 0.123) 
     
 
     def test_column_limits(self):
