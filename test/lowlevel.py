@@ -1306,6 +1306,7 @@ class TestIndexInitialisation(TestIndex):
         self.assertRaises(TypeError, g, f, t, None, 0) 
         self.assertRaises(TypeError, g, None, t, [], 0) 
         # Check out of bounds columns
+        self.assertRaises(ValueError, g, t, f, [], 0) 
         self.assertRaises(ValueError, g, t, f, [-1], 0) 
         self.assertRaises(ValueError, g, t, f, [2], 0) 
         self.assertRaises(ValueError, g, t, f, [2**32], 0) 

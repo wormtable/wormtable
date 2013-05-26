@@ -2332,6 +2332,10 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     self->num_columns = PyList_GET_SIZE(columns);
+    if (self->num_columns < 1) {
+        PyErr_SetString(PyExc_ValueError, "Must be 1 or more columns index.");
+        goto out; 
+    }
     self->columns = PyMem_Malloc(self->num_columns * sizeof(u_int32_t));
     if (self->columns == NULL) {
         PyErr_NoMemory();
