@@ -191,7 +191,7 @@ class TableBuilder(object):
         os.rename(self._build_db_name, self._final_db_name)  
         self._schema.write_xml(self._schema_name)
            
-class Table(object):
+class OldTable(object):
     """
     Class representing a table object.
     """
@@ -238,7 +238,7 @@ class Table(object):
         """
         self._database.close()
 
-class Index(object):
+class OldIndex(object):
     """
     Class representing an index over a set of columns in a table.
     """
@@ -482,7 +482,7 @@ def open_table(homedir):
     """
     Opens a table in read mode ready for use.
     """
-    t = NewTable(homedir)
+    t = Table(homedir)
     t.open("r")
     try:
         yield t
@@ -501,67 +501,68 @@ class Column(object):
         WT_FLOAT: "float",
     }
 
-    def __init__(self, column):
-        self.__column = column 
+    def __init__(self, ll_object):
+        self.__ll_object = ll_object 
     
-    def TEMP_get_column(self):
-        return self.__column
+    def get_ll_object(self):
+        """
+        Returns the low level Column object that this class is a facade for. 
+        """
+        return self.__ll_object
    
     def get_position(self):
         """
         Returns the position of this column in the table.
         """
-        return self.__column.position
+        return self.__ll_object.position
 
     def get_name(self):
         """
         Returns the name of this column.
         """
-        return self.__column.name
+        return self.__ll_object.name.decode()
    
     def get_description(self):
         """
         Returns the description of this column.
         """
-        return self.__column.description
+        return self.__ll_object.description.decode()
     
     def get_type(self):
         """
         Returns the type code for this column.
         """
-        return self.__column.element_type
+        return self.__ll_object.element_type
 
     def get_type_name(self):
         """
         Returns the string representation of the type of this Column.
         """
-        return self.ELEMENT_TYPE_STRING_MAP[self.__column.element_type]
+        return self.ELEMENT_TYPE_STRING_MAP[self.__ll_object.element_type]
     
     def get_element_size(self):
         """
         Returns the size of each element in the column in bytes.
         """
-        return self.__column.element_size
+        return self.__ll_object.element_size
 
     def get_num_elements(self):
         """
         Returns the number of elements in this column; 0 means the number 
         of elements is variable.
         """
-        return self.__column.num_elements
+        return self.__ll_object.num_elements
    
     def get_xml(self):
         """
         Returns an ElementTree.Element representing this Column.
         """
-        c = self.__column
-        element_type = self.ELEMENT_TYPE_STRING_MAP[c.element_type]
         d = {
-            "name":c.name.decode(), 
-            "description":c.description.decode(),
-            "element_size":str(c.element_size),
-            "num_elements":str(c.num_elements),
-            "element_type":element_type
+            "name":self.get_name(), 
+            "description":self.get_description(),
+            "element_size":str(self.get_element_size()),
+            "num_elements":str(self.get_num_elements()),
+            "element_type":self.get_type_name()
         }
         return ElementTree.Element("column", d)
 
@@ -594,14 +595,29 @@ class Database(object):
     directory and are backed by a two files: a database file and an 
     xml metadata file. 
     """
-    def __init__(self, homedir, name):
+    def __init__(self, homedir, db_name):
         """
         Allocates a new database object held in the specified homedir
-        with the specified name.
+        with the specified db_name.
         """
         self.__homedir = homedir
-        self.__name = name
+        self.__db_name = db_name
         self.__cache_size = DEFAULT_CACHE_SIZE
+        self.__ll_object = None
+        self.__open_mode = None
+
+    def get_ll_object(self):
+        """
+        Returns the low-level object that this Database is a facade for.
+        """
+        return self.__ll_object
+
+    def _create_ll_object(self, path):
+        """
+        Returns a newly created instance of the low-level object that this 
+        Database is a facade for.
+        """
+        raise NotImplementedError() 
 
     def get_homedir(self):
         """
@@ -609,11 +625,11 @@ class Database(object):
         """
         return self.__homedir
 
-    def get_name(self):
+    def get_db_name(self):
         """
-        Returns the name of this database object.
+        Returns the db name of this database object.
         """
-        return self.__name
+        return self.__db_name
 
     def get_cache_size(self):
         """
@@ -625,13 +641,13 @@ class Database(object):
         """
         Returns the path of the permanent file used to store the database.
         """
-        return os.path.join(self.get_homedir(), self.get_name() + ".db")
+        return os.path.join(self.get_homedir(), self.get_db_name() + ".db")
     
     def get_db_build_path(self):
         """
         Returns the path of the file used to build the database.
         """
-        return os.path.join(self.get_homedir(), self.get_name() + 
+        return os.path.join(self.get_homedir(), self.get_db_name() + 
             "__build__.db")
 
     def get_metadata_path(self):
@@ -639,13 +655,13 @@ class Database(object):
         Returns the path of the file used to store metadata for the 
         database.
         """
-        return os.path.join(self.get_homedir(), self.get_name() + ".xml")
+        return os.path.join(self.get_homedir(), self.get_db_name() + ".xml")
 
     def set_cache_size(self, cache_size):
         """
         Sets the cache size for this database object to the specified 
         value. If cache_size is a string, it can be suffixed with 
-        K, M or G to specify units of Kibibytes, Mibibytes or Gibiytes.
+        K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.
         """
         if isinstance(cache_size, str):
             s = cache_size
@@ -658,7 +674,7 @@ class Database(object):
             n = int(value)
             self.__cache_size = n * multiplier 
         else:
-            self.__cache_size = cache_size
+            self.__cache_size = int(cache_size)
 
     def write_metadata(self, filename):
         """
@@ -671,7 +687,15 @@ class Database(object):
         pretty = reparsed.toprettyxml(indent="  ")
         with open(filename, "w") as f:
             f.write(pretty)
-    
+   
+    def read_metadata(self, filename):
+        """
+        Reads metadata for this database from the specified filename,
+        and calls set_metadata with the result.
+        """
+        tree = ElementTree.parse(filename)
+        self.set_metadata(tree)
+
     def finalise_build(self):
         """
         Move the build file to its final location and write the metadata file.
@@ -680,7 +704,393 @@ class Database(object):
         old = self.get_db_build_path()
         os.rename(old, new)
         self.write_metadata(self.get_metadata_path())
+
+    def is_open(self):
+        """
+        Returns True if this database is open for reading or writing. 
+        """
+        return self.__ll_object is not None
+   
+    def get_open_mode(self):
+        """
+        Returns the mode that this database is opened in, WT_READ or 
+        WT_WRITE. If the database is not open, return None.
+        """
+        return self.__open_mode
+
+    def open(self, mode):
+        """
+        Opens this database in the specified mode. Mode must be one of 
+        'r' or 'w'.
+        """
+        modes = {'r': _wormtable.WT_READ, 'w': _wormtable.WT_WRITE}
+        if mode not in modes:
+            raise ValueError("mode string must be one of 'r' or 'w'")
+        m = modes[mode]
+        self.__open_mode = None
+        self.__ll_object = None
+        path = self.get_db_path()
+        if m == WT_WRITE:
+            path = self.get_db_build_path()
+        else:
+            self.read_metadata(self.get_metadata_path())
+        llo = self._create_ll_object(path)
+        llo.open(m)
+        self.__ll_object = llo
+        self.__open_mode = m 
+
+    def close(self):
+        """
+        Closes this database object, freeing underlying resources.
+        """
+        try:
+            self.__ll_object.close()
+            if self.__open_mode == WT_WRITE:
+                self.finalise_build()
+        finally:
+            self.__open_mode = None
+            self.__ll_object = None
+
+    def raiseDatabaseClosedError(self):
+        """
+        Raise an exception indicating that the operation could not be completed
+        because the database is closed.
+        """
+        # TODO make a custom exception.
+        raise ValueError("Database closed")
+
+class Table(Database):
+    """
+    The main storage table class. 
+    """
+    DB_NAME = "table"
+    PRIMARY_KEY_NAME = "row_id"
+    def __init__(self, homedir):
+        Database.__init__(self, homedir, self.DB_NAME)
+        self.__columns = []
+        self.__column_name_map = {}
+        self.__num_rows = 0
+
+    def _create_ll_object(self, path):
+        """
+        Returns a new instance of _wormtable.Table using the specified 
+        path as the backing file.
+        """ 
+        filename = path.encode() 
+        ll_cols = [c.get_ll_object() for c in self.__columns]
+        t = _wormtable.Table(filename, ll_cols, self.get_cache_size())
+        return t
+
+    # Helper methods for adding Columns of the various types.
+    def __add_column(self, column):
+        """
+        Adds a new Column to this wormtable. Can only be called before the table 
+        has been opened in write mode.
+        """
+        if self.is_open():
+            raise ValueError("Cannot add columns to open table")
+        self.__columns.append(column)
+   
+    def add_id_column(self, size=4):
+        """
+        Adds the ID column with the specified size in bytes.
+        """
+        name = self.PRIMARY_KEY_NAME.encode() 
+        desc = b'Primary key column'
+        col = _wormtable.Column(name, desc, WT_UINT, size, 1)
+        self.__add_column(Column(col)) 
+
+    def add_uint_column(self, name, description="", size=2, num_elements=1):
+        """
+        Creates a new unsigned integer column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_UINT, size, num_elements)
+        self.__add_column(Column(col)) 
+
+    def add_int_column(self, name, description="", size=2, num_elements=1):
+        """
+        Creates a new integer column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_INT, size, num_elements)
+        self.__add_column(Column(col)) 
     
+    def add_float_column(self, name, description="", size=4, num_elements=1):
+        """
+        Creates a new float column with the specified name, 
+        element size (in bytes) and number of elements. If num_elements=0
+        then the column can hold a variable number of elements. Only 4 and 
+        8 byte floats are supported by wormtable; these correspond to the 
+        usual float and double types.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_FLOAT, size, num_elements)
+        self.__add_column(Column(col)) 
+
+    def add_char_column(self, name, description="", num_elements=0):
+        """
+        Creates a new character column with the specified name, description 
+        and number of elements. If num_elements=0 then the column can hold 
+        variable length strings; otherwise, it can contain strings of a fixed 
+        length only.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, WT_CHAR, 1, num_elements)
+        self.__add_column(Column(col)) 
+
+    # Methods for accessing the columns
+    def columns(self):
+        """
+        Returns an iterator over the list of columns.
+        """
+        for c in self.__columns:
+            yield c
+
+    def get_column(self, col_id):
+        """
+        Returns a column corresponding to the specified id. If this is an
+        integer, we return the column at this position; if it is a string
+        we return the column with the specified name.
+        """
+        ret = None
+        if isinstance(col_id, int):
+            ret = self.__columns[col_id]
+        elif isinstance(col_id, str):
+            k = self.__column_name_map[col_id]
+            ret = self.__columns[k]
+        else:
+            raise TypeError("column ids must be strings or integers")
+        return ret
+    
+    def get_metadata(self):
+        """
+        Returns an ElementTree instance describing the metadata for this 
+        Table.
+        """
+        d = {"version":SCHEMA_VERSION}
+        root = ElementTree.Element("schema", d)
+        columns = ElementTree.Element("columns")
+        root.append(columns)
+        for c in self.__columns:
+            columns.append(c.get_xml())
+        return ElementTree.ElementTree(root)
+       
+    def set_metadata(self, tree):
+        """
+        Sets up this Table to reflect the metadata in the specified xml 
+        ElementTree.
+        """
+        root = tree.getroot()
+        if root.tag != "schema":
+            raise ValueError("invalid xml")
+        version = root.get("version")
+        if version is None:
+            raise ValueError("invalid xml")
+        if version != SCHEMA_VERSION:
+            raise ValueError("Unsupported schema version - rebuild required.")
+        xml_columns = root.find("columns")
+        for xmlcol in xml_columns.getchildren():
+            col = Column.parse_xml(xmlcol)
+            self.__column_name_map[col.get_name()]= len(self.__columns)
+            self.__columns.append(col)
+
+    def append(self, row):
+        """
+        Appends the specified row to this table.
+        """
+        t = self.get_ll_object()
+        j = 1 
+        for v in row:
+            t.insert_elements(j, v)
+            j += 1
+        t.commit_row()
+        self.__num_rows += 1
+     
+    def __len__(self):
+        """
+        Implement the len(t) function.
+        """
+        mode = self.get_open_mode()
+        if mode == WT_READ:
+            if self.__num_rows == 0:
+                self.__num_rows = self.get_ll_object().get_num_rows()
+        elif mode == None:
+            self.raiseDatabaseClosedError()
+        return self.__num_rows
+    
+    def __getitem__(self, key):
+        """
+        Implements the t[key] function.
+        """
+        t = self.get_ll_object()
+        ret = None
+        n = len(self)
+        if isinstance(key, slice):
+            ret = [self[j] for j in range(*key.indices(n))]
+        elif isinstance(key, int):
+            k = key
+            if k < 0:
+                k = n + k
+            if k >= n:
+                raise IndexError("table position out of range")
+            ret = t.get_row(k)    
+        else:
+            raise TypeError("table positions must be integers")
+        return ret
+    
+    def close(self):
+        """
+        Closes this Table.
+        """
+        try:
+            Database.close(self)
+        finally:
+            self.__num_rows = 0
+            self.__columns = []
+            self.__column_name_map = {}
+
+
+class Index(Database):
+    """
+    An index is an auxiliary table that sorts the rows according to 
+    column values.
+    """
+    DB_PREFIX = "index_"
+    def __init__(self, table, db_name):
+        Database.__init__(self, table.get_homedir(), self.DB_PREFIX + db_name)
+        self.__table = table
+        self.__key_columns = []
+        self.__bin_widths = []
+    
+    # Methods for accessing the key_columns
+    def key_columns(self):
+        """
+        Returns an iterator over the list of key columns.
+        """
+        for c in self.__key_columns:
+            yield c
+
+    def get_key_column(self, position):
+        """
+        Returns the key key_column in the specified positions. 
+        """
+        ret = None
+        if isinstance(col_id, int):
+            ret = self.__key_columns[col_id]
+        elif isinstance(col_id, str):
+            k = self.__key_column_name_map[col_id]
+            ret = self.__key_columns[k]
+        else:
+            raise TypeError("key_column ids must be strings or integers")
+        return ret
+    
+    def add_key_column(self, key_column):
+        """
+        Adds the specified key_column to the list of key_columns we are indexing.
+        """
+        self.__key_columns.append(key_column)
+        self.__bin_widths.append(0)
+
+    def _create_ll_object(self, path):
+        """
+        Returns a new instance of _wormtable.Table using the specified 
+        path as the backing file.
+        """ 
+        filename = path.encode() 
+        cols = [c.get_position() for c in self.__key_columns]
+        i = _wormtable.Index(self.__table.get_ll_object(), filename, 
+                cols, self.get_cache_size())
+        i.set_bin_widths(self.__bin_widths)
+        return i
+    
+    def get_metadata(self):
+        """
+        Returns an ElementTree instance describing the metadata for this 
+        Index.
+        """
+        d = {"version":INDEX_METADATA_VERSION}
+        root = ElementTree.Element("index", d)
+        key_columns = ElementTree.Element("key_columns")
+        root.append(key_columns)
+        for j in range(len(self.__key_columns)):
+            c = self.__key_columns[j]
+            w = self.__bin_widths[j]
+            if c.get_type() == WT_INT | c.get_type() == WT_UINT:
+                w = int(w)
+            d = {
+                "name":c.get_name(), 
+                "bin_width":str(w),
+            }
+            element = ElementTree.Element("key_column", d)
+            key_columns.append(element)
+        return ElementTree.ElementTree(root)
+      
+    def set_metadata(self, tree):
+        """
+        Sets up this Index to reflect the metadata in the specified xml 
+        ElementTree.
+        """
+        root = tree.getroot()
+        if root.tag != "index":
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        version = root.get("version")
+        if version is None:
+            # Should have a custom error for this.
+            raise ValueError("invalid xml")
+        if version != INDEX_METADATA_VERSION:
+            raise ValueError("Unsupported index metadata version - rebuild required.")
+        xml_key_columns = root.find("key_columns")
+        for xmlcol in xml_key_columns.getchildren():
+            if xmlcol.tag != "key_column":
+                raise ValueError("invalid xml")
+            name = xmlcol.get("name")
+            col = self.__table.get_column(name)
+            bin_width = float(xmlcol.get("bin_width"))
+            self.__key_columns.append(col)
+            self.__bin_widths.append(bin_width)
+
+    def build(self, progress_callback=None, callback_rows=100):
+        """
+        Builds this index. If progress_callback is not None, invoke this 
+        calback after every callback_rows have been processed.
+        """
+        llo = self.get_ll_object() 
+        if progress_callback is not None:
+            llo.build(progress_callback, callback_interval)
+        else:
+            llo.build() 
+
+    def close(self):
+        """
+        Closes this Index.
+        """
+        try:
+            Database.close(self)
+        finally:
+            self.__key_columns = []
+            self.__bin_widths = []
+    
+    def keys(self): 
+        """
+        Returns an iterator over all the keys in this Index in sorted 
+        order.
+        """
+        dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
+        for k in dvi:
+            yield k
+
+
+
 class NewTable(object):
     """
     The table object.
