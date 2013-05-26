@@ -850,10 +850,9 @@ class Table(Database):
     # Methods for accessing the columns
     def columns(self):
         """
-        Returns an iterator over the list of columns.
+        Returns the list of columns. 
         """
-        for c in self.__columns:
-            yield c
+        return list(self.__columns)
 
     def get_column(self, col_id):
         """
@@ -976,23 +975,8 @@ class Index(Database):
         """
         Returns an iterator over the list of key columns.
         """
-        for c in self.__key_columns:
-            yield c
+        return list(self.__key_columns)
 
-    def get_key_column(self, position):
-        """
-        Returns the key key_column in the specified positions. 
-        """
-        ret = None
-        if isinstance(col_id, int):
-            ret = self.__key_columns[col_id]
-        elif isinstance(col_id, str):
-            k = self.__key_column_name_map[col_id]
-            ret = self.__key_columns[k]
-        else:
-            raise TypeError("key_column ids must be strings or integers")
-        return ret
-    
     def add_key_column(self, key_column):
         """
         Adds the specified key_column to the list of key_columns we are indexing.
@@ -1087,9 +1071,134 @@ class Index(Database):
         """
         dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
         for k in dvi:
-            yield k
+            yield self.translate_value(k)
 
+    def translate_key(self, v):
+        """
+        Translates the specified arguments tuple as a key to a tuple ready to 
+        for use in the low-level API.
+        """
+        n = len(v)
+        l = [None for j in range(n)]
+        for j in range(n):
+            l[j] = v[j]
+            if isinstance(l[j], str):
+                l[j] = l[j].encode()
+        return tuple(l)
+    
+    def translate_value(self, v):
+        """ 
+        Translates the specified value from the low-level value to its
+        high-level equivalent.
+        """
+        ret = v
+        if len(v) == 1:
+            ret = v[0]
+        return ret
 
+    def get_min(self, *k):
+        key = self.translate_key(k)
+        v = self.get_ll_object().get_min(key)
+        return self.translate_value(v) 
+
+    def get_max(self, *k):
+        key = self.translate_key(k)
+        v = self.get_ll_object().get_max(key)
+        return self.translate_value(v) 
+
+    def counter(self):
+        """
+        Returns an IndexCounter object for this index. This provides an efficient 
+        method of iterating over the keys in the index.
+        """
+        return IndexCounter(self)
+    
+    def cursor(self, read_columns):
+        columns = [self.__table.get_column(c.encode()) for c in read_columns]
+        return IndexCursor(self, [c.get_position() for c in columns])
+ 
+class IndexCounter(collections.Mapping):
+    """
+    A counter for Indexes, based on the collections.Counter class. This class 
+    is a dictionary-like object that represents a mapping of the distinct 
+    keys in the index to the number of times those keys appear.
+    """
+    def __init__(self, index):
+        self.__index = index
+    
+    def __getitem__(self, key):
+        if isinstance(key, tuple):
+            k = self.__index.translate_key(key)
+        else:
+            k = self.__index.translate_key((key,))
+        return self.__index.get_ll_object().get_num_rows(k) 
+   
+    def __iter__(self):
+        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        for v in dvi:
+            yield self.__index.translate_value(v)
+
+    def __len__(self):
+        n = 0
+        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        for v in dvi:
+            n += 1
+        return n
+
+class Cursor(object):
+    """
+    Superclass of Cursor objects. Subclasses are responsible for allocating 
+    an iterator.
+    """
+    def __iter__(self):
+        if len(self._columns) == 1:
+            for r in self._row_iterator:
+                yield r[0]
+        else:
+            for r in self._row_iterator:
+                yield r
+
+class TableCursor(Cursor):
+    """
+    A cursor over the rows of the table in the order defined by an index. 
+    """
+    def __init__(self, table, columns):
+        self._columns = columns
+        col_positions = [c.get_position() for c in columns]
+        self._row_iterator = _wormtable.TableRowIterator(table.get_ll_object(), 
+                col_positions)
+
+    def set_min(self, v):
+        if v < 0:
+            raise ValueError("negative row_ids not supported")
+        self._row_iterator.set_min(v)
+    def set_max(self, v):
+        if v < 0:
+            raise ValueError("negative row_ids not supported")
+        self._row_iterator.set_max(v)
+
+class IndexCursor(Cursor):
+    """
+    A cursor over the rows of the table in the order defined by an index. 
+    """
+    def __init__(self, index, columns):
+        self.__index = index
+        self._columns = columns
+        col_positions = [c.get_position() for c in columns]
+        self._row_iterator = _wormtable.IndexRowIterator(
+                self.__index.get_ll_object(), col_positions)
+    
+    def set_min(self, *v):
+        key = self.__index.translate_key(v)
+        self._row_iterator.set_min(key)
+    
+    def set_max(self, *v):
+        key = self.__index.translate_key(v)
+        self._row_iterator.set_max(key)
+
+   
+    
+#################### OLD 
 
 class NewTable(object):
     """
@@ -1306,77 +1415,6 @@ class NewTable(object):
     def cursor(self, read_columns):
         columns = [self.get_column(c.encode()) for c in read_columns]
         return TableCursor(self.__table, [c.get_position() for c in columns])
-
-class IndexCounter(collections.Mapping):
-    """
-    A counter for Indexes, based on the collections.Counter class. This class 
-    is a dictionary-like object that represents a mapping of the distinct 
-    keys in the index to the number of times those keys appear.
-    """
-    def __init__(self, ll_index):
-        self.__ll_index = ll_index
-    
-    def __getitem__(self, key):
-        return self.__ll_index.get_num_rows(key) 
-   
-    def __iter__(self):
-        dvi = _wormtable.DistinctValueIterator(self.__ll_index)
-        return dvi
-    
-    def __len__(self):
-        n = 0
-        dvi = _wormtable.DistinctValueIterator(self.__ll_index)
-        for v in dvi:
-            n += 1
-        return n
-
-class Cursor(object):
-    """
-    Superclass of Cursor objects. Subclasses are responsible for allocating 
-    an iterator.
-    """
-    def __iter__(self):
-        if len(self._columns) == 1:
-            for r in self._row_iterator:
-                yield r[0]
-        else:
-            for r in self._row_iterator:
-                yield r
-
-class TableCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, ll_table, columns):
-        self._columns = columns
-        self._row_iterator = _wormtable.TableRowIterator(ll_table,  columns)
-
-    def set_min(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_min(v)
-    def set_max(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_max(v)
-
-class IndexCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, index, ll_index, columns):
-        self.__index = index
-        self._columns = columns
-        self._row_iterator = _wormtable.IndexRowIterator(ll_index,  columns)
-    
-    def set_min(self, *v):
-        key = self.__index.translate_key(v)
-        self._row_iterator.set_min(key)
-    
-    def set_max(self, *v):
-        key = self.__index.translate_key(v)
-        self._row_iterator.set_max(key)
-
 
 class NewIndex(object):
     """
