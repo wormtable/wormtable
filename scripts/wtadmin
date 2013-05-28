@@ -9,6 +9,12 @@ import argparse
 
 import wormtable as wt
 
+def ls(args):
+    print("ls", args)
+
+def show(args):
+    print("show", args)
+
 def add(args):
     print("add", args)
 
@@ -23,7 +29,7 @@ def add_homedir_argument(parser):
     Adds a positional homedir argument to the specified parser.
     """
     parser.add_argument("HOMEDIR", 
-        help="Wormtable home directory to operate on")   
+        help="Wormtable home directory")   
 
 def add_colspec_argument(parser):
     """
@@ -36,17 +42,32 @@ def add_colspec_argument(parser):
 def main():
     prog_description = "Wormtable administration program."
     parser = argparse.ArgumentParser(description=prog_description) 
-    subparsers = parser.add_subparsers(title='subcommands',
-            description="valid subcommands", help="help for subcommands")
-    # Global arguments
-    parser.add_argument("--cache-size", "-c", default="64M",
-            help="cache size in bytes; suffixes K, M and G also supported.")   
+    subparsers = parser.add_subparsers(title='subcommands')
+    
+    # show command
+    show_parser = subparsers.add_parser("show", 
+            description = "Show the columns in the table",
+            help="show details about the columns in the table")
+    add_homedir_argument(show_parser)
+    show_parser.set_defaults(func=show)
+    
     # dump command
     dump_parser = subparsers.add_parser("dump", 
-            help="dump the wormtable to stdout")
+            help="dump the table to stdout")
+    add_homedir_argument(dump_parser)
+    dump_parser.add_argument("--cache-size", "-c", default="64M",
+            help="cache size in bytes; suffixes K, M and G also supported.")   
+    dump_parser.set_defaults(func=dump)
+    
+    # ls command
+    ls_parser = subparsers.add_parser("ls", 
+            help="list the indexes in the table")
+    add_homedir_argument(ls_parser)
+    ls_parser.set_defaults(func=ls)
+
     # add index command
     add_parser = subparsers.add_parser("add", 
-            help="add a new index to the wormtable")
+            help="add a new index to the table")
     add_homedir_argument(add_parser)
     add_colspec_argument(add_parser)
     add_parser.add_argument("--progress", "-p", action="store_true", default=False,
@@ -54,8 +75,13 @@ def main():
     add_parser.add_argument("--force", "-f", action="store_true", default=False,
         help="force over-writing of existing index")   
     add_parser.add_argument("--name", "-n", 
-        help="name of the index")
+        help="name of the index (defaults to COLSPEC)")
+    add_parser.add_argument("--read-cache-size", "-c", default="64M",
+            help="read cache size in bytes; suffixes K, M and G also supported.")   
+    add_parser.add_argument("--write-cache-size", "-w", default="64M",
+            help="write cache size in bytes; suffixes K, M and G also supported.")   
     add_parser.set_defaults(func=add) 
+    
     # rm index command
     remove_parser = subparsers.add_parser("rm", help="delete an index")
     add_homedir_argument(remove_parser)
@@ -65,8 +91,6 @@ def main():
    
     args = parser.parse_args()
     args.func(args) 
-
-
 
 
 if __name__ == "__main__":
