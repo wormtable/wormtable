@@ -9,6 +9,65 @@ import argparse
 
 import wormtable as wt
 
+def add(args):
+    print("add", args)
+
+def remove(args):
+    print("remove", args)
+
+def dump(args):
+    print("dump", args)
+
+def add_homedir_argument(parser):
+    """
+    Adds a positional homedir argument to the specified parser.
+    """
+    parser.add_argument("HOMEDIR", 
+        help="Wormtable home directory to operate on")   
+
+def add_colspec_argument(parser):
+    """
+    Adds a positional colspec argument to the specified parser.
+    """
+    parser.add_argument("COLSPEC", 
+        help="Column specification for the index.")   
+
+
+def main():
+    prog_description = "Wormtable administration program."
+    parser = argparse.ArgumentParser(description=prog_description) 
+    subparsers = parser.add_subparsers(title='subcommands',
+            description="valid subcommands", help="help for subcommands")
+    # Global arguments
+    parser.add_argument("--cache-size", "-c", default="64M",
+            help="cache size in bytes; suffixes K, M and G also supported.")   
+    # dump command
+    dump_parser = subparsers.add_parser("dump", 
+            help="dump the wormtable to stdout")
+    # add index command
+    add_parser = subparsers.add_parser("add", 
+            help="add a new index to the wormtable")
+    add_homedir_argument(add_parser)
+    add_colspec_argument(add_parser)
+    add_parser.add_argument("--progress", "-p", action="store_true", default=False,
+        help="show progress monitor")   
+    add_parser.add_argument("--force", "-f", action="store_true", default=False,
+        help="force over-writing of existing index")   
+    add_parser.add_argument("--name", "-n", 
+        help="name of the index")
+    add_parser.set_defaults(func=add) 
+    # rm index command
+    remove_parser = subparsers.add_parser("rm", help="delete an index")
+    add_homedir_argument(remove_parser)
+    remove_parser.add_argument("NAME", help="name of the index")
+    remove_parser.set_defaults(func=remove) 
+
+   
+    args = parser.parse_args()
+    args.func(args) 
+
+
+
 
 if __name__ == "__main__":
     main()
