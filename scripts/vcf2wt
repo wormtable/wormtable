@@ -35,6 +35,7 @@ QUAL = b"QUAL"
 FILTER = b"FILTER"
 INFO = b"INFO"
 
+# TODO put in proper descriptions
 CHROM_DESCRIPTION = b"CHROM"
 POS_DESCRIPTION = b"POS"
 ID_DESCRIPTION = b"ID"
@@ -43,8 +44,6 @@ ALT_DESCRIPTION = b"ALT"
 QUAL_DESCRIPTION = b"QUAL"
 FILTER_DESCRIPTION = b"FILTER"
 INFO_DESCRIPTION = b"INFO"
-
-
 
 # Special values in VCF
 MISSING_VALUE = b"."
@@ -59,160 +58,6 @@ FLOAT = b"Float"
 FLAG = b"Flag"
 CHARACTER = b"Character"
 STRING = b"String"
-
-def vcf_column_factory(line):
-    """
-    Returns a column object suitable for encoding a vcf column described by the 
-    specified meta-information line.
-    """
-    d = {}
-    s = line[line.find(b"<") + 1: line.find(b">")]
-    for j in range(3):
-        k = s.find(b",")
-        tokens = s[:k].split(b"=")
-        s = s[k + 1:]
-        d[tokens[0]] = tokens[1]
-    tokens = s.split(b"=", 1)
-    d[tokens[0]] = tokens[1]
-    name = d[ID]
-    description = d[DESCRIPTION].strip(b"\"")
-    number = d[NUMBER]
-    num_elements = wt.WT_VARIABLE 
-    try:
-        # If we can parse it into a number, do so. If this fails than use
-        # a variable number of elements.
-        num_elements = int(number)    
-    except ValueError as v:
-        pass
-    # We can also have negative num_elements to indicate variable column
-    if num_elements < 0:
-        num_elements = wt.WT_VARIABLE 
-    st = d[TYPE]
-    if st == INTEGER:
-        element_type = wt.WT_INT
-        element_size = 4
-    elif st == FLOAT: 
-        element_type = wt.WT_FLOAT
-        element_size = 4
-    elif st == FLAG: 
-        element_type = wt.WT_INT
-        element_size = 1
-    elif st == CHARACTER: 
-        element_type = wt.WT_CHAR
-        element_size = 1
-    elif st == STRING: 
-        num_elements = wt.WT_VARIABLE 
-        element_type = wt.WT_CHAR
-        element_size = 1
-    else:
-        raise ValueError("Unknown VCF type:", st)
-    col = _wormtable.Column(name, description, element_type, 
-            element_size, num_elements)
-    return col
-   
-def copy_column(col, prefix):
-    """
-    Returns a copy of the specified column with the specified prefix 
-    appended to its name.
-    """
-    new_name = prefix + b"_" + col.name
-    new_col = _wormtable.Column(name=new_name, description=col.description, 
-            element_type=col.element_type, element_size=col.element_size, 
-            num_elements=col.num_elements)
-    return new_col
-
-class oldVCFSchemaGenerator(object):
-    """
-    Class that generates a database schema for a VCF file by parsing 
-    the header.
-    """
-    def __init__(self, vcf_file):
-        self._file = vcf_file
-        self._info_columns = [] 
-        self._genotype_columns = []
-    
-    def _parse_version(self, s):
-        """
-        Parse the VCF version number from the specified string.
-        """
-        self._version = -1.0
-        tokens = s.split(b"v")
-        if len(tokens) == 2:
-            self._version = float(tokens[1])
-
-    def _parse_meta_information(self, line):
-        """
-        Processes the specified meta information line to obtain the values 
-        of the various columns and their types.
-        """
-        if line.startswith(b"##INFO"):
-            col = vcf_column_factory(line)
-            self._info_columns.append(col)
-        elif line.startswith(b"##FORMAT"):
-            col = vcf_column_factory(line)
-            self._genotype_columns.append(col)
-        else:
-            pass
-            # Should we parse the FILTER values and make a proper enum 
-            # column? Probably.
-
-    def _parse_header_line(self, s):
-        """
-        Processes the specified header string to get the genotype labels.
-        """
-        self._genotypes = s.split()[9:]
-
-    def generate_schema(self):
-        """
-        Reads the header for this VCF file, constructing the database 
-        schema and returning it. 
-        """
-        f = self._file 
-        s = f.readline()
-        self._parse_version(s)
-        if self._version < 4.0:
-            raise ValueError("VCF versions < 4.0 not supported")
-        while s.startswith(b"##"):
-            self._parse_meta_information(s)
-            s = f.readline()
-        self._parse_header_line(s)
-        int_type = wt.WT_INT
-        char_type = wt.WT_CHAR
-        float_type = wt.WT_FLOAT
-        #enum_type = _wormtable.ELEMENT_TYPE_ENUM
-        # TMP while we're fixing enums
-        enum_type = wt.WT_CHAR
-        variable = wt.WT_VARIABLE
-        # Get the fixed columns
-        # TODO Add string constants at the top of the file for the descriptions 
-        # of these columns.
-        columns = [
-            _wormtable.Column(b"row_id", b"Row position", wt.WT_UINT, 5, 1),
-            _wormtable.Column(CHROM, b"Chromosome", enum_type, 1, variable),
-            _wormtable.Column(POS, b"position", int_type, 5, 1),
-            _wormtable.Column(ID, b"ID", char_type, 1, variable),  
-            _wormtable.Column(REF, b"Reference allele", enum_type, 1, variable),
-            _wormtable.Column(ALT, b"Alternatve allele", enum_type, 1, variable),
-            _wormtable.Column(QUAL, b"Quality", float_type, 4, 1),
-            _wormtable.Column(FILTER, b"Filter", char_type, 1, variable),
-        ]
-        for col in self._info_columns:
-            columns.append(copy_column(col, INFO))
-        for genotype in self._genotypes:
-            for col in self._genotype_columns:
-                columns.append(copy_column(col, genotype))
-        schema = wt.Schema(columns)
-        return schema
-
-def vcf_schema_factory(vcf_file):
-    """
-    Returns a schema for the specified VCF file.
-    """
-    reading_file, progress_file = open_file(vcf_file)
-    sg = VCFSchemaGenerator(reading_file)
-    schema = sg.generate_schema()
-    reading_file.close()
-    return schema
 
 def open_file(vcf_file):
     """
@@ -463,12 +308,7 @@ class VCFParser(object):
     """
     def __init__(self, input_file):
         self.__input_file = input_file
-        self.__info_column_descriptions = [] 
-        self.__genotype_column_descriptions = []
-        self.__info_columns = [] 
-        self.__genotype_columns = []
         self.__genotypes = []
-        self.__table = wt.Table("tmp") 
 
     def parse_version(self, s):
         """
@@ -485,10 +325,10 @@ class VCFParser(object):
         """
         self.__genotypes = s.split()[9:]
 
-    def add_column(self, prefix, line):
+    def add_column(self, table, prefix, line):
         """
         Adds a VCF column using the specified metadata line with the specified 
-        name prefix.
+        name prefix to the specified table.
         """
         d = {}
         s = line[line.find(b"<") + 1: line.find(b">")]
@@ -532,10 +372,10 @@ class VCFParser(object):
         else:
             raise ValueError("Unknown VCF type:", st)
         
-        self.__table.add_column(prefix + b"_" + name,  description, element_type, 
+        table.add_column(prefix + b"_" + name,  description, element_type, 
                 element_size, num_elements)
 
-    def generate_schema(self):
+    def generate_schema(self, table):
         """
         Reads the header from the specified VCF file and returns a Table 
         with the correct columns.
@@ -555,34 +395,29 @@ class VCFParser(object):
                 genotype_descriptions.append(s)
             s = f.readline()
         self.parse_header_line(s)
-        t = self.__table
         # Add the fixed columns
-        t.add_id_column(5)
-        t.add_char_column(CHROM, CHROM_DESCRIPTION)
-        t.add_uint_column(POS, POS_DESCRIPTION, 5)
-        t.add_char_column(ID, ID_DESCRIPTION)
-        t.add_char_column(REF, REF_DESCRIPTION)
-        t.add_char_column(ALT, ALT_DESCRIPTION)
-        t.add_float_column(QUAL, QUAL_DESCRIPTION, 4)
-        t.add_char_column(FILTER, FILTER_DESCRIPTION)
+        table.add_id_column(5)
+        table.add_char_column(CHROM, CHROM_DESCRIPTION)
+        table.add_uint_column(POS, POS_DESCRIPTION, 5)
+        table.add_char_column(ID, ID_DESCRIPTION)
+        table.add_char_column(REF, REF_DESCRIPTION)
+        table.add_char_column(ALT, ALT_DESCRIPTION)
+        table.add_float_column(QUAL, QUAL_DESCRIPTION, 4)
+        table.add_char_column(FILTER, FILTER_DESCRIPTION)
         for s in info_descriptions:
-            self.add_column(INFO, s)
+            self.add_column(table, INFO, s)
         for genotype in self.__genotypes:
             for s in genotype_descriptions: 
-                self.add_column(genotype, s) 
+                self.add_column(table, genotype, s) 
 
-    def rows(self):
+    def rows(self, table_columns):
         """
         Returns an iterator over the rows in this VCF file. Each row is a 
         dictionary mapping column positions to their encoded string values.
         """
-        self.__table.open("w")
         # First we construct the mappings from the various parts of the 
         # VCF row to the corresponding column index in the wormtable
-        num_columns = len(self.__table.columns()) 
-        table_columns = {}
-        for c in self.__table.columns()[1:]:
-            table_columns[c.get_name().encode()] = c.get_position()
+        num_columns = len(table_columns) 
         all_fixed_columns = [CHROM, POS, ID, REF, ALT, QUAL, FILTER]
         fixed_columns = []
         # weed out the columns that are not in the table
@@ -593,7 +428,7 @@ class VCFParser(object):
         info_columns = {}
         genotype_columns = [{} for g in self.__genotypes]
         for k, v in table_columns.items(): 
-            if b"_" in k:
+            if b"_" in k and v != 0:
                 split = k.split(b"_")
                 if split[0] == INFO:
                     name = split[1]
@@ -625,7 +460,7 @@ class VCFParser(object):
                         #self._insert_elements(col, tokens[1])
                     else:
                         # This is a Flag column.
-                        row[col] = "1"
+                        row[col] = b"1"
                         #t.insert_elements(col.position, [1])
             # Process the genotype columns. 
             j = 0
@@ -653,11 +488,6 @@ class VCFParser(object):
             #if num_rows % self._progress_update_rows == 0:
             #    self._update_progress()
 
-    def write_table(self):
-        
-        for r in self.rows():
-            self.__table.append_encoded(r)
-        self.__table.close()
 
 
 def main():
@@ -675,12 +505,24 @@ def main():
         help="cache size in bytes; suffixes K, M and G also supported.")   
     args = parser.parse_args()
     
-    f = open(args.FILE, "r")
+    f = open(args.FILE, "rb")
+    homedir = "tmp"
+    table = wt.Table(homedir)
+
     vcf_parser = VCFParser(f)
-    vcf_parser.generate_schema()
-    #for r in vcf_parser.rows():
-    #    print(r)
-    vcf_parser.write_table()
+    vcf_parser.generate_schema(table)
+    table.open("w")
+    table_columns = {}
+    for c in table.columns():
+        table_columns[c.get_name().encode()] = c.get_position()
+    table.close()
+    
+    
+    table.read_metadata(table.get_metadata_path())
+    table.open("w")
+    for r in vcf_parser.rows(table_columns):
+        table.append_encoded(r)
+    table.close()
 
 if __name__ == "__main__":
     main()
