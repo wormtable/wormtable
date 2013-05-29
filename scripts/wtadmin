@@ -22,7 +22,14 @@ def remove(args):
     print("remove", args)
 
 def dump(args):
-    print("dump", args)
+    """
+    Dumps the entire table to stdout.
+    """
+    table = wt.Table(args.HOMEDIR)
+    table.open("r")
+    for r in table:
+        print(r)
+    table.close()
 
 def add_homedir_argument(parser):
     """

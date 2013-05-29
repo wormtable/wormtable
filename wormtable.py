@@ -20,10 +20,8 @@ __version__ = '0.0.1-dev'
 SCHEMA_VERSION = "0.1-dev"
 INDEX_METADATA_VERSION = "0.1-dev"
 
-DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
-# Deprecated
-DEFAULT_READ_CACHE_SIZE = 32 * 2**20
+DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
 WT_VARIABLE = _wormtable.NUM_ELEMENTS_VARIABLE 
 WT_UINT   = _wormtable.ELEMENT_TYPE_UINT   
@@ -35,6 +33,8 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 
 
+# DEPRECATED
+DEFAULT_READ_CACHE_SIZE = 16 * 2**20 # 16M
 class Schema(object):
     """
     Class representing a database schema, consisting of a list of 
@@ -847,6 +847,17 @@ class Table(Database):
         col = _wormtable.Column(nb, db, WT_CHAR, 1, num_elements)
         self.__add_column(Column(col)) 
 
+
+    def add_column(self, name, description, element_type, size, num_elements):
+        """
+        Creates a new column with the specified name, description, element type,
+        element size and number of elements.
+        """
+        nb = name.encode()
+        db = description.encode()
+        col = _wormtable.Column(nb, db, element_type, size, num_elements)
+        self.__add_column(Column(col)) 
+
     # Methods for accessing the columns
     def columns(self):
         """
@@ -905,6 +916,9 @@ class Table(Database):
     def append(self, row):
         """
         Appends the specified row to this table.
+        
+        TODO make these systematic! At the moment one take zero-indexed lists
+        and the other doesn't.
         """
         t = self.get_ll_object()
         j = 1 
@@ -913,7 +927,23 @@ class Table(Database):
             j += 1
         t.commit_row()
         self.__num_rows += 1
+    
+    def append_encoded(self, row):
+        """
+        Appends the specified row to this table.
+        
+        TODO make these systematic!
+        """
+        t = self.get_ll_object()
+        j = 0 
+        for v in row:
+            if v is not None:
+                t.insert_encoded_elements(j, v)
+            j += 1
+        t.commit_row()
+        self.__num_rows += 1
      
+
     def __len__(self):
         """
         Implement the len(t) function.
@@ -1195,315 +1225,4 @@ class IndexCursor(Cursor):
     def set_max(self, *v):
         key = self.__index.translate_key(v)
         self._row_iterator.set_max(key)
-
-   
-    
-#################### OLD 
-
-class NewTable(object):
-    """
-    The table object.
-    """ 
-    def __init__(self, homedir):
-        self.__homedir = homedir
-        self.__cache_size = DEFAULT_READ_CACHE_SIZE 
-        self.__primary_db_file = os.path.join(homedir, "primary.db")
-        self.__schema_file = os.path.join(homedir, "schema.xml") 
-        self.__columns = []
-        self.__column_name_map = {}
-        self.__num_rows = 0
-        self.__table = None
-   
-    def __read_schema(self):
-        """
-        Reads the schema from the schema_file and sets up the columns 
-        appropriately.
-        """
-        tree = ElementTree.parse(self.__schema_file)
-        root = tree.getroot()
-        if root.tag != "schema":
-            raise ValueError("invalid xml")
-        version = root.get("version")
-        if version is None:
-            raise ValueError("invalid xml")
-        if version != SCHEMA_VERSION:
-            raise ValueError("Unsupported schema version - rebuild required.")
-        xml_columns = root.find("columns")
-        for xmlcol in xml_columns.getchildren():
-            col = Column.parse_xml(xmlcol)
-            self.__column_name_map[col.get_name()]= len(self.__columns)
-            self.__columns.append(col)
-
-    def __write_schema(self):
-        """
-        Writes the schema in XML format to the schema_file.
-        """
-        d = {"version":SCHEMA_VERSION}
-        root = ElementTree.Element("schema", d)
-        columns = ElementTree.Element("columns")
-        root.append(columns)
-        for c in self.__columns:
-            columns.append(c.get_xml())
-        tree = ElementTree.ElementTree(root)
-        raw_xml = ElementTree.tostring(root, 'utf-8')
-        reparsed = minidom.parseString(raw_xml)
-        pretty = reparsed.toprettyxml(indent="  ")
-        with open(self.__schema_file, "w") as f:
-            f.write(pretty)
-   
-    # Helper methods for adding Columns of the various types.
-    def __add_column(self, column):
-        """
-        Adds a new Column to this wormtable. Can only be called before the table 
-        has been opened in write mode.
-        """
-        if self.__table is not None:
-            raise ValueError("Cannot add columns to open table")
-        self.__columns.append(column)
-    
-    def add_uint_column(self, name, description="", size=2, num_elements=1):
-        """
-        Creates a new unsigned integer column with the specified name, 
-        element size (in bytes) and number of elements. If num_elements=0
-        then the column can hold a variable number of elements.
-        """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_UINT, size, num_elements)
-        self.__add_column(Column(col)) 
-
-    def add_int_column(self, name, description="", size=2, num_elements=1):
-        """
-        Creates a new integer column with the specified name, 
-        element size (in bytes) and number of elements. If num_elements=0
-        then the column can hold a variable number of elements.
-        """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_INT, size, num_elements)
-        self.__add_column(Column(col)) 
-    
-    def add_float_column(self, name, description="", size=4, num_elements=1):
-        """
-        Creates a new float column with the specified name, 
-        element size (in bytes) and number of elements. If num_elements=0
-        then the column can hold a variable number of elements. Only 4 and 
-        8 byte floats are supported by wormtable; these correspond to the 
-        usual float and double types.
-        """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_FLOAT, size, num_elements)
-        self.__add_column(Column(col)) 
-
-    def add_char_column(self, name, description="", num_elements=0):
-        """
-        Creates a new character column with the specified name, description 
-        and number of elements. If num_elements=0 then the column can hold 
-        variable length strings; otherwise, it can contain strings of a fixed 
-        length only.
-        """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_CHAR, 1, num_elements)
-        self.__add_column(Column(col)) 
-
-    # Methods for accessing the columns
-    def columns(self):
-        """
-        Returns an iterator over the list of columns.
-        """
-        for c in self.__columns:
-            yield c
-
-    def get_column(self, col_id):
-        """
-        Returns a column corresponding to the specified id. If this is an
-        integer, we return the column at this position; if it is a string
-        we return the column with the specified name.
-        """
-        ret = None
-        if isinstance(col_id, int):
-            ret = self.__columns[col_id]
-        elif isinstance(col_id, bytes):
-            k = self.__column_name_map[col_id]
-            ret = self.__columns[k]
-        else:
-            raise TypeError("column ids must be bytes or integers")
-        return ret
-
-    def get_homedir(self):
-        """
-        Returns the home directory of this table.
-        """ 
-        return self.__homedir
-
-    def get_cache_size(self):
-        """
-        Returns the cache size of this table in bytes.
-        """
-        return self.__cache_size
-
-    def open(self, mode):
-        """
-        Open the table in the specified mode.
-        """
-        modes = {'r': _wormtable.WT_READ, 'w': _wormtable.WT_WRITE}
-        if mode not in modes:
-            raise ValueError("mode string must be one of 'r' or 'w'")
-        m = modes[mode]
-        if m == WT_READ:
-            self.__read_schema()
-        else:
-            self.__write_schema()
-        columns = [c.TEMP_get_column() for c in self.__columns]
-        self.__table = _wormtable.Table(self.__primary_db_file.encode(), 
-                    columns, self.__cache_size)
-        self.__table.open(m)
-        self.__num_rows = 0
-        if m == WT_READ:
-            self.__num_rows = self.__table.get_num_rows()
-
-    def close(self):
-        """
-        Closes the table, releasing cache and other resources. 
-        """
-        self.__table.close()
-        self.__table = None
-        self.__columns = []
-
-    def __len__(self):
-        """
-        Implement the len(t) function.
-        """
-        return self.__num_rows
-    
-    def __getitem__(self, key):
-        """
-        Implements the t[key] function.
-        """
-        ret = None
-        n = len(self)
-        if isinstance(key, slice):
-            ret = [self[j] for j in range(*key.indices(n))]
-        elif isinstance(key, int):
-            k = key
-            if k < 0:
-                k = n + k
-            if k >= n:
-                raise IndexError("table index out of range")
-            ret = self.__table.get_row(k)    
-        else:
-            raise TypeError("table indices must be integers")
-        return ret
-  
-    def append(self, row):
-        """
-        Appends the specified row to this table.
-        """
-        j = 1 
-        for v in row:
-            self.__table.insert_elements(j, v)
-            j += 1
-        self.__table.commit_row()
-        self.__num_rows += 1
-
-    def TEMP_get_table(self):
-        return self.__table
-
-
-    def cursor(self, read_columns):
-        columns = [self.get_column(c.encode()) for c in read_columns]
-        return TableCursor(self.__table, [c.get_position() for c in columns])
-
-class NewIndex(object):
-    """
-    Class representing an Index for a set of columns.
-    """
-    def __init__(self, table, colspec):
-        columns = colspec.split("+")
-        self.__table = table 
-        self.__columns = [self.__table.get_column(c.encode()) for c in columns]
-        prefix = os.path.join(table.get_homedir().encode(), colspec.encode())
-        self.__db_filename = prefix + b".db"
-        self.__metadata_filename = prefix + b".xml"
-        self.__cache_size = 0
-
-    def open(self, mode="r"):
-        self.__index = _wormtable.Index(self.__table.TEMP_get_table(),
-                self.__db_filename, [c.get_position() for c in self.__columns], 
-                self.__cache_size)
-        self.__index.open(_wormtable.WT_READ)
-        
-    
-    def close(self):
-        self.__index.close()
-    
-    def TEMP_get_index(self):
-        return self.__index
-
-    def translate_key(self, v):
-        """
-        Translates the specified arguments tuple as a key to a tuple ready to 
-        for use in the low-level API.
-        """
-        n = len(v)
-        l = [None for j in range(n)]
-        for j in range(n):
-            l[j] = v[j]
-            if isinstance(l[j], str):
-                l[j] = l[j].encode()
-        return tuple(l)
-
-    def get_min(self, *v):
-        key = self.translate_key(v)
-        return self.__index.get_min(key)
-
-    def get_max(self, *v):
-        """
-        Returns the maximum key in this index. If a partial key is specified,
-        we return the largest key with initial values less than or equal to 
-        the value provided.
-        """
-        key = self.translate_key(v)
-        return self.__index.get_max(key)
-
-
-    def counter(self):
-        """
-        Returns an IndexCounter object for this index. This provides an efficient 
-        method of iterating over the keys in the index.
-        """
-        return IndexCounter(self.__index)
-    
-    def cursor(self, read_columns):
-        columns = [self.__table.get_column(c.encode()) for c in read_columns]
-        return IndexCursor(self, self.__index, [c.get_position() for c in columns])
-    
-    
-    def set_bin_widths(self, bin_widths):
-        """
-        Sets the bin widths for the columns to the specified values. Only has 
-        an effect if called before build.
-        """
-        self.__bin_widths = bin_widths
-
-
-    def build(self, progress_callback=None, callback_interval=100):
-        build_filename = self._db_filename + b".build" 
-        cols = self._table.get_schema().get_columns()
-        col_positions = [cols.index(c) for c in self._columns]
-        self._index = _wormtable.Index(self._table.get_database(), build_filename, 
-                col_positions, self._cache_size)
-        self._index.set_bin_widths(self._bin_widths)
-        self._index.open(WT_WRITE)
-        if progress_callback is not None:
-            self._index.build(progress_callback, callback_interval)
-        else:
-            self._index.build()
-        self._index.close()
-        # Create the metadata file and move the build file to its final name
-        self._write_metadata_file()
-        os.rename(build_filename, self._db_filename)
-
 
