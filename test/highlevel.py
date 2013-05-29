@@ -247,7 +247,7 @@ class IndexIntegrityTest(WormtableTest):
             c = wt.IndexCursor(i, read_cols)
             j = 0
             for r1 in c:
-                j = r1[0]
+                j = int(r1[0])
                 row = self._table[j]
                 r2 = tuple(row[col.get_position()] for col in read_cols)
                 self.assertEqual(r1, r2)

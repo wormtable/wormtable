@@ -782,23 +782,14 @@ class Table(Database):
         return t
 
     # Helper methods for adding Columns of the various types.
-    def __add_column(self, column):
-        """
-        Adds a new Column to this wormtable. Can only be called before the table 
-        has been opened in write mode.
-        """
-        if self.is_open():
-            raise ValueError("Cannot add columns to open table")
-        self.__columns.append(column)
    
     def add_id_column(self, size=4):
         """
         Adds the ID column with the specified size in bytes.
         """
-        name = self.PRIMARY_KEY_NAME.encode() 
-        desc = b'Primary key column'
-        col = _wormtable.Column(name, desc, WT_UINT, size, 1)
-        self.__add_column(Column(col)) 
+        name = self.PRIMARY_KEY_NAME
+        desc = 'Primary key column'
+        self.add_uint_column(name, desc, size, 1)
 
     def add_uint_column(self, name, description="", size=2, num_elements=1):
         """
@@ -806,10 +797,7 @@ class Table(Database):
         element size (in bytes) and number of elements. If num_elements=0
         then the column can hold a variable number of elements.
         """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_UINT, size, num_elements)
-        self.__add_column(Column(col)) 
+        self.add_column(name, description, WT_UINT, size, num_elements)
 
     def add_int_column(self, name, description="", size=2, num_elements=1):
         """
@@ -817,10 +805,7 @@ class Table(Database):
         element size (in bytes) and number of elements. If num_elements=0
         then the column can hold a variable number of elements.
         """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_INT, size, num_elements)
-        self.__add_column(Column(col)) 
+        self.add_column(name, description, WT_INT, size, num_elements)
     
     def add_float_column(self, name, description="", size=4, num_elements=1):
         """
@@ -830,10 +815,7 @@ class Table(Database):
         8 byte floats are supported by wormtable; these correspond to the 
         usual float and double types.
         """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_FLOAT, size, num_elements)
-        self.__add_column(Column(col)) 
+        self.add_column(name, description, WT_FLOAT, size, num_elements)
 
     def add_char_column(self, name, description="", num_elements=0):
         """
@@ -842,21 +824,23 @@ class Table(Database):
         variable length strings; otherwise, it can contain strings of a fixed 
         length only.
         """
-        nb = name.encode()
-        db = description.encode()
-        col = _wormtable.Column(nb, db, WT_CHAR, 1, num_elements)
-        self.__add_column(Column(col)) 
-
+        self.add_column(name, description, WT_CHAR, 1, num_elements)
 
     def add_column(self, name, description, element_type, size, num_elements):
         """
         Creates a new column with the specified name, description, element type,
         element size and number of elements.
         """
-        nb = name.encode()
-        db = description.encode()
+        if self.is_open():
+            raise ValueError("Cannot add columns to open table")
+        nb = name
+        if isinstance(name, str):
+            nb = name.encode()
+        db = description
+        if isinstance(description, str):
+            db = description.encode()
         col = _wormtable.Column(nb, db, element_type, size, num_elements)
-        self.__add_column(Column(col)) 
+        self.__columns.append(Column(col))
 
     # Methods for accessing the columns
     def columns(self):
