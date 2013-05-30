@@ -22,6 +22,8 @@ import argparse
 import shutil 
 import gzip
 
+import multiprocessing
+
 import wormtable as wt
 
 # VCF Fixed columns
@@ -302,13 +304,58 @@ def oldmain():
 ### New implementation ##############################################
 
 
-class VCFParser(object):
+class VCFReader(object):
     """
-    A class representing a VCF file parser.
+    A class for reading VCF files. 
     """
-    def __init__(self, input_file):
-        self.__input_file = input_file
+    def __init__(self, vcf_file):
         self.__genotypes = []
+        # TODO deal with stdin
+        if vcf_file.endswith(".gz"):
+            self.__input_file = gzip.open(vcf_file, "rb")
+            self.__progress_file = self.__input_file.fileobj
+        else:
+            self.__input_file = open(vcf_file, "rb")
+            self.__progress_file = self.__input_file 
+        statinfo = os.stat(vcf_file)
+        self.__input_file_size = statinfo.st_size 
+        self.__progress_update_rows = 2**32 
+        self.__progress_monitor = None
+
+    def set_progress(self, progress):
+        """
+        If progress is True turn on progress monitoring for this VCF reader.
+        """
+        if progress:
+            self.__progress_monitor = wt.ProgressMonitor(self.__input_file_size, 
+                    "bytes")
+            self.__progress_update_rows = 100
+            if self.__input_file_size > 2**30:
+                progress_rows = 10000
+             
+    def update_progress(self):
+        """
+        Reads the position we are at in the underlying file and uses this to 
+        update the progress bar, if used.
+        """
+        if self.__progress_monitor is not None:
+            t = self.__progress_file.tell() 
+            self.__progress_monitor.update(t)
+
+    def finish_progress(self):
+        """
+        Finishes up the progress monitor, if in use.
+        """ 
+        if self.__progress_monitor is not None:
+            self.update_progress()
+            self.__progress_monitor.finish()
+
+    def close(self):
+        """
+        Closes any open files on this Reader.
+        """
+        self.__input_file.close()
+        self.__progress_file.close()
 
     def parse_version(self, s):
         """
@@ -410,11 +457,22 @@ class VCFParser(object):
             for s in genotype_descriptions: 
                 self.add_column(table, genotype, s) 
 
+    def read_header(self):
+        """
+        Reads the VCF header and skips to the first line of the content.
+        """
+        f = self.__input_file
+        s = f.readline()
+        while s.startswith(b"##"):
+            s = f.readline()
+        self.parse_header_line(s) 
+        
     def rows(self, table_columns):
         """
         Returns an iterator over the rows in this VCF file. Each row is a 
         dictionary mapping column positions to their encoded string values.
         """
+        self.read_header()
         # First we construct the mappings from the various parts of the 
         # VCF row to the corresponding column index in the wormtable
         num_columns = len(table_columns) 
@@ -439,6 +497,7 @@ class VCFParser(object):
                     index = self.__genotypes.index(g)
                     genotype_columns[index][name] = v 
         # Now we are ready to process the file.
+        num_rows = 0
         for s in self.__input_file:
             row = [None for j in range(num_columns)] 
             l = s.split()
@@ -482,13 +541,25 @@ class VCFParser(object):
                     print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                 j += 1
             yield row
-            # Finally, commit the record.
-            #self._row_buffer.commit_row()
-            #num_rows += 1
-            #if num_rows % self._progress_update_rows == 0:
-            #    self._update_progress()
+            num_rows += 1
+            if num_rows % self.__progress_update_rows == 0:
+                self.update_progress()
+        self.finish_progress()
 
 
+def writer(homedir, q):
+    """
+    Reads records from the specified queue and writes them to a table 
+    opened in write mode for the specified homedir.
+    """
+    table = wt.Table(homedir)
+    table.read_metadata(table.get_metadata_path())
+    table.open("w") 
+    r = q.get()
+    while r is not None:
+        table.append_encoded(r)
+        r = q.get()
+    table.close()
 
 def main():
     prog_description = "Convert VCF file to Wormtable format."
@@ -505,24 +576,31 @@ def main():
         help="cache size in bytes; suffixes K, M and G also supported.")   
     args = parser.parse_args()
     
-    f = open(args.FILE, "rb")
     homedir = "tmp"
     table = wt.Table(homedir)
 
-    vcf_parser = VCFParser(f)
-    vcf_parser.generate_schema(table)
+    reader = VCFReader(args.FILE)
+    reader.generate_schema(table)
+    reader.close()
     table.open("w")
     table_columns = {}
     for c in table.columns():
         table_columns[c.get_name().encode()] = c.get_position()
     table.close()
     
-    
-    table.read_metadata(table.get_metadata_path())
-    table.open("w")
-    for r in vcf_parser.rows(table_columns):
-        table.append_encoded(r)
-    table.close()
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(target=writer, args=(homedir, q))
+    p.start()
+
+    reader = VCFReader(args.FILE)
+    reader.set_progress(args.progress)
+    for r in reader.rows(table_columns):
+        q.put(r)    
+    # write the sentinel
+    print("finished reading...")
+    q.put(None) 
+    reader.close()
+    p.join()
 
 if __name__ == "__main__":
     main()
