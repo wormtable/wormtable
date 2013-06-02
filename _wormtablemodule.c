@@ -9,12 +9,12 @@
 #define WT_READ 0
 #define WT_WRITE 1
 
-#define ELEMENT_TYPE_UINT 0 
-#define ELEMENT_TYPE_INT 1 
-#define ELEMENT_TYPE_FLOAT 2
-#define ELEMENT_TYPE_CHAR 3
+#define WT_UINT 0 
+#define WT_INT 1 
+#define WT_FLOAT 2
+#define WT_CHAR 3
 
-#define NUM_ELEMENTS_VARIABLE 0 
+#define WT_VAR_1 0 
 #define MAX_NUM_ELEMENTS 255
 #define MAX_ROW_SIZE 65536
 
@@ -65,9 +65,6 @@ typedef struct {
     Py_ssize_t cache_size;
     u_int32_t num_columns;
     u_int32_t fixed_region_size;
-    /* this buffer isn't really necessary - we should just use the table's
-     * row buffer.
-     */
     void *row_buffer;
     u_int32_t row_buffer_size;     /* max size */
     u_int32_t current_row_size;    /* current size */
@@ -85,6 +82,9 @@ typedef struct {
     u_int32_t num_columns;
     void *key_buffer;
     u_int32_t key_buffer_size;
+    /* this buffer isn't really necessary - we should just use the table's
+     * row buffer.
+     */
     void *row_buffer;
     u_int32_t row_buffer_size;
     double *bin_widths;
@@ -133,11 +133,9 @@ handle_bdb_error(int err)
 /* 
  * Copies n bytes of source into destination, swapping the order of the 
  * bytes.
- *
- * TODO rename to byteswap_copy
  */
 static void
-bigendian_copy(void* dest, void *source, size_t n)
+byteswap_copy(void* dest, void *source, size_t n)
 {
     size_t j = 0;
     unsigned char *dest_c = (unsigned char *) dest;
@@ -306,7 +304,7 @@ Column_native_to_python_char(Column *self, int index)
     PyObject *ret = NULL;
     int j = self->num_buffered_elements - 1;
     char *str = (char *) self->element_buffer;
-    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements != WT_VAR_1) {
         /* check for shortened fixed-length strings, which will be padded 
          * with NULLs */
         while (str[j] == '\0' && j >= 0) {
@@ -338,7 +336,7 @@ pack_float(float value, void *dest)
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &float_bits, sizeof(float)); 
 #else    
-    bigendian_copy(dest, &float_bits, sizeof(float)); 
+    byteswap_copy(dest, &float_bits, sizeof(float)); 
 #endif
 }
 
@@ -350,7 +348,7 @@ unpack_float(void *src)
 #ifdef WORDS_BIGENDIAN
     memcpy(&float_bits, src, sizeof(float));
 #else
-    bigendian_copy(&float_bits, src, sizeof(float));
+    byteswap_copy(&float_bits, src, sizeof(float));
 #endif
     float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
     memcpy(&value, &float_bits, sizeof(float));
@@ -366,7 +364,7 @@ pack_double(double value, void *dest)
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &double_bits, sizeof(double)); 
 #else
-    bigendian_copy(dest, &double_bits, sizeof(double)); 
+    byteswap_copy(dest, &double_bits, sizeof(double)); 
 #endif
 }
 
@@ -378,7 +376,7 @@ unpack_double(void *src)
 #ifdef WORDS_BIGENDIAN
     memcpy(&double_bits, src, sizeof(double));
 #else
-    bigendian_copy(&double_bits, src, sizeof(double));
+    byteswap_copy(&double_bits, src, sizeof(double));
 #endif
     double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
     memcpy(&value, &double_bits, sizeof(double));
@@ -400,7 +398,7 @@ unpack_uint(void *src, u_int8_t size)
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
 #else
-    bigendian_copy(v, src, size);
+    byteswap_copy(v, src, size);
 #endif
     /* decrement and return */
     dest -= 1;
@@ -431,7 +429,7 @@ unpack_int(void *src, u_int8_t size)
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
 #else
-    bigendian_copy(v, src, size);
+    byteswap_copy(v, src, size);
 #endif
     /* flip the sign bit */
     dest ^= m;
@@ -514,7 +512,7 @@ Column_pack_elements_uint(Column *self, void *dest)
 #ifdef WORDS_BIGENDIAN
         memcpy(v, src + (8 - self->element_size), self->element_size);
 #else
-        bigendian_copy(v, src, self->element_size);
+        byteswap_copy(v, src, self->element_size);
 #endif
         v += self->element_size;
     }
@@ -540,7 +538,7 @@ Column_pack_elements_int(Column *self, void *dest)
 #ifdef WORDS_BIGENDIAN
         memcpy(v, src + (8 - self->element_size), self->element_size);
 #else
-        bigendian_copy(v, src, self->element_size);
+        byteswap_copy(v, src, self->element_size);
 #endif
         v += self->element_size;
     }
@@ -783,7 +781,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             goto out;
         }
         num_elements = PySequence_Fast_GET_SIZE(seq);
-        if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+        if (self->num_elements == WT_VAR_1) {
             if (num_elements > MAX_NUM_ELEMENTS) {
                 PyErr_Format(PyExc_ValueError, 
                         "too many elements for column '%s'",
@@ -803,7 +801,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             self->input_elements[j] = v; 
         }
     }
-    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements != WT_VAR_1) {
         if (num_elements != self->num_elements) {
             PyErr_Format(PyExc_ValueError, 
                     "incorrect number of elements for column '%s'",
@@ -962,7 +960,7 @@ Column_python_to_native_char(Column *self, PyObject *elements)
 {
     int ret = -1;
     char *s;
-    Py_ssize_t max_length = self->num_elements == NUM_ELEMENTS_VARIABLE?
+    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
             MAX_NUM_ELEMENTS: self->num_elements;
     Py_ssize_t length;
     /* Elements must be a single Python bytes object */
@@ -1034,7 +1032,7 @@ Column_parse_string_sequence(Column *self, char *s)
             j++;
         }
     }
-    if (self->num_elements != NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements != WT_VAR_1) {
         if (num_elements != self->num_elements) {
             PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
             goto out;
@@ -1155,7 +1153,7 @@ Column_string_to_native_char(Column *self, char *string)
 {
     int ret = -1;
     size_t n = strlen(string);
-    Py_ssize_t max_length = self->num_elements == NUM_ELEMENTS_VARIABLE?
+    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
             MAX_NUM_ELEMENTS: self->num_elements;
     if (n > max_length) {
         PyErr_Format(PyExc_ValueError, 
@@ -1196,8 +1194,8 @@ Column_pack_variable_elements_address(Column *self, void *dest,
     memcpy(v, &off, sizeof(off)); 
     memcpy(v + sizeof(off), &n, sizeof(n)); 
 #else
-    bigendian_copy(v, &off, sizeof(off)); 
-    bigendian_copy(v + sizeof(off), &n, sizeof(n)); 
+    byteswap_copy(v, &off, sizeof(off)); 
+    byteswap_copy(v + sizeof(off), &n, sizeof(n)); 
 #endif
     ret = 0;
 out:
@@ -1220,8 +1218,8 @@ Column_unpack_variable_elements_address(Column *self, void *src,
     memcpy(&off, v, sizeof(off)); 
     memcpy(&n, v + sizeof(off), sizeof(n)); 
 #else
-    bigendian_copy(&off, v, sizeof(off)); 
-    bigendian_copy(&n, v + sizeof(off), sizeof(n)); 
+    byteswap_copy(&off, v, sizeof(off)); 
+    byteswap_copy(&n, v + sizeof(off), sizeof(n)); 
 #endif
     if (off >= MAX_ROW_SIZE) {
         PyErr_SetString(PyExc_SystemError, "Row overflow");
@@ -1257,7 +1255,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
         goto out;
     }
     dest = row + self->fixed_region_offset; 
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements == WT_VAR_1) {
         bytes_added = data_size;
         if (row_size + bytes_added > MAX_ROW_SIZE) {
             PyErr_SetString(PyExc_ValueError, "Row overflow");
@@ -1288,7 +1286,7 @@ Column_extract_elements(Column *self, void *row)
     uint32_t offset, num_elements;
     src = row + self->fixed_region_offset; 
     num_elements = self->num_elements;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements == WT_VAR_1) {
         if (Column_unpack_variable_elements_address(self, src, &offset, 
                 &num_elements) < 0) {
             goto out;
@@ -1312,7 +1310,7 @@ Column_copy_row_values(Column *self, void *dest, void *src)
     void *v = src + self->fixed_region_offset;
     offset = 0;
     num_elements = self->num_elements;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements == WT_VAR_1) {
         if (Column_unpack_variable_elements_address(self, v, &offset, 
                 &num_elements) < 0) {
             goto out;
@@ -1358,7 +1356,7 @@ Column_get_python_elements(Column *self)
     PyObject *u, *t;
     Py_ssize_t j;
     /* TODO Missing value handling is a mess FIXME!!! */
-    if (self->element_type == ELEMENT_TYPE_CHAR) {
+    if (self->element_type == WT_CHAR) {
         ret = self->native_to_python(self, 0);
         if (ret == NULL) {
             goto out;
@@ -1369,7 +1367,7 @@ Column_get_python_elements(Column *self)
              * variable number of elements, we return an empty
              * tuple, otherwise it's None.
              */
-            if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+            if (self->num_elements == WT_VAR_1) {
                 t = PyTuple_New(0);
                 if (t == NULL) {
                     PyErr_NoMemory();
@@ -1419,7 +1417,7 @@ static int
 Column_get_fixed_region_size(Column *self) 
 {
     int ret = self->element_size * self->num_elements;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements == WT_VAR_1) {
         /* two byte offset + one byte count */
         ret = 3;
     }
@@ -1497,7 +1495,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
     self->description = description;
     Py_INCREF(self->name);
     Py_INCREF(self->description);
-    if (self->element_type == ELEMENT_TYPE_UINT) {
+    if (self->element_type == WT_UINT) {
         if (self->element_size < 1 || self->element_size > 8) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
@@ -1518,7 +1516,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_NoMemory();
             goto out;
         }
-    } else if (self->element_type == ELEMENT_TYPE_INT) {
+    } else if (self->element_type == WT_INT) {
         if (self->element_size < 1 || self->element_size > 8) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
@@ -1537,7 +1535,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             PyErr_NoMemory();
             goto out;
         }
-    } else if (self->element_type == ELEMENT_TYPE_FLOAT) {
+    } else if (self->element_type == WT_FLOAT) {
         if (self->element_size != sizeof(float)
                 && self->element_size != sizeof(double)) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
@@ -1555,7 +1553,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->max_element = Py_None; 
         Py_INCREF(self->min_element);
         Py_INCREF(self->max_element);
-    } else if (self->element_type == ELEMENT_TYPE_CHAR) {
+    } else if (self->element_type == WT_CHAR) {
         if (self->element_size != 1) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
@@ -1585,7 +1583,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     max_num_elements = self->num_elements;
-    if (self->num_elements == NUM_ELEMENTS_VARIABLE) {
+    if (self->num_elements == WT_VAR_1) {
         max_num_elements = MAX_NUM_ELEMENTS;    
     }
     self->element_buffer = PyMem_Malloc(max_num_elements 
@@ -1712,7 +1710,7 @@ Table_verify_columns(Table *self)
     }
     /* check the row_id column */
     col = self->columns[0];
-    if (col->element_type != ELEMENT_TYPE_UINT || col->num_elements != 1) {
+    if (col->element_type != WT_UINT || col->num_elements != 1) {
         PyErr_SetString(PyExc_ValueError, 
                 "row_id column must be 1 element uint");
         goto out;
@@ -2361,7 +2359,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         }
         self->columns[j] = (u_int32_t) k;
         col = self->table->columns[k];
-        if (col->num_elements == NUM_ELEMENTS_VARIABLE) {
+        if (col->num_elements == WT_VAR_1) {
             self->key_buffer_size += MAX_NUM_ELEMENTS * col->element_size;
         } else {
             self->key_buffer_size += col->num_elements * col->element_size;
@@ -2812,14 +2810,14 @@ Index_set_bin_widths(Index* self, PyObject *args)
                     PyBytes_AsString(col->name));
             goto out;
         }
-        if (col->element_type == ELEMENT_TYPE_CHAR 
+        if (col->element_type == WT_CHAR 
                 && self->bin_widths[j] != 0.0) {
             PyErr_Format(PyExc_ValueError, 
                     "Bad bin width for '%s': char columns do not support bins",
                     PyBytes_AsString(col->name));
             goto out;
         }
-        if (col->element_type == ELEMENT_TYPE_INT) {
+        if (col->element_type == WT_INT) {
             if (fmod(self->bin_widths[j], 1.0) != 0.0) {
                 PyErr_Format(PyExc_ValueError, 
                         "Bad bin width for '%s': "
@@ -3872,13 +3870,11 @@ init_wormtable(void)
     Py_INCREF(WormtableError);
     PyModule_AddObject(module, "WormtableError", WormtableError);
     
-    PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE", 
-            NUM_ELEMENTS_VARIABLE);
-    PyModule_AddIntConstant(module, "NUM_ELEMENTS_VARIABLE_OVERHEAD", 3); /* FIXME */
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_CHAR", ELEMENT_TYPE_CHAR);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_UINT", ELEMENT_TYPE_UINT);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_INT", ELEMENT_TYPE_INT);
-    PyModule_AddIntConstant(module, "ELEMENT_TYPE_FLOAT", ELEMENT_TYPE_FLOAT);
+    PyModule_AddIntConstant(module, "WT_VAR_1", WT_VAR_1);
+    PyModule_AddIntConstant(module, "WT_CHAR", WT_CHAR);
+    PyModule_AddIntConstant(module, "WT_UINT", WT_UINT);
+    PyModule_AddIntConstant(module, "WT_INT", WT_INT);
+    PyModule_AddIntConstant(module, "WT_FLOAT", WT_FLOAT);
     
     PyModule_AddIntConstant(module, "WT_READ", WT_READ);
     PyModule_AddIntConstant(module, "WT_WRITE", WT_WRITE);

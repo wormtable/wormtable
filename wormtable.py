@@ -22,11 +22,11 @@ INDEX_METADATA_VERSION = "0.1-dev"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
-WT_VARIABLE = _wormtable.NUM_ELEMENTS_VARIABLE 
-WT_UINT   = _wormtable.ELEMENT_TYPE_UINT   
-WT_INT   = _wormtable.ELEMENT_TYPE_INT   
-WT_FLOAT = _wormtable.ELEMENT_TYPE_FLOAT 
-WT_CHAR  = _wormtable.ELEMENT_TYPE_CHAR 
+WT_VARIABLE = _wormtable.WT_VAR_1
+WT_UINT   = _wormtable.WT_UINT
+WT_INT   = _wormtable.WT_INT
+WT_FLOAT = _wormtable.WT_FLOAT
+WT_CHAR  = _wormtable.WT_CHAR
 
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
