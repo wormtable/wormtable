@@ -99,8 +99,12 @@ def delete_index(table, index_name):
     index = wt.Index(table, index_name)
     index.delete()
 
-def print_table(table, cols, index=None):
+def print_table(table, cols, index=None, min_value=None, max_value=None):
     cursor = table.cursor(cols, index)
+    if min_value is not None:
+        cursor.set_min(min_value)
+    if max_value is not None:
+        cursor.set_max(max_value)
     f = sys.stdout
     for row in cursor:
         s = ""
@@ -141,11 +145,22 @@ def dump(args):
     Dumps the entire table to stdout.
     """
     with wt.open_table(args.HOMEDIR) as t:
+        min_value = None
+        max_value = None
         # get the index, if there is one
         index = None
         if args.index is not None:
             index = wt.Index(t, args.index) 
             index.open("r")
+            if args.min is not None:
+                min_value = float(args.min)
+            if args.max is not None:
+                max_value = float(args.max)
+        else:
+            if args.min is not None:
+                min_value = int(args.min)
+            if args.max is not None:
+                max_value = int(args.max)
         # get the columns
         cols = []
         all_columns = t.columns()
@@ -160,7 +175,8 @@ def dump(args):
                 except ValueError:
                     c = t.get_column(col_id)
                 cols.append(c)
-        print_table(t, cols, index)
+        
+        print_table(t, cols, index, min_value, max_value)
         
         if index is not None:
             index.close()
@@ -202,6 +218,10 @@ def main():
             help="cache size in bytes; suffixes K, M and G also supported.")   
     dump_parser.add_argument("--index", "-i", default=None,
             help="index to sort by when dumping rows")
+    dump_parser.add_argument("--min", "-m", default=None,
+            help="minimum value to print")
+    dump_parser.add_argument("--max", "-x", default=None,
+            help="maximum value to print")
     dump_parser.set_defaults(func=dump)
     
     # ls command
