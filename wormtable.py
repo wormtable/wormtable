@@ -7,6 +7,8 @@ from __future__ import division
 import os
 import sys
 import time
+import glob
+
 from xml.etree import ElementTree
 from xml.dom import minidom
 
@@ -478,12 +480,12 @@ def parse_cache_size(s):
 #######################################################################
 
 @contextlib.contextmanager
-def open_table(homedir):
+def open_table(homedir, mode="r"):
     """
     Opens a table in read mode ready for use.
     """
     t = Table(homedir)
-    t.open("r")
+    t.open(mode)
     try:
         yield t
     finally:
@@ -552,7 +554,19 @@ class Column(object):
         of elements is variable.
         """
         return self.__ll_object.num_elements
-   
+  
+    def format_value(self, v):
+        """
+        Formats the specified value from this column for printing.
+        """ 
+        n = self.get_num_elements()
+        if n == 1 or self.get_type() == WT_CHAR: 
+            s = str(v)
+        else:
+            print(v)
+            s = ",".join(str(u) for u in v) 
+        return s
+
     def get_xml(self):
         """
         Returns an ElementTree.Element representing this Column.
@@ -595,6 +609,7 @@ class Database(object):
     directory and are backed by a two files: a database file and an 
     xml metadata file. 
     """
+    DB_SUFFIX = ".db"
     def __init__(self, homedir, db_name):
         """
         Allocates a new database object held in the specified homedir
@@ -641,7 +656,8 @@ class Database(object):
         """
         Returns the path of the permanent file used to store the database.
         """
-        return os.path.join(self.get_homedir(), self.get_db_name() + ".db")
+        return os.path.join(self.get_homedir(), self.get_db_name() + 
+                self.DB_SUFFIX)
     
     def get_db_build_path(self):
         """
@@ -649,6 +665,13 @@ class Database(object):
         """
         return os.path.join(self.get_homedir(), self.get_db_name() + 
             "__build__.db")
+
+    def get_db_file_size(self):
+        """
+        Returns the size of the database file in bytes.    
+        """
+        statinfo = os.stat(self.get_db_path())
+        return statinfo.st_size 
 
     def get_metadata_path(self):
         """
@@ -751,6 +774,15 @@ class Database(object):
             self.__open_mode = None
             self.__ll_object = None
 
+    def delete(self):
+        """
+        Deletes the DB and metadata files for this database.
+        """
+        if self.is_open():
+            self.raiseDatabaseOpenError()
+        os.unlink(self.get_db_path())
+        os.unlink(self.get_metadata_path())
+
     def raiseDatabaseClosedError(self):
         """
         Raise an exception indicating that the operation could not be completed
@@ -758,6 +790,16 @@ class Database(object):
         """
         # TODO make a custom exception.
         raise ValueError("Database closed")
+    
+    def raiseDatabaseOpenError(self):
+        """
+        Raise an exception indicating that the operation could not be completed
+        because the database is open.
+        """
+        # TODO make a custom exception.
+        raise ValueError("Database open")
+    
+    
 
 class Table(Database):
     """
@@ -780,6 +822,14 @@ class Table(Database):
         ll_cols = [c.get_ll_object() for c in self.__columns]
         t = _wormtable.Table(filename, ll_cols, self.get_cache_size())
         return t
+
+    def get_fixed_region_size(self):
+        """
+        Returns the size of the fixed region in rows. This is the minimum 
+        size that a row can be; if there are no variable sized columns in 
+        the table, then this is the exact size of each row.
+        """
+        return self.get_ll_object().fixed_region_size 
 
     # Helper methods for adding Columns of the various types.
    
@@ -970,6 +1020,44 @@ class Table(Database):
             self.__num_rows = 0
             self.__columns = []
             self.__column_name_map = {}
+    
+    
+    def cursor(self, columns, index=None):
+        c = None
+        if not self.is_open():
+            self.raiseDatabaseClosedError()
+        if index is None:
+            c = TableCursor(self, columns) 
+        else:
+            if not index.is_open():
+                index.raiseDatabaseClosedError()
+            c = IndexCursor(index, columns)
+        return c
+
+    def indexes(self):
+        """
+        Returns an interator over the indexes on this table.
+        """
+        prefix = os.path.join(self.get_homedir(), Index.DB_PREFIX) 
+        suffix = Index.DB_SUFFIX
+        for g in glob.glob(prefix + "*" + suffix):
+            name = g.replace(prefix, "")
+            name = name.replace(suffix, "")
+            yield Index(self, name) 
+
+
+    @contextlib.contextmanager
+    def open_index(self, index_name, mode="r"):
+        """
+        Returns an open index on the this table. Supports the contextmanager
+        protocol.
+        """
+        index = Index(self, index_name) 
+        index.open(mode)
+        try:
+            yield index
+        finally:
+            index.close()
 
 
 class Index(Database):
@@ -978,25 +1066,38 @@ class Index(Database):
     column values.
     """
     DB_PREFIX = "index_"
-    def __init__(self, table, db_name):
-        Database.__init__(self, table.get_homedir(), self.DB_PREFIX + db_name)
+    def __init__(self, table, name):
+        Database.__init__(self, table.get_homedir(), self.DB_PREFIX + name)
+        self.__name = name
         self.__table = table
         self.__key_columns = []
         self.__bin_widths = []
     
+    def get_name(self):
+        """
+        Return the name of this index.
+        """
+        return self.__name
+
     # Methods for accessing the key_columns
     def key_columns(self):
         """
-        Returns an iterator over the list of key columns.
+        Returns the list of key columns.
         """
         return list(self.__key_columns)
+    
+    def bin_widths(self):
+        """
+        Returns the list of bin widths in this index.
+        """
+        return list(self.__bin_widths)
 
-    def add_key_column(self, key_column):
+    def add_key_column(self, key_column, bin_width=0):
         """
         Adds the specified key_column to the list of key_columns we are indexing.
         """
         self.__key_columns.append(key_column)
-        self.__bin_widths.append(0)
+        self.__bin_widths.append(bin_width)
 
     def _create_ll_object(self, path):
         """
@@ -1064,7 +1165,7 @@ class Index(Database):
         """
         llo = self.get_ll_object() 
         if progress_callback is not None:
-            llo.build(progress_callback, callback_interval)
+            llo.build(progress_callback, callback_rows)
         else:
             llo.build() 
 
@@ -1127,9 +1228,6 @@ class Index(Database):
         """
         return IndexCounter(self)
     
-    def cursor(self, read_columns):
-        columns = [self.__table.get_column(c.encode()) for c in read_columns]
-        return IndexCursor(self, [c.get_position() for c in columns])
  
 class IndexCounter(collections.Mapping):
     """
@@ -1165,12 +1263,12 @@ class Cursor(object):
     an iterator.
     """
     def __iter__(self):
-        if len(self._columns) == 1:
-            for r in self._row_iterator:
-                yield r[0]
-        else:
-            for r in self._row_iterator:
-                yield r
+        #if len(self._columns) == 1:
+        #    for r in self._row_iterator:
+        #        yield r[0]
+        #else:
+        for r in self._row_iterator:
+            yield r
 
 class TableCursor(Cursor):
     """

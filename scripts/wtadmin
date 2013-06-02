@@ -5,31 +5,165 @@ Wormtable administration program.
 from __future__ import print_function
 from __future__ import division 
 
+import re
+import sys
 import argparse
 
 import wormtable as wt
 
+
+def print_indexes(table):
+    """
+    Prints out a summary of the indexes on this table.
+    """
+    # print a summary of the table first
+    print("table:", len(table), "minimum row size = ", 
+            table.get_fixed_region_size(), "file size = ", table.get_db_file_size())
+    for i in table.indexes():
+        i.open("r")
+        print("Index:", i.get_name())
+        print("\tfile size = ", i.get_db_file_size())
+        for c, w in zip(i.key_columns(), i.bin_widths()):
+            print("\t{0}".format(c.get_name()), end="") 
+            if w != 0.0:
+                print("\tbin width = ", w, end="")
+            print()
+        i.close()
+
+def print_columns(table):
+    """
+    Print out the details of the columns in the table.
+    """
+    # get the max width for name
+    max_name_width = 0
+    for c in table.columns():
+        n = len(c.get_name()) 
+        if n > max_name_width:
+            max_name_width = n
+    fmt = "{0:>4}   {1:{name_width}} {2:<6} {3:>6} {4:>6}   |   {5}"
+    s = fmt.format("", "name", "type", "size", "n", "description",
+                name_width=max_name_width + 2)
+    print("=" * (len(s) + 2))
+    print(s)
+    print("=" * (len(s) + 2))
+    for c in table.columns():
+        num_elements = c.get_num_elements()
+        name = c.get_name().decode()
+        desc = c.get_description().decode()
+        s = fmt.format(c.get_position(), name, c.get_type_name(), 
+                c.get_element_size(), 
+                num_elements if num_elements > 0 else "V", desc, 
+                name_width=max_name_width + 2)
+        print(s)
+
+def print_histogram(table, index_name):
+    with table.open_index(index_name) as i:
+        counter = i.counter()
+        cols = i.key_columns()
+        n = len(cols)
+        for k, v in counter.items():
+            if n == 1:
+                s = cols[0].format_value(k) 
+            else:
+                s = ",".join([cols[j].format_value(k[j]) for j in range(n)])
+            print(v, "\t", s)
+
+
+def add_index(table, colspec):
+    print("adding index") 
+    bin_widths = []
+    column_names = [] 
+    index = wt.Index(table, colspec)
+    for c in colspec.split("+"): 
+        col_name = c
+        bin_width = 0
+        m = re.search("\[.*\]$", c)
+        if m is not None:
+            g = m.group(0)
+            col_name = c[:m.start(0)]
+            bin_width = float(g.strip("[]"))
+        col = table.get_column(col_name)
+        index.add_key_column(col, bin_width)
+    index.open("w")
+    n = len(table) 
+    f = None
+    monitor = wt.ProgressMonitor(n, "rows")
+    def progress(processed_rows):
+        monitor.update(processed_rows)
+    f = progress
+    index.build(f, max(1, int(n / 1000)))
+    monitor.finish()
+    index.close()
+
+def delete_index(table, index_name):
+    index = wt.Index(table, index_name)
+    index.delete()
+
+def print_table(table, cols, index=None):
+    cursor = table.cursor(cols, index)
+    f = sys.stdout
+    for row in cursor:
+        s = ""
+        for c, v in zip(cols, row): 
+            s = s + c.format_value(v) + "\t"
+        f.write(s + "\n")
+
+
+###########################
+
+# Command entry points 
+
+###########################
+
 def ls(args):
-    print("ls", args)
+    with wt.open_table(args.HOMEDIR) as t:
+        print_indexes(t)
 
 def show(args):
-    print("show", args)
+    with wt.open_table(args.HOMEDIR) as t:
+        print_columns(t)
 
 def add(args):
-    print("add", args)
+    with wt.open_table(args.HOMEDIR) as t:
+        add_index(t, args.COLSPEC)
 
 def remove(args):
-    print("remove", args)
+    with wt.open_table(args.HOMEDIR) as t:
+        delete_index(t, args.NAME)
+
+def hist(args):
+    with wt.open_table(args.HOMEDIR) as t:
+        print_histogram(t, args.NAME)
+ 
 
 def dump(args):
     """
     Dumps the entire table to stdout.
     """
-    table = wt.Table(args.HOMEDIR)
-    table.open("r")
-    for r in table:
-        print(r)
-    table.close()
+    with wt.open_table(args.HOMEDIR) as t:
+        # get the index, if there is one
+        index = None
+        if args.index is not None:
+            index = wt.Index(t, args.index) 
+            index.open("r")
+        # get the columns
+        cols = []
+        all_columns = t.columns()
+        if len(args.columns) == 0:
+            cols = all_columns 
+        else:
+            for col_id in args.columns:
+                c = None
+                try: 
+                    j = int(col_id)
+                    c = all_columns[j]
+                except ValueError:
+                    c = t.get_column(col_id)
+                cols.append(c)
+        print_table(t, cols, index)
+        
+        if index is not None:
+            index.close()
 
 def add_homedir_argument(parser):
     """
@@ -62,8 +196,12 @@ def main():
     dump_parser = subparsers.add_parser("dump", 
             help="dump the table to stdout")
     add_homedir_argument(dump_parser)
+    dump_parser.add_argument("columns", metavar="COLUMN", nargs="*", 
+        help="Columns to dump - defaults to all columns")   
     dump_parser.add_argument("--cache-size", "-c", default="64M",
             help="cache size in bytes; suffixes K, M and G also supported.")   
+    dump_parser.add_argument("--index", "-i", default=None,
+            help="index to sort by when dumping rows")
     dump_parser.set_defaults(func=dump)
     
     # ls command
@@ -95,7 +233,14 @@ def main():
     remove_parser.add_argument("NAME", help="name of the index")
     remove_parser.set_defaults(func=remove) 
 
-   
+    # index histogram command 
+    hist_parser = subparsers.add_parser("hist", help="""
+        Show the histogram for index NAME""")
+    add_homedir_argument(hist_parser)
+    hist_parser.add_argument("NAME", help="name of the index")
+    hist_parser.set_defaults(func=hist) 
+
+
     args = parser.parse_args()
     args.func(args) 
 
