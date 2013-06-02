@@ -32,16 +32,18 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 
 @contextlib.contextmanager
-def open_table(homedir, mode="r"):
+def open_table(homedir, mode="r", cache_size=DEFAULT_CACHE_SIZE):
     """
     Opens a table in read mode ready for use.
     """
     t = Table(homedir)
+    t.set_cache_size(cache_size)
     t.open(mode)
     try:
         yield t
     finally:
         t.close()
+        
 
 class Column(object):
     """
@@ -110,12 +112,15 @@ class Column(object):
         """
         Formats the specified value from this column for printing.
         """ 
+        # TODO do something a bit better with missing values
         n = self.get_num_elements()
-        if n == 1 or self.get_type() == WT_CHAR: 
+        if self.get_type() == WT_CHAR:
+            s = v.decode()
+        elif n == 1:
             s = str(v)
         else:
-            print(v)
             s = ",".join(str(u) for u in v) 
+            s = "(" + s + ")"
         return s
 
     def get_xml(self):
@@ -574,15 +579,30 @@ class Table(Database):
     
     
     def cursor(self, columns, index=None):
+        """
+        Returns a cursor over the rows in this database, retreiving the specified 
+        columns. If index is provided, the cursor will iterate over the rows in 
+        the order defined by the index.
+
+        Columns must be a list of column identifiers, or Column instances.
+        """
         c = None
         if not self.is_open():
             self.raiseDatabaseClosedError()
+        cols = []
+        for col_id in columns:
+            if isinstance(col_id, Column):
+                cols.append(col_id)
+            elif isinstance(col_id, int):
+                cols.append(self.__columns[col_id])
+            else:
+                cols.append(self.get_column(col_id))
         if index is None:
-            c = TableCursor(self, columns) 
+            c = TableCursor(self, cols) 
         else:
             if not index.is_open():
                 index.raiseDatabaseClosedError()
-            c = IndexCursor(index, columns)
+            c = IndexCursor(index, cols)
         return c
 
     def indexes(self):
@@ -598,12 +618,13 @@ class Table(Database):
 
 
     @contextlib.contextmanager
-    def open_index(self, index_name, mode="r"):
+    def open_index(self, index_name, mode="r", cache_size=DEFAULT_CACHE_SIZE):
         """
         Returns an open index on the this table. Supports the contextmanager
         protocol.
         """
         index = Index(self, index_name) 
+        index.set_cache_size(cache_size)
         index.open(mode)
         try:
             yield index
@@ -763,11 +784,13 @@ class Index(Database):
         return ret
 
     def get_min(self, *k):
+        # FIXME need to work on the case in which the key is not found 
         key = self.translate_key(k)
         v = self.get_ll_object().get_min(key)
         return self.translate_value(v) 
 
     def get_max(self, *k):
+        # FIXME need to work on the case in which the key is not found 
         key = self.translate_key(k)
         v = self.get_ll_object().get_max(key)
         return self.translate_value(v) 

@@ -48,8 +48,8 @@ def print_columns(table):
     print("=" * (len(s) + 2))
     for c in table.columns():
         num_elements = c.get_num_elements()
-        name = c.get_name().decode()
-        desc = c.get_description().decode()
+        name = c.get_name()
+        desc = c.get_description()
         s = fmt.format(c.get_position(), name, c.get_type_name(), 
                 c.get_element_size(), 
                 num_elements if num_elements > 0 else "V", desc, 
