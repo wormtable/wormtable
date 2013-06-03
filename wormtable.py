@@ -16,17 +16,17 @@ from xml.dom import minidom
 
 import _wormtable
 
-__version__ = '0.0.1-dev'
-SCHEMA_VERSION = "0.1-dev"
-INDEX_METADATA_VERSION = "0.1-dev"
+__version__ = '0.0.1-alpha'
+SCHEMA_VERSION = "0.1-alpha"
+INDEX_METADATA_VERSION = "0.1-alpha"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
-WT_VARIABLE = _wormtable.WT_VAR_1
+WT_VAR_1  = _wormtable.WT_VAR_1
 WT_UINT   = _wormtable.WT_UINT
-WT_INT   = _wormtable.WT_INT
-WT_FLOAT = _wormtable.WT_FLOAT
-WT_CHAR  = _wormtable.WT_CHAR
+WT_INT    = _wormtable.WT_INT
+WT_FLOAT  = _wormtable.WT_FLOAT
+WT_CHAR   = _wormtable.WT_CHAR
 
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
@@ -127,11 +127,16 @@ class Column(object):
         """
         Returns an ElementTree.Element representing this Column.
         """
+        n = self.get_num_elements()
+        if n == WT_VAR_1:
+            num_elements = "var(1)"
+        else:
+            num_elements = str(self.get_num_elements())
         d = {
             "name":self.get_name(), 
             "description":self.get_description(),
             "element_size":str(self.get_element_size()),
-            "num_elements":str(self.get_num_elements()),
+            "num_elements":num_elements,
             "element_type":self.get_type_name()
         }
         return ElementTree.Element("column", d)
@@ -153,7 +158,11 @@ class Column(object):
         description = xmlcol.get("description").encode()
         # TODO some error checking here.
         element_size = int(xmlcol.get("element_size"))
-        num_elements = int(xmlcol.get("num_elements"))
+        s = xmlcol.get("num_elements")
+        if s == "var(1)":
+            num_elements = WT_VAR_1
+        else:
+            num_elements = int(s)
         element_type = reverse[xmlcol.get("element_type")]
         col = _wormtable.Column(name, description, element_type, element_size,
                 num_elements)

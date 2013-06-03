@@ -156,7 +156,7 @@ class VCFReader(object):
         name = d[ID]
         description = d[DESCRIPTION].strip(b"\"")
         number = d[NUMBER]
-        num_elements = wt.WT_VARIABLE 
+        num_elements = wt.WT_VAR_1 
         try:
             # If we can parse it into a number, do so. If this fails than use
             # a variable number of elements.
@@ -165,7 +165,7 @@ class VCFReader(object):
             pass
         # We can also have negative num_elements to indicate variable column
         if num_elements < 0:
-            num_elements = wt.WT_VARIABLE 
+            num_elements = wt.WT_VAR_1 
         st = d[TYPE]
         if st == INTEGER:
             element_type = wt.WT_INT
@@ -180,7 +180,7 @@ class VCFReader(object):
             element_type = wt.WT_CHAR
             element_size = 1
         elif st == STRING: 
-            num_elements = wt.WT_VARIABLE 
+            num_elements = wt.WT_VAR_1 
             element_type = wt.WT_CHAR
             element_size = 1
         else:
