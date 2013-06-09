@@ -59,7 +59,7 @@ class WormtableTest(unittest.TestCase):
         for j in range(n):
             u = None if g() else random.randint(0, max_value)
             i = None if g() else random.randint(0, max_value)
-            f = None if g() else random.randint(0, max_value)
+            f = None if g() else random.uniform(0, max_value)
             c = None if g() else str(random.randint(0, max_value)).encode()
             t.append([None, u, i, f, c]) 
             if random.random() < 0.33:
@@ -350,16 +350,27 @@ class BinnedIndexIntegrityTest(WormtableTest):
         # make some indexes
         cols = [c for c in self._table.columns()][1:]
         self._indexes = []
-        width = 3.0 
         for c in cols:
-            if c.get_type() != wt.WT_CHAR:
+            if c.get_type() in [wt.WT_INT, wt.WT_UINT]:
                 name = c.get_name()
-                i = wt.Index(self._table, name) 
-                i.add_key_column(c, width)
-                i.open("w")
-                i.build()
-                i.close()
-                self._indexes.append(i)
+                for j in range(1, 10):
+                    i = wt.Index(self._table, name + "_" + str(j)) 
+                    i.add_key_column(c, j)
+                    i.open("w")
+                    i.build()
+                    i.close()
+                    self._indexes.append(i)
+            elif c.get_type() == wt.WT_FLOAT: 
+                name = c.get_name()
+                w = 0.1
+                while w < 10: 
+                    i = wt.Index(self._table, name + "_" + str(w)) 
+                    i.add_key_column(c, w)
+                    i.open("w")
+                    i.build()
+                    i.close()
+                    self._indexes.append(i)
+                    w += 0.1
         
     def test_count(self):
         """
