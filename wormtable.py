@@ -8,10 +8,9 @@ import os
 import sys
 import time
 import glob
-import contextlib
 import collections
-from xml.etree import ElementTree
 from xml.dom import minidom
+from xml.etree import ElementTree
 
 
 import _wormtable
@@ -31,7 +30,6 @@ WT_CHAR   = _wormtable.WT_CHAR
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 
-@contextlib.contextmanager
 def open_table(homedir, mode="r", cache_size=DEFAULT_CACHE_SIZE):
     """
     Opens a table in read mode ready for use.
@@ -39,11 +37,7 @@ def open_table(homedir, mode="r", cache_size=DEFAULT_CACHE_SIZE):
     t = Table(homedir)
     t.set_cache_size(cache_size)
     t.open(mode)
-    try:
-        yield t
-    finally:
-        t.close()
-        
+    return t   
 
 class Column(object):
     """
@@ -209,6 +203,19 @@ class Database(object):
         self.__cache_size = DEFAULT_CACHE_SIZE
         self.__ll_object = None
         self.__open_mode = None
+
+    def __enter__(self):
+        """
+        Context manager entry.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Context manager exit; closes the database.
+        """
+        self.close()
+        return False
 
     def get_ll_object(self):
         """
@@ -646,7 +653,6 @@ class Table(Database):
             yield Index(self, name) 
 
 
-    @contextlib.contextmanager
     def open_index(self, index_name, mode="r", cache_size=DEFAULT_CACHE_SIZE):
         """
         Returns an open index on the this table. Supports the contextmanager
@@ -655,11 +661,7 @@ class Table(Database):
         index = Index(self, index_name) 
         index.set_cache_size(cache_size)
         index.open(mode)
-        try:
-            yield index
-        finally:
-            index.close()
-
+        return index
 
 class Index(Database):
     """

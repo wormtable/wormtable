@@ -133,6 +133,44 @@ class DatabaseClassTests(WormtableTest):
             s = f.read()
         self.assertEqual(s, name)
 
+    def test_open_api(self):
+        """
+        Tests the open_table/index api to ensure everything works correctly.
+        """
+        t = wt.Table(self._homedir)
+        t.add_id_column()
+        t.add_uint_column("u1")
+        t.open("w")
+        self.assertTrue(t.is_open())
+        t.close()
+        # open_table returns a table opened
+        self.assertFalse(t.is_open())
+        t = wt.open_table(self._homedir)
+        self.assertTrue(t.is_open())
+        t.close()
+        self.assertFalse(t.is_open())
+        # try now with the context manager
+        with wt.open_table(self._homedir) as t:
+            self.assertTrue(t.is_open())
+        self.assertFalse(t.is_open()) 
+        # Now do the same for an index.
+        t = wt.open_table(self._homedir)
+        name = "test"
+        i = wt.Index(t, name) 
+        i.add_key_column(t.get_column(1))
+        i.open("w")
+        i.build()
+        i.close()
+        # The index is built, so we can open it.
+        i = t.open_index(name)
+        self.assertTrue(i.is_open())
+        i.close()
+        self.assertFalse(i.is_open())
+        with t.open_index(name) as i:
+            self.assertTrue(i.is_open())
+        self.assertFalse(i.is_open())
+        t.close()
+
 class TableBuildTest(WormtableTest):
     """
     Tests for the build process in tables. 
