@@ -21,22 +21,24 @@ INDEX_METADATA_VERSION = "0.1-alpha"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
-WT_VAR_1  = _wormtable.WT_VAR_1
-WT_UINT   = _wormtable.WT_UINT
-WT_INT    = _wormtable.WT_INT
-WT_FLOAT  = _wormtable.WT_FLOAT
-WT_CHAR   = _wormtable.WT_CHAR
+WT_INT = _wormtable.WT_INT
+WT_UINT = _wormtable.WT_UINT
+WT_FLOAT = _wormtable.WT_FLOAT
+WT_CHAR = _wormtable.WT_CHAR
 
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
+WT_VAR_1  = _wormtable.WT_VAR_1
 
-def open_table(homedir, mode="r", cache_size=DEFAULT_CACHE_SIZE):
+def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE):
     """
     Opens a table in read mode ready for use.
     """
     t = Table(homedir)
+    if not t.exists():
+        raise IOError("table '" + homedir + "' not found")
     t.set_cache_size(cache_size)
-    t.open(mode)
+    t.open("r")
     return t   
 
 class Column(object):
@@ -230,6 +232,14 @@ class Database(object):
         """
         raise NotImplementedError() 
 
+    def exists(self):
+        """
+        Returns True if this Database exists.
+        """
+        p1 = os.path.exists(self.get_metadata_path()) 
+        p2 = os.path.exists(self.get_db_path())
+        return p1 and p2
+
     def get_homedir(self):
         """
         Returns the home directory for this database object.
@@ -374,28 +384,31 @@ class Database(object):
         """
         Deletes the DB and metadata files for this database.
         """
-        if self.is_open():
-            self.raiseDatabaseOpenError()
+        self.verify_closed()
         os.unlink(self.get_db_path())
         os.unlink(self.get_metadata_path())
 
-    def raiseDatabaseClosedError(self):
+    def verify_closed(self):
         """
-        Raise an exception indicating that the operation could not be completed
-        because the database is closed.
+        Ensures this database is closed.
         """
-        # TODO make a custom exception.
-        raise ValueError("Database closed")
+        if self.is_open():
+            raise ValueError("Database must be closed")
+
+    def verify_open(self, mode=None):
+        """
+        Ensures this database is open in the specified mode..
+        """
+        if mode is None:
+            if not self.is_open():
+                raise ValueError("Database must be opened") 
+        else:
+            if self.__open_mode != mode or not self.is_open():
+                m = {WT_WRITE: "write", WT_READ: "read"}
+                s = "Database must be opened in {0} mode".format(m[mode])
+                raise ValueError(s)
     
-    def raiseDatabaseOpenError(self):
-        """
-        Raise an exception indicating that the operation could not be completed
-        because the database is open.
-        """
-        # TODO make a custom exception.
-        raise ValueError("Database open")
-    
-    
+
 
 class Table(Database):
     """
@@ -574,18 +587,18 @@ class Table(Database):
         """
         Implement the len(t) function.
         """
+        self.verify_open()
         mode = self.get_open_mode()
         if mode == WT_READ:
             if self.__num_rows == 0:
                 self.__num_rows = self.get_ll_object().get_num_rows()
-        elif mode == None:
-            self.raiseDatabaseClosedError()
         return self.__num_rows
     
     def __getitem__(self, key):
         """
         Implements the t[key] function.
         """
+        self.verify_open(WT_READ)
         t = self.get_ll_object()
         ret = None
         n = len(self)
@@ -606,6 +619,7 @@ class Table(Database):
         """
         Closes this Table.
         """
+        self.verify_open()
         try:
             Database.close(self)
         finally:
@@ -622,9 +636,8 @@ class Table(Database):
 
         Columns must be a list of column identifiers, or Column instances.
         """
+        self.verify_open(WT_READ)
         c = None
-        if not self.is_open():
-            self.raiseDatabaseClosedError()
         cols = []
         for col_id in columns:
             if isinstance(col_id, Column):
@@ -636,8 +649,7 @@ class Table(Database):
         if index is None:
             c = TableCursor(self, cols) 
         else:
-            if not index.is_open():
-                index.raiseDatabaseClosedError()
+            index.verify_open(WT_READ)
             c = IndexCursor(index, cols)
         return c
 
@@ -645,6 +657,7 @@ class Table(Database):
         """
         Returns an interator over the indexes on this table.
         """
+        self.verify_open(WT_READ)
         prefix = os.path.join(self.get_homedir(), Index.DB_PREFIX) 
         suffix = Index.DB_SUFFIX
         for g in glob.glob(prefix + "*" + suffix):
@@ -653,14 +666,17 @@ class Table(Database):
             yield Index(self, name) 
 
 
-    def open_index(self, index_name, mode="r", cache_size=DEFAULT_CACHE_SIZE):
+    def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE):
         """
         Returns an open index on the this table. Supports the contextmanager
         protocol.
         """
+        self.verify_open(WT_READ)
         index = Index(self, index_name) 
+        if not index.exists():
+            raise IOError("index '" + index_name + "' not found")
         index.set_cache_size(cache_size)
-        index.open(mode)
+        index.open("r")
         return index
 
 class Index(Database):
@@ -815,13 +831,18 @@ class Index(Database):
         return ret
 
     def get_min(self, *k):
-        # FIXME need to work on the case in which the key is not found 
+        """
+        Returns the smallest index key greater than or equal to the specified 
+        prefix.
+        """
         key = self.translate_key(k)
         v = self.get_ll_object().get_min(key)
         return self.translate_value(v) 
 
     def get_max(self, *k):
-        # FIXME need to work on the case in which the key is not found 
+        """
+        Returns the largest index key less than the specified prefix. 
+        """
         key = self.translate_key(k)
         v = self.get_ll_object().get_max(key)
         return self.translate_value(v) 

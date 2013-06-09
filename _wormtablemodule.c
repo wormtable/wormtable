@@ -2680,6 +2680,9 @@ Index_get_min(Index* self, PyObject *args)
         if (ret == NULL) {
             goto out;
         }
+    } else if (db_ret == DB_NOTFOUND) {
+        PyErr_SetObject(PyExc_KeyError, args); 
+        goto out;
     } else {
         handle_bdb_error(db_ret);
         goto out;    
