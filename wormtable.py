@@ -852,6 +852,7 @@ class Index(Database):
         Returns an IndexCounter object for this index. This provides an efficient 
         method of iterating over the keys in the index.
         """
+        self.verify_open(WT_READ)
         return IndexCounter(self)
     
  
