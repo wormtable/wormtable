@@ -58,7 +58,14 @@ class Column(object):
 
     def __init__(self, ll_object):
         self.__ll_object = ll_object 
-    
+   
+    def __str__(self):
+        s = "NULL Column"
+        if self.__ll_object != None:
+            s = "'{0}':{1}({2})".format(self.get_name(), self.get_type_name(),
+                    self.get_num_elements())
+        return s
+
     def get_ll_object(self):
         """
         Returns the low level Column object that this class is a facade for. 
@@ -108,6 +115,24 @@ class Column(object):
         """
         return self.__ll_object.num_elements
   
+    def get_missing_value(self):
+        """
+        Returns the missing value for this column.
+
+        TODO: document
+        """
+        t = self.get_type()
+        n = self.get_num_elements()
+        ret = None
+        if t == WT_CHAR:
+            ret = b''
+        elif n != 1: 
+            if n == WT_VAR_1:
+                ret = tuple()
+            else:
+                ret = tuple(None for j in range(n))
+        return ret
+
     def format_value(self, v):
         """
         Formats the specified value from this column for printing.
@@ -141,8 +166,6 @@ class Column(object):
         }
         return ElementTree.Element("column", d)
 
-    # Factory methods for creating Columns
-
     @classmethod 
     def parse_xml(theclass, xmlcol):
         """
@@ -167,6 +190,7 @@ class Column(object):
         col = _wormtable.Column(name, description, element_type, element_size,
                 num_elements)
         return theclass(col) 
+
    
 class Database(object):
     """
@@ -515,14 +539,12 @@ class Table(Database):
     def append(self, row):
         """
         Appends the specified row to this table.
-        
-        TODO make these systematic! At the moment one take zero-indexed lists
-        and the other doesn't.
         """
         t = self.get_ll_object()
-        j = 1 
+        j = 0 
         for v in row:
-            t.insert_elements(j, v)
+            if v is not None:
+                t.insert_elements(j, v)
             j += 1
         t.commit_row()
         self.__num_rows += 1
@@ -530,8 +552,6 @@ class Table(Database):
     def append_encoded(self, row):
         """
         Appends the specified row to this table.
-        
-        TODO make these systematic!
         """
         t = self.get_ll_object()
         j = 0 

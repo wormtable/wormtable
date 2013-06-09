@@ -3,6 +3,7 @@ from __future__ import division
 
 import wormtable as wt
 
+import math
 import unittest
 import tempfile
 import shutil 
@@ -12,6 +13,21 @@ import collections
 import itertools
 
 from xml.etree import ElementTree
+
+def histogram(l, width):
+    """
+    Returns a histogram over the data in v with bin widths width.
+    """
+    d = {}
+    for u in l:
+        v = None
+        if u is not None:
+            v = u - math.fmod(u, width)
+        if v in d:
+            d[v] += 1
+        else:
+            d[v] = 1
+    return d
 
 class WormtableTest(unittest.TestCase):
     """
@@ -35,17 +51,18 @@ class WormtableTest(unittest.TestCase):
         t.add_id_column(1)
         t.add_uint_column("uint")
         t.add_int_column("int")
-        t.add_float_column("float", size=8)
+        #t.add_float_column("float", size=8)
         t.add_char_column("char", num_elements=3)
         t.open("w")
         for j in range(n):
             u = random.randint(0, max_value)
             i = random.randint(0, max_value)
             f = random.randint(0, max_value)
-            # We need to do this to make sorting behave live Python's.
             c = str(random.randint(0, max_value))
-            c = c.zfill(3)
-            t.append([u, i, f, c.encode()])
+            #t.append([None, u, i, f, c.encode()])
+            t.append([None, u, i, c.encode()])
+            if random.random() < 0.33:
+                t.append([])
         t.close()
         t.open("r")
 
@@ -129,7 +146,7 @@ class TableBuildTest(WormtableTest):
         t.open("w")
         self.assertTrue(t.is_open())
         self.assertTrue(os.path.exists(t.get_db_build_path()))
-        t.append([1])
+        t.append([None, 1])
         t.close()
         self.assertFalse(os.path.exists(t.get_db_build_path()))
         self.assertTrue(os.path.exists(t.get_db_path()))
@@ -138,6 +155,35 @@ class TableBuildTest(WormtableTest):
         self.assertTrue(len(t) == 1)
         self.assertTrue(t[0] == (0, 1))
         t.close()
+
+    def test_missing_values(self):
+        """
+        Tests if missing values are correctly inserted.
+        """
+        t = wt.Table(self._homedir)
+        t.add_id_column()
+        for j in range(1, 5):
+            t.add_uint_column("u_" + str(j), num_elements=j) 
+            t.add_int_column("i_" + str(j),  num_elements=j) 
+            t.add_float_column("f_" + str(j), num_elements=j) 
+            t.add_char_column("c_" + str(j), num_elements=j) 
+        t.add_uint_column("u_v", num_elements=wt.WT_VAR_1)  
+        t.add_int_column("i_v", num_elements=wt.WT_VAR_1)  
+        t.add_float_column("f_v", num_elements=wt.WT_VAR_1)  
+        t.add_char_column("c_v", num_elements=wt.WT_VAR_1) 
+        t.open("w")
+        t.append([])
+        t.close()
+        t.open("r")
+        self.assertTrue(len(t) == 1)
+        r = t[0]
+        n = len(t.columns())
+        for j in range(1, n):
+            c = t.get_column(j)
+            self.assertEqual(c.get_missing_value(), r[j])
+        t.close()
+
+ 
 
 class IndexBuildTest(WormtableTest):
     """
@@ -152,7 +198,7 @@ class IndexBuildTest(WormtableTest):
         t.open("w")
         n = 10
         for j in range(n):
-            t.append([j])
+            t.append([None, j])
         t.close()
         t.open("r")
         self.assertTrue(n == len(t))
@@ -177,6 +223,42 @@ class IndexBuildTest(WormtableTest):
         col = [r[1] for r in self._table]
         self.assertEqual(keys, col)
         i.close()
+
+class ColumnValue(object):
+    """
+    A class that represents a value from a given column. This class 
+    is primarily to ensure that values from Columns sort correctly.
+    """
+    def __init__(self, column, row):
+        self.__column = column
+        self.__value = row[column.get_position()]
+
+    def get_value(self):
+        return self.__value
+
+    def __repr__(self):
+        return "<'" + repr(self.__value) + "' " + str(self.__column) + ">"
+
+    def __lt__(self, other):
+        v1 = self.__value
+        v2 = other.__value
+        missing = self.__column.get_missing_value()
+        ret = False
+        if v1 == missing and v2 != missing:
+            ret = True
+        elif v1 != missing and v2 != missing:
+            ret = v1 < v2 
+        return ret 
+
+    def __eq__(self, other):
+        if isinstance(other, ColumnValue):
+            ret = self.__value == other.__value
+        else:
+            ret = self.__value == other
+        return ret
+
+    def __hash__(self):
+        return self.__value.__hash__()
 
 class IndexIntegrityTest(WormtableTest):
     """
@@ -226,10 +308,9 @@ class IndexIntegrityTest(WormtableTest):
             i.open("r")
             cols = i.key_columns()
             if len(cols) == 1:
-                c = cols[0]
-                t = [r[c.get_position()] for r in self._table] 
+                t = [ColumnValue(c, r) for c in cols for r in self._table] 
             else:
-                t = [tuple(r[c.get_position()] for c in cols) for r in self._table] 
+                t = [tuple(ColumnValue(c, r) for c in cols) for r in self._table] 
             self.assertEqual(i.get_min(), min(t)) 
             self.assertEqual(i.get_max(), max(t)) 
             keys = [k for k in i.keys()]
@@ -241,7 +322,11 @@ class IndexIntegrityTest(WormtableTest):
             for k, v in c2.items():
                 self.assertEqual(v, c1[k])
             for k, v in c1.items():
-                self.assertEqual(v, c2[k])
+                if len(cols) == 1:
+                    key = k.get_value()
+                else:
+                    key = tuple(kk.get_value() for kk in k)
+                self.assertEqual(v, c2[key])
             # now test the cursor
             read_cols = self._table.columns()
             c = wt.IndexCursor(i, read_cols)
@@ -252,7 +337,44 @@ class IndexIntegrityTest(WormtableTest):
                 r2 = tuple(row[col.get_position()] for col in read_cols)
                 self.assertEqual(r1, r2)
             i.close()
-            
+
+class BinnedIndexIntegrityTest(WormtableTest):
+    """
+    Tests the integrity of indexes by building a small table with a
+    a variety of columns and making indexes with bins over these. 
+    """
+    def setUp(self):
+        super(BinnedIndexIntegrityTest, self).setUp()
+        self.make_random_table()
+        # make some indexes
+        cols = [c for c in self._table.columns()][1:]
+        self._indexes = []
+        width = 3.0 
+        for c in cols:
+            if c.get_type() != wt.WT_CHAR:
+                name = c.get_name()
+                i = wt.Index(self._table, name) 
+                i.add_key_column(c, width)
+                i.open("w")
+                i.build()
+                i.close()
+                self._indexes.append(i)
+        
+    def test_count(self):
+        """
+        Tests if the counter function is operating correctly.
+        """
+        for i in self._indexes:
+            i.open("r")
+            c = i.key_columns()[0]
+            w = i.bin_widths()[0]
+            t = [r[c.get_position()] for r in self._table] 
+            d = histogram(t, w)
+            for k, v in i.counter().items():
+                self.assertTrue(k in d)
+                self.assertEqual(d[k], v)
+            i.close()
+
 class TableCursorTest(WormtableTest):
     """
     Tests the cursor over a table.
@@ -270,4 +392,5 @@ class TableCursorTest(WormtableTest):
             j += 1
         self.assertEqual(len(t), j)
         # TODO more tests - permute the columns, etc.
+
 
