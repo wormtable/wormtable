@@ -212,22 +212,15 @@ min_uint(u_int32_t k)
 /* 
  * Returns the missing value for a k byte float.
  *
- * TODO there is a problem here with missing value handling. 
- * Assigning the missing value to a float column results in 
- * 0.0 being returned back, whereas no assigning to the column
- * returns None as expected. Fix.
  */
 static double 
 missing_float(u_int32_t k) 
 {
-    u_int64_t u = 0ll;
     double v;
+    u_int64_t u = 0xffffffffffffffffLL;
     memcpy(&v, &u, sizeof(double));
     return v;
 }
-
-
-
 
 
 /*==========================================================
@@ -282,9 +275,9 @@ Column_native_to_python_float(Column *self, int index)
 {
     PyObject *ret = NULL;
     double *elements = (double *) self->element_buffer;
-    /* TODO we should test directly for the missing value, by copying to 
-     * uint64_t and comparing to zero. Any other nans can then be shipped 
-     * back to Python.
+    /* We cannot compare directly to missing value here because NaN is not 
+     * equal to itself. Therefore we test against NaN and assume that 
+     * this is equal to the missing value. This may cause problems!
      */
     if (isnan(elements[index])) {
         Py_INCREF(Py_None);
@@ -2507,13 +2500,6 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         skey->size += len;
         v += len;
     }
-    /*
-    printf("num cols = %d filled key %d:", self->num_columns, skey->size);
-    for (j = 0; j < skey->size; j++) {
-        printf("%d ", ((unsigned char *) skey->data)[j]);
-    }
-    printf("\n");
-    */
     ret = 0;
 out: 
     return ret;
@@ -2644,17 +2630,6 @@ Index_get_num_rows(Index *self, PyObject *args)
     }
     key.data = self->key_buffer;
     key.size = (u_int32_t) key_size; 
-    /*
-    printf("\t in get num_rows: %d\n", key_size);
-    {
-        int j;
-        printf("\t key = ");
-        for (j = 0; j < key.size; j++) {
-            printf("%d ", ((char *) key.data)[j]);
-        }
-        printf("\n");
-    }
-    */
     db_ret = cursor->get(cursor, &key, &data, DB_SET);
     if (db_ret == 0) {
         db_ret = cursor->count(cursor, &count, 0); 
@@ -2665,33 +2640,7 @@ Index_get_num_rows(Index *self, PyObject *args)
     } else if (db_ret != DB_NOTFOUND) {
         handle_bdb_error(db_ret);
         goto out;    
-    } else {
-        printf("\tDB_NOTFOUND!!\n");
-        /*
-        {
-            DBC *c;
-            int j;
-            DBT k, v;
-            self->db->cursor(self->db, NULL, &c, 0);
-            memset(&k, 0, sizeof(DBT));
-            memset(&v, 0, sizeof(DBT));
-            while ((db_ret = c->get(c, &k, &v, DB_NEXT)) == 0) {
-                printf("\t key(%d) = ", k.size);
-                for (j = 0; j < k.size; j++) {
-                    printf("%d ", ((char *) k.data)[j]);
-                }
-                printf("\n");
-            }
-            if (db_ret != DB_NOTFOUND) {
-                printf("END OF ITER ERROR\n"); 
-            }
-
-
-        }
-        */
-
     }
-
     ret = PyLong_FromUnsignedLongLong((unsigned long long) count);
 out:
     if (cursor != NULL) {

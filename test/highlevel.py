@@ -51,16 +51,17 @@ class WormtableTest(unittest.TestCase):
         t.add_id_column(1)
         t.add_uint_column("uint")
         t.add_int_column("int")
-        #t.add_float_column("float", size=8)
+        t.add_float_column("float", size=4)
         t.add_char_column("char", num_elements=3)
         t.open("w")
+        def g():
+            return random.random() < 0.25
         for j in range(n):
-            u = random.randint(0, max_value)
-            i = random.randint(0, max_value)
-            f = random.randint(0, max_value)
-            c = str(random.randint(0, max_value))
-            #t.append([None, u, i, f, c.encode()])
-            t.append([None, u, i, c.encode()])
+            u = None if g() else random.randint(0, max_value)
+            i = None if g() else random.randint(0, max_value)
+            f = None if g() else random.randint(0, max_value)
+            c = None if g() else str(random.randint(0, max_value)).encode()
+            t.append([None, u, i, f, c]) 
             if random.random() < 0.33:
                 t.append([])
         t.close()

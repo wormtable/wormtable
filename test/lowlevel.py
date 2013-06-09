@@ -1077,10 +1077,21 @@ class TestDatabaseCharMultiColumnIndex(TestDatabaseChar, TestMultiColumnIndex):
 
 class TestMissingValues(object):
     def test_missing_values(self):
-        for j in range(self.num_random_test_rows):
-            self._row_buffer.commit_row()
+        # Insert an empty row    
+        self._row_buffer.commit_row()
+        # Now writing in empty values
+        for j in range(1, self.num_columns):
+            col = self._columns[j]
+            if col.num_elements == 1:
+                v = None
+            elif col.num_elements > 1:
+                v = tuple(None for k in range(col.num_elements))
+            else:
+                v = tuple()
+            self._row_buffer.insert_elements(j, v)
+        self._row_buffer.commit_row()
         self.open_reading()
-        for j in range(self.num_random_test_rows):
+        for j in range(2):
             r = self._database.get_row(j)
             for k in range(1, len(self._columns)):
                 c = self._columns[k]
