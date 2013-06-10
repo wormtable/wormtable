@@ -655,7 +655,7 @@ class Table(Database):
 
     def indexes(self):
         """
-        Returns an interator over the indexes on this table.
+        Returns an interator over the names of the indexes in this table. 
         """
         self.verify_open(WT_READ)
         prefix = os.path.join(self.get_homedir(), Index.DB_PREFIX) 
@@ -663,7 +663,7 @@ class Table(Database):
         for g in glob.glob(prefix + "*" + suffix):
             name = g.replace(prefix, "")
             name = name.replace(suffix, "")
-            yield Index(self, name) 
+            yield name 
 
 
     def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE):
@@ -697,6 +697,18 @@ class Index(Database):
         Return the name of this index.
         """
         return self.__name
+
+    def get_colspec(self):
+        """
+        Returns the column specification for this index.
+        """
+        s = ""
+        for c, w in zip(self.__key_columns, self.__bin_widths):
+            s += c.get_name()
+            if w != 0.0:
+                s += "[{0}]".format(w)
+            s += "+"
+        return s[:-1]
 
     # Methods for accessing the key_columns
     def key_columns(self):
@@ -787,6 +799,13 @@ class Index(Database):
             llo.build(progress_callback, callback_rows)
         else:
             llo.build() 
+
+    def open(self, mode):
+        """
+        Opens this index in the specified mode.
+        """
+        self.__table.verify_open(WT_READ)
+        Database.open(self, mode)
 
     def close(self):
         """

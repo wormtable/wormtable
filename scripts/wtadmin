@@ -12,73 +12,26 @@ import signal
 
 import wormtable as wt
 
-
-
-
-def add_index(table, colspec):
-    print("adding index") 
-    bin_widths = []
-    column_names = [] 
-    index = wt.Index(table, colspec)
-    for c in colspec.split("+"): 
-        col_name = c
-        bin_width = 0
-        m = re.search("\[.*\]$", c)
-        if m is not None:
-            g = m.group(0)
-            col_name = c[:m.start(0)]
-            bin_width = float(g.strip("[]"))
-        col = table.get_column(col_name)
-        index.add_key_column(col, bin_width)
-    index.open("w")
-    n = len(table) 
-    f = None
-    monitor = wt.ProgressMonitor(n, "rows")
-    def progress(processed_rows):
-        monitor.update(processed_rows)
-    f = progress
-    index.build(f, max(1, int(n / 1000)))
-    monitor.finish()
-    index.close()
-
-def delete_index(table, index_name):
-    index = wt.Index(table, index_name)
-    index.delete()
-
-def print_table(table, cols, index=None, min_value=None, max_value=None):
-    cursor = table.cursor(cols, index)
-    if min_value is not None:
-        cursor.set_min(min_value)
-    if max_value is not None:
-        cursor.set_max(max_value)
-    f = sys.stdout
-    for row in cursor:
-        s = ""
-        for c, v in zip(cols, row): 
-            s = s + c.format_value(v) + "\t"
-        f.write(s + "\n")
-
 class ProgramRunner(object):
     """
     Class responsible for running the program, managing output streams 
     etc.
     """
-    def __init__(self, homedir):
-        self.__homedir = homedir
-        self.__table = wt.Table(homedir)
-        if not self.__table.exists():
+    def __init__(self, args):
+        self._homedir = args.HOMEDIR 
+        self._cache_size = wt.DEFAULT_CACHE_SIZE
+        if "cache_size" in args:
+            self._cache_size = args.cache_size
+        self._table = wt.Table(self._homedir) 
+       
+    def init(self):
+        """ 
+        Initialises the instance variables in this runner object.
+        """
+        if not self._table.exists():
             self.error("Table '{0}' not found".format(homedir))
-        self.__table.open("r")
-        self.__index = None
-
-    def open_index(self, name):
-        """
-        Opens the specified index name for reading.
-        """
-        self.__index = wt.Index(self.__table, name)
-        if not self.__index.exists():
-            self.error("Index '{0}' not found".format(name))
-        self.__index.open("r")
+        self._table.set_cache_size(self._cache_size)
+        self._table.open("r")
 
     def format_size(self, n):
         """
@@ -91,12 +44,32 @@ class ProgramRunner(object):
                 return "%3.1f %s" % (num, x)
             num /= 1024.0
         return "%3.1f %s" % (num, 'TiB')
+   
+    def cleanup(self):
+        """
+        Cleans up any open tables, indexes or files.
+        """
+        if self._table is not None:
+            if self._table.is_open():
+                self._table.close()
 
-    def print_columns(self):
+    def error(self, s):
+        """
+        Raises and error and exits.
+        """
+        print("Error:", s)
+        sys.exit(1) 
+
+
+class ShowRunner(ProgramRunner):
+    """
+    Runner for the show command
+    """
+    def run(self):
         """
         Print out the details of the columns in the table.
         """
-        t = self.__table
+        t = self._table
         # get the max width for name
         max_name_width = 0
         for c in t.columns():
@@ -119,42 +92,68 @@ class ProgramRunner(object):
                     name_width=max_name_width + 2)
             print(s)
 
-    def print_details(self):
+class ListRunner(ProgramRunner):
+    """
+    Program runner for the list command.
+    """
+    def run(self):
         """
         Prints out a summary of the details of this table and its indexes.
         """
-        t = self.__table
+        t = self._table
         # print a summary of the table first
-        print(t.get_homedir(), ":")
-        print("\trows = \t", len(t))
-        print("\tminimum row size = \t", 
-                self.format_size(t.get_fixed_region_size()))
-        print("\tfile size = \t", self.format_size(t.get_db_file_size()))
+        fmt = "{0:<20}:{1:>10}"
+        print(fmt.format("rows", len(t)))
+        print(fmt.format("file size", 
+            self.format_size(t.get_db_file_size())))
+        print(fmt.format("minimum row size", 
+            self.format_size(t.get_fixed_region_size())))
         print("Indexes:") 
         indexes = []
         max_name_width = 0
-        for i in t.indexes():
-            i.open("r")
-            indexes.append(i)
-            n = len(i.get_name()) 
-            if n > max_name_width:
-                max_name_width = n
-        max_name_width += 2
+        names = sorted(t.indexes())
+        max_name_width = max(len(n) for n in names) + 2
         fmt = "{0:{name_width}} {1:>10} {2:>3} | {3}" 
         s = fmt.format("name", "size", "n", "colspec", name_width=max_name_width)
         print("=" * (len(s) + 2))
         print(s)
         print("=" * (len(s) + 2))
-        for i in indexes:
+        for n in names:
+            i = t.open_index(n) 
             s = fmt.format(i.get_name(), self.format_size(i.get_db_file_size()),
-                    len(i.key_columns()), i.get_name(), name_width=max_name_width)
-            print(s)
-        for i in indexes:
+                    len(i.key_columns()), i.get_colspec(), name_width=max_name_width)
             i.close()
+            print(s)
 
-    def print_histogram(self):
-        counter = self.__index.counter()
-        cols = self.__index.key_columns()
+class IndexProgramRunner(ProgramRunner):
+    """
+    Superclass of all program runners that have an index.
+    """
+    def __init__(self, args):
+        super(IndexProgramRunner, self).__init__(args)
+        self._index_name = args.NAME
+        self._index = None
+
+    def init(self):
+        super(IndexProgramRunner, self).init()
+        self._index = wt.Index(self._table, self._index_name)
+        if not self._index.exists():
+            self.error("Index '{0}' not found".format(self._index_name))
+        self._index.open("r")
+       
+    def cleanup(self):
+        if self._index is not None:
+            if self._index.is_open():
+                self._index.close()
+        super(IndexProgramRunner, self).cleanup()
+
+class HistRunner(IndexProgramRunner):
+    """
+    Runner for the index historgram command.
+    """
+    def run(self):
+        counter = self._index.counter()
+        cols = self._index.key_columns()
         n = len(cols)
         s = "\t".join([cols[j].get_name() for j in range(n)])
         s = "n\t" + s 
@@ -166,87 +165,153 @@ class ProgramRunner(object):
                 s = "\t".join([cols[j].format_value(k[j]) for j in range(n)])
             print(v, "\t",  s)
 
-
-    def error(self, s):
-        """
-        Raises and error and exits.
-        """
-        print("Error:", s)
-        sys.exit(1) 
-
-
-###########################
-
-# Command entry points 
-
-###########################
-
-def ls(args):
-    pr = ProgramRunner(args.HOMEDIR)
-    pr.print_details()
-
-def show(args):
-    pr = ProgramRunner(args.HOMEDIR)
-    pr.print_columns()
-
-def hist(args):
-    pr = ProgramRunner(args.HOMEDIR)
-    pr.open_index(args.NAME)
-    pr.print_histogram()
-
-
-def add(args):
-    with wt.open_table(args.HOMEDIR) as t:
-        add_index(t, args.COLSPEC)
-
-
-
-def remove(args):
-    with wt.open_table(args.HOMEDIR) as t:
-        delete_index(t, args.NAME)
-
- 
-
-def dump(args):
+class DeleteRunner(IndexProgramRunner):
     """
-    Dumps the entire table to stdout.
+    Runner for the index delete command.
     """
-    with wt.open_table(args.HOMEDIR) as t:
-        min_value = None
-        max_value = None
-        # get the index, if there is one
-        index = None
+    def run(self):
+        self._index.close()
+        self._index.delete()
+        self._index = None
+
+class AddRunner(ProgramRunner):
+    """
+    Runner for the index add command.
+    """
+    def __init__(self, args):
+        super(AddRunner, self).__init__(args)
+        self._colspec = args.COLSPEC
+        self._index_name = args.name
+        if args.name is None:
+            self._index_name = self._colspec
+        self._progress = args.progress
+        self._force = args.force
+        self._index_cache_size = args.index_cache_size
+        self._index = None
+
+    def init(self):
+        super(AddRunner, self).init()
+        self._index = wt.Index(self._table, self._index_name)
+        if self._index.exists() and not self._force:
+            s = "Index '{0}' exists; use --force to overwrite"
+            self.error(s.format(self._index_name))
+        self.parse_colspec()
+        self._index.open("w")
+
+    def parse_colspec(self):
+        """
+        Parses the specified column specification and adds the key columns 
+        and bin widths specified within.
+        """
+        for c in self._colspec.split("+"): 
+            col_name = c
+            bin_width = 0
+            m = re.search("\[.*\]$", c)
+            if m is not None:
+                g = m.group(0)
+                col_name = c[:m.start(0)]
+                bin_width = float(g.strip("[]"))
+            col = self._table.get_column(col_name)
+            self._index.add_key_column(col, bin_width)
+
+    def run(self):
+        """
+        Create the index.
+        """
+        if self._progress:
+            n = len(self._table) 
+            f = None
+            monitor = wt.ProgressMonitor(n, "rows")
+            def progress(processed_rows):
+                monitor.update(processed_rows)
+            f = progress
+            self._index.build(f, max(1, int(n / 1000)))
+            monitor.finish()
+        else:
+            self._index.build()
+
+    def cleanup(self):
+        if self._index is not None:
+            if self._index.is_open():
+                self._index.close()
+        super(AddRunner, self).cleanup()
+
+class DumpRunner(ProgramRunner):
+    """
+    Runner class for the dump command. 
+    """
+    def __init__(self, args):
+        super(DumpRunner, self).__init__(args)
+        self._index = None 
+        self._min_value = args.min 
+        self._max_value = args.max 
+        self._columns = None
+        self._index_name = args.index
+        self._column_ids = args.columns
         if args.index is not None:
-            index = wt.Index(t, args.index) 
-            index.open("r")
-            if args.min is not None:
-                min_value = float(args.min)
-            if args.max is not None:
-                max_value = float(args.max)
+            self._index = wt.Index(self._table, self._index_name)
+            if not self._index.exists():
+                self.error("Index '{0}' not found".format(self._index_name))
+
+    def parse_index_key(self, key):
+        """
+        Parses the specified key from the command line into something 
+        that can be used as a key for this index.
+        """
+        l = []
+        for c, k in zip(self._index.key_columns(), key.split(",")):
+            v = k
+            if c.get_type() == wt.WT_FLOAT:
+                v = float(k)
+            elif c.get_type() in [wt.WT_INT, wt.WT_UINT]:
+                v = int(k)
+            l.append(v)
+        return l 
+
+    def init(self):
+        super(DumpRunner, self).init()
+        if self._index is not None:
+            self._index.open("r")
+            if self._min_value is not None:
+                self._min_value = self.parse_index_key(self._min_value)
+            if self._max_value is not None:
+                self._max_value = self.parse_index_key(self._max_value)
         else:
-            if args.min is not None:
-                min_value = int(args.min)
-            if args.max is not None:
-                max_value = int(args.max)
-        # get the columns
-        cols = []
-        all_columns = t.columns()
-        if len(args.columns) == 0:
-            cols = all_columns 
-        else:
-            for col_id in args.columns:
-                c = None
+            if self._min_value is not None:
+                self._min_value = [int(self._min_value)]
+            if self._max_value is not None:
+                self._max_value = [int(self._max_value)]
+        
+        self._columns = self._table.columns()
+        if len(self._column_ids) > 0:
+            self._columns = []
+            for col_id in self._column_ids: 
                 try: 
-                    j = int(col_id)
-                    c = all_columns[j]
+                    col_id = int(col_id)
                 except ValueError:
-                    c = t.get_column(col_id)
-                cols.append(c)
-        
-        print_table(t, cols, index, min_value, max_value)
-        
-        if index is not None:
-            index.close()
+                    pass
+                c = self._table.get_column(col_id)
+                self._columns.append(c)
+
+    def run(self):
+        cursor = self._table.cursor(self._columns, self._index)
+        if self._min_value is not None:
+            cursor.set_min(*self._min_value)
+        if self._max_value is not None:
+            cursor.set_max(*self._max_value)
+        for row in cursor:
+            s = ""
+            for c, v in zip(self._columns, row): 
+                s = s + c.format_value(v) + "\t"
+            print(s) 
+
+
+    def cleanup(self):
+        if self._index is not None:
+            if self._index.is_open():
+                self._index.close()
+        super(DumpRunner, self).cleanup()
+
 
 def add_homedir_argument(parser):
     """
@@ -260,7 +325,7 @@ def add_colspec_argument(parser):
     Adds a positional colspec argument to the specified parser.
     """
     parser.add_argument("COLSPEC", 
-        help="Column specification for the index.")   
+        help="""Column specification for the index.""")   
 
 
 def main():
@@ -278,8 +343,50 @@ def main():
             description = "Show the columns in the table",
             help="show details about the columns in the table")
     add_homedir_argument(show_parser)
-    show_parser.set_defaults(func=show)
+    show_parser.set_defaults(runner=ShowRunner)
     
+    # ls command
+    ls_parser = subparsers.add_parser("ls", 
+            help="list the indexes in the table")
+    add_homedir_argument(ls_parser)
+    ls_parser.set_defaults(runner=ListRunner)
+
+    # index histogram command 
+    hist_parser = subparsers.add_parser("hist", help="""
+        Show the histogram for index NAME""")
+    add_homedir_argument(hist_parser)
+    hist_parser.add_argument("NAME", help="name of the index")
+    hist_parser.set_defaults(runner=HistRunner) 
+
+    # rm index command
+    remove_parser = subparsers.add_parser("rm", help="delete an index")
+    add_homedir_argument(remove_parser)
+    remove_parser.add_argument("NAME", help="name of the index")
+    remove_parser.set_defaults(runner=DeleteRunner) 
+
+    # add index command
+    add_parser = subparsers.add_parser("add", 
+            help="add a new index to the table")
+    add_homedir_argument(add_parser)
+    add_colspec_argument(add_parser)
+    add_parser.add_argument("--progress", "-p", action="store_true", default=False,
+        help="show progress monitor")   
+    add_parser.add_argument("--force", "-f", action="store_true", default=False,
+        help="force over-writing of existing index")   
+    add_parser.add_argument("--name", "-n", 
+        help="name of the index (defaults to COLSPEC)")
+    add_parser.add_argument("--cache-size", "-c", default="64M",
+            help="""table cache size in bytes; suffixes K, M and G also 
+                supported. Slight performace improvements may be found by 
+                making this larger, but it is much less imporant than 
+                the index cache size""")   
+    add_parser.add_argument("--index-cache-size", "-d", default="64M",
+            help="""index cache size in bytes; suffixes K, M and G also supported.
+                This option is very important for index build performance and 
+                should be set as large as possible; ideally, the entire index 
+                should fit into the cache. """)   
+    add_parser.set_defaults(runner=AddRunner) 
+
     # dump command
     dump_parser = subparsers.add_parser("dump", 
             help="dump the table to stdout")
@@ -294,53 +401,21 @@ def main():
             help="minimum value to print")
     dump_parser.add_argument("--max", "-x", default=None,
             help="maximum value to print")
-    dump_parser.set_defaults(func=dump)
+    dump_parser.set_defaults(runner=DumpRunner)
     
-    # ls command
-    ls_parser = subparsers.add_parser("ls", 
-            help="list the indexes in the table")
-    add_homedir_argument(ls_parser)
-    ls_parser.set_defaults(func=ls)
-
-    # add index command
-    add_parser = subparsers.add_parser("add", 
-            help="add a new index to the table")
-    add_homedir_argument(add_parser)
-    add_colspec_argument(add_parser)
-    add_parser.add_argument("--progress", "-p", action="store_true", default=False,
-        help="show progress monitor")   
-    add_parser.add_argument("--force", "-f", action="store_true", default=False,
-        help="force over-writing of existing index")   
-    add_parser.add_argument("--name", "-n", 
-        help="name of the index (defaults to COLSPEC)")
-    add_parser.add_argument("--read-cache-size", "-c", default="64M",
-            help="read cache size in bytes; suffixes K, M and G also supported.")   
-    add_parser.add_argument("--write-cache-size", "-w", default="64M",
-            help="write cache size in bytes; suffixes K, M and G also supported.")   
-    add_parser.set_defaults(func=add) 
-    
-    # rm index command
-    remove_parser = subparsers.add_parser("rm", help="delete an index")
-    add_homedir_argument(remove_parser)
-    remove_parser.add_argument("NAME", help="name of the index")
-    remove_parser.set_defaults(func=remove) 
-
-    # index histogram command 
-    hist_parser = subparsers.add_parser("hist", help="""
-        Show the histogram for index NAME""")
-    add_homedir_argument(hist_parser)
-    hist_parser.add_argument("NAME", help="name of the index")
-    hist_parser.set_defaults(func=hist) 
-
     # Set signal handler for SIGPIPE to quietly kill the program.
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     
     args = parser.parse_args()
-    if "func" not in args:
+    if "runner" not in args:
         parser.print_help()
     else:
-        args.func(args) 
-        
+        runner = args.runner(args) 
+        try:
+            runner.init()
+            runner.run()
+        finally:
+            runner.cleanup()
 
 if __name__ == "__main__":
     main()
