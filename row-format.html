@@ -1,0 +1,153 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Low level row format &mdash; wormtable 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="wormtable 0.1 documentation" href="index.html" />
+    <link rel="prev" title="Performance tuning" href="performance.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="performance.html" title="Performance tuning"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="low-level-row-format">
+<span id="row-format-index"></span><h1>Low level row format<a class="headerlink" href="#low-level-row-format" title="Permalink to this headline">¶</a></h1>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">June 11, 2013</td>
+</tr>
+</tbody>
+</table>
+<p>This reference manual describes the low level details of the binary format
+used to store each row in Wormtable. These details are not important to
+the average programmer who wishes to store data in a table. It may be
+useful to have a basic understanding of the low-level format when
+tuning for performance, and to understand the penalty associated with
+fixed and variable size columns. It should also be possible to
+build a custom interface to Wormtable in another language that supports
+Berkeley DB using this data format definition.</p>
+<div class="section" id="fixed-columns">
+<h2>Fixed Columns<a class="headerlink" href="#fixed-columns" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="variable-columns">
+<h2>Variable Columns<a class="headerlink" href="#variable-columns" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="data-type-representaion">
+<h2>Data type representaion<a class="headerlink" href="#data-type-representaion" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="integer-data">
+<h3>Integer data<a class="headerlink" href="#integer-data" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="floating-point-data">
+<h3>Floating point data<a class="headerlink" href="#floating-point-data" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="character-data">
+<h3>Character data<a class="headerlink" href="#character-data" title="Permalink to this headline">¶</a></h3>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Low level row format</a><ul>
+<li><a class="reference internal" href="#fixed-columns">Fixed Columns</a></li>
+<li><a class="reference internal" href="#variable-columns">Variable Columns</a></li>
+<li><a class="reference internal" href="#data-type-representaion">Data type representaion</a><ul>
+<li><a class="reference internal" href="#integer-data">Integer data</a></li>
+<li><a class="reference internal" href="#floating-point-data">Floating point data</a></li>
+<li><a class="reference internal" href="#character-data">Character data</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="performance.html"
+                        title="previous chapter">Performance tuning</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/row-format.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="performance.html" title="Performance tuning"
+             >previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Jerome Kelleher.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>

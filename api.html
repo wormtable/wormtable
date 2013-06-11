@@ -1,0 +1,637 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>API Documentation &mdash; wormtable 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="wormtable 0.1 documentation" href="index.html" />
+    <link rel="next" title="Performance tuning" href="performance.html" />
+    <link rel="prev" title="Data types" href="data-types.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="performance.html" title="Performance tuning"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="data-types.html" title="Data types"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="api-documentation">
+<span id="api-index"></span><h1>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline">¶</a></h1>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">June 11, 2013</td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-wormtable"></span><p>Wormtable.</p>
+<dl class="class">
+<dt id="wormtable.Column">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Column</tt><big>(</big><em>ll_object</em><big>)</big><a class="headerlink" href="#wormtable.Column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class representing a column in a table.</p>
+<dl class="method">
+<dt id="wormtable.Column.format_value">
+<tt class="descname">format_value</tt><big>(</big><em>v</em><big>)</big><a class="headerlink" href="#wormtable.Column.format_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>Formats the specified value from this column for printing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_description">
+<tt class="descname">get_description</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_description" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the description of this column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_element_size">
+<tt class="descname">get_element_size</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_element_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the size of each element in the column in bytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_ll_object">
+<tt class="descname">get_ll_object</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_ll_object" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the low level Column object that this class is a facade for.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_missing_value">
+<tt class="descname">get_missing_value</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_missing_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the missing value for this column.</p>
+<p>TODO: document</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_name">
+<tt class="descname">get_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the name of this column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_num_elements">
+<tt class="descname">get_num_elements</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_num_elements" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the number of elements in this column; 0 means the number 
+of elements is variable.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_position">
+<tt class="descname">get_position</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the position of this column in the table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_type">
+<tt class="descname">get_type</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the type code for this column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_type_name">
+<tt class="descname">get_type_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_type_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the string representation of the type of this Column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_xml">
+<tt class="descname">get_xml</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_xml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an ElementTree.Element representing this Column.</p>
+</dd></dl>
+
+<dl class="classmethod">
+<dt id="wormtable.Column.parse_xml">
+<em class="property">classmethod </em><tt class="descname">parse_xml</tt><big>(</big><em>theclass</em>, <em>xmlcol</em><big>)</big><a class="headerlink" href="#wormtable.Column.parse_xml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Parses the specified XML column description and returns a new 
+Column instance.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.Cursor">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Cursor</tt><a class="headerlink" href="#wormtable.Cursor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Superclass of Cursor objects. Subclasses are responsible for allocating 
+an iterator.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.Database">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Database</tt><big>(</big><em>homedir</em>, <em>db_name</em><big>)</big><a class="headerlink" href="#wormtable.Database" title="Permalink to this definition">¶</a></dt>
+<dd><p>The superclass of database objects. Databases are located in a home 
+directory and are backed by a two files: a database file and an 
+xml metadata file.</p>
+<dl class="method">
+<dt id="wormtable.Database.close">
+<tt class="descname">close</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Closes this database object, freeing underlying resources.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.delete">
+<tt class="descname">delete</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Deletes the DB and metadata files for this database.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.exists">
+<tt class="descname">exists</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.exists" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if this Database exists.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.finalise_build">
+<tt class="descname">finalise_build</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.finalise_build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Move the build file to its final location and write the metadata file.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_cache_size">
+<tt class="descname">get_cache_size</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_cache_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the cache size for this database in bytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_db_build_path">
+<tt class="descname">get_db_build_path</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_db_build_path" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the path of the file used to build the database.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_db_file_size">
+<tt class="descname">get_db_file_size</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_db_file_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the size of the database file in bytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_db_name">
+<tt class="descname">get_db_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_db_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the db name of this database object.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_db_path">
+<tt class="descname">get_db_path</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_db_path" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the path of the permanent file used to store the database.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_homedir">
+<tt class="descname">get_homedir</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_homedir" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the home directory for this database object.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_ll_object">
+<tt class="descname">get_ll_object</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_ll_object" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the low-level object that this Database is a facade for.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_metadata_path">
+<tt class="descname">get_metadata_path</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_metadata_path" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the path of the file used to store metadata for the 
+database.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.get_open_mode">
+<tt class="descname">get_open_mode</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.get_open_mode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the mode that this database is opened in, WT_READ or 
+WT_WRITE. If the database is not open, return None.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.is_open">
+<tt class="descname">is_open</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.is_open" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if this database is open for reading or writing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.open">
+<tt class="descname">open</tt><big>(</big><em>mode</em><big>)</big><a class="headerlink" href="#wormtable.Database.open" title="Permalink to this definition">¶</a></dt>
+<dd><p>Opens this database in the specified mode. Mode must be one of 
+&#8216;r&#8217; or &#8216;w&#8217;.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.read_metadata">
+<tt class="descname">read_metadata</tt><big>(</big><em>filename</em><big>)</big><a class="headerlink" href="#wormtable.Database.read_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads metadata for this database from the specified filename,
+and calls set_metadata with the result.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.set_cache_size">
+<tt class="descname">set_cache_size</tt><big>(</big><em>cache_size</em><big>)</big><a class="headerlink" href="#wormtable.Database.set_cache_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the cache size for this database object to the specified 
+value. If cache_size is a string, it can be suffixed with 
+K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.verify_closed">
+<tt class="descname">verify_closed</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Database.verify_closed" title="Permalink to this definition">¶</a></dt>
+<dd><p>Ensures this database is closed.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.verify_open">
+<tt class="descname">verify_open</tt><big>(</big><em>mode=None</em><big>)</big><a class="headerlink" href="#wormtable.Database.verify_open" title="Permalink to this definition">¶</a></dt>
+<dd><p>Ensures this database is open in the specified mode..</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Database.write_metadata">
+<tt class="descname">write_metadata</tt><big>(</big><em>filename</em><big>)</big><a class="headerlink" href="#wormtable.Database.write_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Writes the metadata for this database to the specified file.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.Index">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Index</tt><big>(</big><em>table</em>, <em>name</em><big>)</big><a class="headerlink" href="#wormtable.Index" title="Permalink to this definition">¶</a></dt>
+<dd><p>An index is an auxiliary table that sorts the rows according to 
+column values.</p>
+<dl class="method">
+<dt id="wormtable.Index.add_key_column">
+<tt class="descname">add_key_column</tt><big>(</big><em>key_column</em>, <em>bin_width=0</em><big>)</big><a class="headerlink" href="#wormtable.Index.add_key_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Adds the specified key_column to the list of key_columns we are indexing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.bin_widths">
+<tt class="descname">bin_widths</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.bin_widths" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the list of bin widths in this index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.build">
+<tt class="descname">build</tt><big>(</big><em>progress_callback=None</em>, <em>callback_rows=100</em><big>)</big><a class="headerlink" href="#wormtable.Index.build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Builds this index. If progress_callback is not None, invoke this 
+calback after every callback_rows have been processed.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.close">
+<tt class="descname">close</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Closes this Index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.counter">
+<tt class="descname">counter</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.counter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an IndexCounter object for this index. This provides an efficient 
+method of iterating over the keys in the index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.get_colspec">
+<tt class="descname">get_colspec</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.get_colspec" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the column specification for this index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.get_max">
+<tt class="descname">get_max</tt><big>(</big><em>*k</em><big>)</big><a class="headerlink" href="#wormtable.Index.get_max" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the largest index key less than the specified prefix.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.get_metadata">
+<tt class="descname">get_metadata</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.get_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an ElementTree instance describing the metadata for this 
+Index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.get_min">
+<tt class="descname">get_min</tt><big>(</big><em>*k</em><big>)</big><a class="headerlink" href="#wormtable.Index.get_min" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the smallest index key greater than or equal to the specified 
+prefix.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.get_name">
+<tt class="descname">get_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.get_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the name of this index.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.key_columns">
+<tt class="descname">key_columns</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.key_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the list of key columns.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.keys">
+<tt class="descname">keys</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Index.keys" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an iterator over all the keys in this Index in sorted 
+order.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.open">
+<tt class="descname">open</tt><big>(</big><em>mode</em><big>)</big><a class="headerlink" href="#wormtable.Index.open" title="Permalink to this definition">¶</a></dt>
+<dd><p>Opens this index in the specified mode.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.set_metadata">
+<tt class="descname">set_metadata</tt><big>(</big><em>tree</em><big>)</big><a class="headerlink" href="#wormtable.Index.set_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets up this Index to reflect the metadata in the specified xml 
+ElementTree.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.translate_key">
+<tt class="descname">translate_key</tt><big>(</big><em>v</em><big>)</big><a class="headerlink" href="#wormtable.Index.translate_key" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translates the specified arguments tuple as a key to a tuple ready to 
+for use in the low-level API.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Index.translate_value">
+<tt class="descname">translate_value</tt><big>(</big><em>v</em><big>)</big><a class="headerlink" href="#wormtable.Index.translate_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translates the specified value from the low-level value to its
+high-level equivalent.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.IndexCounter">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">IndexCounter</tt><big>(</big><em>index</em><big>)</big><a class="headerlink" href="#wormtable.IndexCounter" title="Permalink to this definition">¶</a></dt>
+<dd><p>A counter for Indexes, based on the collections.Counter class. This class 
+is a dictionary-like object that represents a mapping of the distinct 
+keys in the index to the number of times those keys appear.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.IndexCursor">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">IndexCursor</tt><big>(</big><em>index</em>, <em>columns</em><big>)</big><a class="headerlink" href="#wormtable.IndexCursor" title="Permalink to this definition">¶</a></dt>
+<dd><p>A cursor over the rows of the table in the order defined by an index.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.ProgressMonitor">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">ProgressMonitor</tt><big>(</big><em>total</em>, <em>units</em><big>)</big><a class="headerlink" href="#wormtable.ProgressMonitor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class representing a progress monitor for a terminal based interface.</p>
+<dl class="method">
+<dt id="wormtable.ProgressMonitor.finish">
+<tt class="descname">finish</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.ProgressMonitor.finish" title="Permalink to this definition">¶</a></dt>
+<dd><p>Completes the progress monitor.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.ProgressMonitor.update">
+<tt class="descname">update</tt><big>(</big><em>processed</em><big>)</big><a class="headerlink" href="#wormtable.ProgressMonitor.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>Updates this progress monitor to display the specified number 
+of processed items.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.Table">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Table</tt><big>(</big><em>homedir</em><big>)</big><a class="headerlink" href="#wormtable.Table" title="Permalink to this definition">¶</a></dt>
+<dd><p>The main storage table class.</p>
+<dl class="method">
+<dt id="wormtable.Table.add_char_column">
+<tt class="descname">add_char_column</tt><big>(</big><em>name</em>, <em>description=''</em>, <em>num_elements=0</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_char_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a new character column with the specified name, description 
+and number of elements. If num_elements=0 then the column can hold 
+variable length strings; otherwise, it can contain strings of a fixed 
+length only.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.add_column">
+<tt class="descname">add_column</tt><big>(</big><em>name</em>, <em>description</em>, <em>element_type</em>, <em>size</em>, <em>num_elements</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a new column with the specified name, description, element type,
+element size and number of elements.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.add_float_column">
+<tt class="descname">add_float_column</tt><big>(</big><em>name</em>, <em>description=''</em>, <em>size=4</em>, <em>num_elements=1</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_float_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a new float column with the specified name, 
+element size (in bytes) and number of elements. If num_elements=0
+then the column can hold a variable number of elements. Only 4 and 
+8 byte floats are supported by wormtable; these correspond to the 
+usual float and double types.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.add_id_column">
+<tt class="descname">add_id_column</tt><big>(</big><em>size=4</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_id_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Adds the ID column with the specified size in bytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.add_int_column">
+<tt class="descname">add_int_column</tt><big>(</big><em>name</em>, <em>description=''</em>, <em>size=2</em>, <em>num_elements=1</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_int_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a new integer column with the specified name, 
+element size (in bytes) and number of elements. If num_elements=0
+then the column can hold a variable number of elements.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.add_uint_column">
+<tt class="descname">add_uint_column</tt><big>(</big><em>name</em>, <em>description=''</em>, <em>size=2</em>, <em>num_elements=1</em><big>)</big><a class="headerlink" href="#wormtable.Table.add_uint_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a new unsigned integer column with the specified name, 
+element size (in bytes) and number of elements. If num_elements=0
+then the column can hold a variable number of elements.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.append">
+<tt class="descname">append</tt><big>(</big><em>row</em><big>)</big><a class="headerlink" href="#wormtable.Table.append" title="Permalink to this definition">¶</a></dt>
+<dd><p>Appends the specified row to this table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.append_encoded">
+<tt class="descname">append_encoded</tt><big>(</big><em>row</em><big>)</big><a class="headerlink" href="#wormtable.Table.append_encoded" title="Permalink to this definition">¶</a></dt>
+<dd><p>Appends the specified row to this table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.close">
+<tt class="descname">close</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Table.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Closes this Table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.columns">
+<tt class="descname">columns</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Table.columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the list of columns.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.cursor">
+<tt class="descname">cursor</tt><big>(</big><em>columns</em>, <em>index=None</em><big>)</big><a class="headerlink" href="#wormtable.Table.cursor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a cursor over the rows in this database, retreiving the specified 
+columns. If index is provided, the cursor will iterate over the rows in 
+the order defined by the index.</p>
+<p>Columns must be a list of column identifiers, or Column instances.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.get_column">
+<tt class="descname">get_column</tt><big>(</big><em>col_id</em><big>)</big><a class="headerlink" href="#wormtable.Table.get_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a column corresponding to the specified id. If this is an
+integer, we return the column at this position; if it is a string
+we return the column with the specified name.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.get_fixed_region_size">
+<tt class="descname">get_fixed_region_size</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Table.get_fixed_region_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the size of the fixed region in rows. This is the minimum 
+size that a row can be; if there are no variable sized columns in 
+the table, then this is the exact size of each row.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.get_metadata">
+<tt class="descname">get_metadata</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Table.get_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an ElementTree instance describing the metadata for this 
+Table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.indexes">
+<tt class="descname">indexes</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Table.indexes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an interator over the names of the indexes in this table.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.open_index">
+<tt class="descname">open_index</tt><big>(</big><em>index_name</em>, <em>cache_size=16777216</em><big>)</big><a class="headerlink" href="#wormtable.Table.open_index" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns an open index on the this table. Supports the contextmanager
+protocol.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Table.set_metadata">
+<tt class="descname">set_metadata</tt><big>(</big><em>tree</em><big>)</big><a class="headerlink" href="#wormtable.Table.set_metadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets up this Table to reflect the metadata in the specified xml 
+ElementTree.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="wormtable.TableCursor">
+<em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">TableCursor</tt><big>(</big><em>table</em>, <em>columns</em><big>)</big><a class="headerlink" href="#wormtable.TableCursor" title="Permalink to this definition">¶</a></dt>
+<dd><p>A cursor over the rows of the table in the order defined by an index.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="wormtable.open_table">
+<tt class="descclassname">wormtable.</tt><tt class="descname">open_table</tt><big>(</big><em>homedir</em>, <em>cache_size=16777216</em><big>)</big><a class="headerlink" href="#wormtable.open_table" title="Permalink to this definition">¶</a></dt>
+<dd><p>Opens a table in read mode ready for use.</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="data-types.html"
+                        title="previous chapter">Data types</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="performance.html"
+                        title="next chapter">Performance tuning</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/api.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="performance.html" title="Performance tuning"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="data-types.html" title="Data types"
+             >previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Jerome Kelleher.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>

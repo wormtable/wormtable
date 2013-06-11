@@ -1,0 +1,190 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Performance tuning &mdash; wormtable 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="wormtable 0.1 documentation" href="index.html" />
+    <link rel="next" title="Low level row format" href="row-format.html" />
+    <link rel="prev" title="API Documentation" href="api.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="row-format.html" title="Low level row format"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="api.html" title="API Documentation"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="performance-tuning">
+<h1>Performance tuning<a class="headerlink" href="#performance-tuning" title="Permalink to this headline">¶</a></h1>
+<p>Wormtable can be deployed on any Unix system supporting Berkeley DB, and
+so should be very portable. It has been tested on big and little endian
+systems, with 32 and 64 bit word sizes. It should work on any
+Unix system with a C compiler. At very large scales, however, at very
+large scales the properties of different platforms become significant
+and some tuning of parameters may be necessary to obtain the best
+performane. Wormtable is developed on Linux, and is primarily
+aimed at Linux systems with large amounts of RAM and substantial
+I/O capabilities. As a result, some of the advice below will be
+Linux specific and suggest what may seem like very large cache
+sizes.  Howevever, the underlying issues
+are likely to affect any modern Unix and machines with
+smaller available resources, so may provide a useful
+starting point for tuning performance on these systems.</p>
+<div class="section" id="cache">
+<h2>Cache<a class="headerlink" href="#cache" title="Permalink to this headline">¶</a></h2>
+<p>The single most important parameter to tune for performance in wormtable
+is the amount of cache. The general rule for cache is &#8220;more is
+better&#8221;, but with some important caveats. The considerations are
+somewhat different for writing and reading tables, so we discuss
+these seperately.</p>
+<p>As a rule of thumb, it
+is a good idea to set aside half of available RAM for cache
+when writing new tables and indices
+So, for example, in a system with 16GB of RAM, a good amount of
+cache to allocate would be 8GB. This may seem like a very large
+amount of memory to dedicate to cache, but the more of the
+underlying Berkeley DB that fits into the cache the better
+performance will be as we avoid the costly process of writing
+pages to disc which may need to be read back in later.
+Ideally, we would like to fit the entire DB into memory
+while we are generating it, which means we only need to
+write each page to disc once.
+This situation often occurs when we are creating indexes.</p>
+<p>When reading tables, we rarely need as much cache as when
+we are writing them and specifiying too much cache may
+have a negative impact on overall system performance
+if the system is busy. The amount of cache to allocate
+to different indexes and to the main table is a subtle issue
+and depends on the type of queries that you run.</p>
+<p>[Fill this in with examples and discussion of the issues.]</p>
+</div>
+<div class="section" id="linux-filesystems-and-kernel-parameters">
+<h2>Linux filesystems and kernel parameters<a class="headerlink" href="#linux-filesystems-and-kernel-parameters" title="Permalink to this headline">¶</a></h2>
+<p>For very large tables substantial space savings and performance
+benifts can be made by choosing filesystems and parameters
+well. Good performance has been obtained with the ext4 filesystem
+using the &#8220;largefile&#8221; options, and the xfs filesystem has
+shown excellent performance when reading and writing large
+tables.</p>
+<p>A very important factor for performance when writing large
+tables in Linux is the &#8220;swappiness&#8221; kernel parameter. This parameter
+controls how agressively the kernel tries to swap memory pages
+that are mapped to processes to free up pages for IO purposes.
+This value is typically set to 60, which is much too high when
+building large tables using an appropriate cache size. The
+problem happens when the cache has filled up and Berkeley DB
+starts to flush pages to disc. Eventually, the kernel runs out
+of IO buffers and starts looking more pages. With a high
+&#8220;swappiness&#8221; value, the kernel will then swap pages that are
+mapped to process and haven&#8217;t been accessed for some time and
+use this memory as IO cache. Unfortunately, this means that
+pages that are used by Berkeley DB will be swapped out too,
+leading to severe performance degradation. This situation
+can be avoided by setting the swappiness parameter to a
+small value (0 is perfectly reasonable for a system with
+large amounts of RAM).</p>
+<p>[Finish up this discussion].</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Performance tuning</a><ul>
+<li><a class="reference internal" href="#cache">Cache</a></li>
+<li><a class="reference internal" href="#linux-filesystems-and-kernel-parameters">Linux filesystems and kernel parameters</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="api.html"
+                        title="previous chapter">API Documentation</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="row-format.html"
+                        title="next chapter">Low level row format</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/performance.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="row-format.html" title="Low level row format"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="api.html" title="API Documentation"
+             >previous</a> |</li>
+        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Jerome Kelleher.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>
