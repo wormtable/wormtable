@@ -218,17 +218,22 @@ class AddRunner(ProgramRunner):
         """
         Create the index.
         """
+        n = len(self._table) 
+        f = None
+        monitor = wt.ProgressMonitor(n, "rows")
+        def progress(processed_rows):
+            monitor.update(processed_rows)
+        def null(processed_rows):
+            pass
+        # TODO we must handle interrupts better here - clean
+        # up partially built indexes. There is also a problem 
+        # with index files being left behind from builds that 
+        # were kill -9'd that Berkeley DB thinks are still held
+        # open.
+        f = progress if self._progress else null
+        self._index.build(f, max(1, int(n / 1000)))
         if self._progress:
-            n = len(self._table) 
-            f = None
-            monitor = wt.ProgressMonitor(n, "rows")
-            def progress(processed_rows):
-                monitor.update(processed_rows)
-            f = progress
-            self._index.build(f, max(1, int(n / 1000)))
             monitor.finish()
-        else:
-            self._index.build()
 
     def cleanup(self):
         if self._index is not None:
