@@ -1921,7 +1921,7 @@ Table_open(Table* self, PyObject *args)
         goto out;
     }
     if (mode == WT_WRITE) {
-        flags = DB_CREATE|DB_TRUNCATE|DB_EXCL;
+        flags = DB_CREATE|DB_TRUNCATE;
     } else if (mode == WT_READ) {
         flags = DB_RDONLY|DB_NOMMAP;
     } else {
@@ -2973,7 +2973,7 @@ Index_open(Index* self, PyObject *args)
     }
     pdb = self->table->db;
     if (mode == WT_WRITE) {
-        flags = DB_CREATE|DB_TRUNCATE|DB_EXCL;
+        flags = DB_CREATE|DB_TRUNCATE;
     } else if (mode == WT_READ) {
         flags = DB_RDONLY|DB_NOMMAP;
     } else {
