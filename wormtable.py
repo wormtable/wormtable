@@ -15,7 +15,7 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.0.1-alpha'
+__version__ = '0.1a1'
 SCHEMA_VERSION = "0.1-alpha"
 INDEX_METADATA_VERSION = "0.1-alpha"
 

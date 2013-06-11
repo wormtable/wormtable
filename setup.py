@@ -29,7 +29,7 @@ _wormtable_module = Extension('_wormtable',
 setup(
     name = "wormtable",
     version = wormtable_version, 
-    description = "Store and search VCF data with Berkeley DB",
+    description = "Write-once read-many data sets using Berkeley DB.",
     author = "Jerome Kelleher, Dan Halligan, Rob Ness",
     author_email = "jerome.kelleher@ed.ac.uk",
     url = "http://pypi.python.org/pypi/wormtable", 
