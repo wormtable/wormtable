@@ -108,22 +108,24 @@ class ListRunner(ProgramRunner):
             self.format_size(t.get_db_file_size())))
         print(fmt.format("minimum row size", 
             self.format_size(t.get_fixed_region_size())))
-        print("Indexes:") 
-        indexes = []
-        max_name_width = 0
         names = sorted(t.indexes())
-        max_name_width = max(len(n) for n in names) + 2
-        fmt = "{0:{name_width}} {1:>10} {2:>3} | {3}" 
-        s = fmt.format("name", "size", "n", "colspec", name_width=max_name_width)
-        print("=" * (len(s) + 2))
-        print(s)
-        print("=" * (len(s) + 2))
-        for n in names:
-            i = t.open_index(n) 
-            s = fmt.format(i.get_name(), self.format_size(i.get_db_file_size()),
-                    len(i.key_columns()), i.get_colspec(), name_width=max_name_width)
-            i.close()
+        if len(names) == 0:
+            print("No indexes")
+        else:
+            max_name_width = 0
+            print("Indexes:") 
+            max_name_width = max(len(n) for n in names) + 2
+            fmt = "{0:{name_width}} {1:>10} {2:>3} | {3}" 
+            s = fmt.format("name", "size", "n", "colspec", name_width=max_name_width)
+            print("=" * (len(s) + 2))
             print(s)
+            print("=" * (len(s) + 2))
+            for n in names:
+                i = t.open_index(n) 
+                s = fmt.format(i.get_name(), self.format_size(i.get_db_file_size()),
+                        len(i.key_columns()), i.get_colspec(), name_width=max_name_width)
+                i.close()
+                print(s)
 
 class IndexProgramRunner(ProgramRunner):
     """

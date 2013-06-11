@@ -3,6 +3,7 @@ from __future__ import division
 
 import wormtable as wt
 
+import os
 import math
 import unittest
 import tempfile
@@ -105,7 +106,8 @@ class DatabaseClassTests(WormtableTest):
             self.assertEqual(db.get_homedir(), self._homedir)
             path = os.path.join(self._homedir, n + ".db")
             self.assertEqual(db.get_db_path(), path)
-            path = os.path.join(self._homedir, n + "__build__.db")
+            s = "_build_{0}_{1}.db".format(os.getpid(), n) 
+            path = os.path.join(self._homedir, s)
             self.assertEqual(db.get_db_build_path(), path)
             path = os.path.join(self._homedir, n + ".xml")
             self.assertEqual(db.get_metadata_path(), path)

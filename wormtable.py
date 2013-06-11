@@ -269,8 +269,8 @@ class Database(object):
         """
         Returns the path of the file used to build the database.
         """
-        return os.path.join(self.get_homedir(), self.get_db_name() + 
-            "__build__.db")
+        s = "_build_{0}_{1}.db".format(os.getpid(), self.get_db_name()) 
+        return os.path.join(self.get_homedir(), s) 
 
     def get_db_file_size(self):
         """
