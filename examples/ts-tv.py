@@ -20,15 +20,19 @@ def count_Ts_Tv(homedir):
     t = wt.open_table(homedir)
     i = t.open_index("REF+ALT")
     Ts, Tv = 0, 0
-    for val, count in i.counter().items():
-        if(val in subs):
-            if bases[val[0]] == bases[val[1]]: Ts += count
-            else: Tv += count
-    return(Ts, Tv)
+    c = i.counter()
+    for s in subs:
+        if bases[s[0]] == bases[s[1]]: 
+            Ts += c[s] 
+        else: 
+            Tv += c[s] 
+    i.close()
+    t.close()
+    return Ts, Tv
 
 
 def main():
-    (Ts,Tv) = count_Ts_Tv(sys.argv[1])
+    Ts, Tv = count_Ts_Tv(sys.argv[1])
     print("ts: %d tv: %d" % (Ts, Tv))
 
     
