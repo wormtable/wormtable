@@ -2,9 +2,21 @@
 Wormtable
 ===============================================
 
-Wormtable is a write-once read-many table for large scale datasets. It is
-initially targeted at VCF data, but can hold any type of large scale 
-tabular data.
+Wormtable is a write-once read-many table for large scale datasets.
+It provides Python programmers with a simple and efficient method of 
+storing, processing and searching datasets of essentially unlimited
+size. A wormtable consists of a set of rows, each of which contains 
+values belonging to a fixed number of columns. Rows are encoded 
+in a custom binary format, designed to be flexible, compact and 
+portable. These rows are then stored on disc using Berkeley DB,
+a highly respected embedded database toolkit. Wormtable also 
+supports efficient searching and retrieval of rows with particular
+values through the use of indexes.
+
+The Variant Call Format (VCF) format is supported directly by wormtable
+through a command line conversion program, vcf2wt. There is also a
+command line utility wtadmin to manage wormtables, including the ability to 
+dump values and add, remove and view indexes.
 
 -------------
 Documentation
