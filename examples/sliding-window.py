@@ -1,18 +1,89 @@
 from __future__ import print_function
 from __future__ import division 
 
-import sys
-import wormtable as wt
 import re
-
+import sys
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+import wormtable as wt
 
 def isindel(ref,alt): 
     """
     Returns True if the specified ref and alt VCF entries represent 
     and indel. This is True if either contain two consecutive word characters
     """
-    if re.search('\w\w', ref) or re.search('\w\w', alt): return(1)
-    else : return(0)
+    return re.search('\w\w', ref) or re.search('\w\w', alt)
+
+class SlidingWindow(object):
+    """
+    A class representing a sliding window over statistics in a VCF 
+    wormtable.
+    """
+    def __init__(self, homedir, window=500):
+        self.__table = wt.open_table(homedir, cache_size="256M")
+        self.__index = self.__table.open_index("CHROM+POS", cache_size="256M")
+        self.__window = 500
+
+    def run(self, chrom):
+        """
+        Runs the sliding window over the specified chromosome and writes
+        out plots.
+        """
+        cols = ["POS", "REF", "ALT", "INFO_AF"]
+        cursor = self.__table.cursor(cols, self.__index)
+        start = self.__index.get_min(chrom)[1]
+        end = self.__index.get_max(chrom)[1]
+        n = 1 + math.ceil((end - start) / self.__window)
+        position = np.zeros(n, dtype=np.int)
+        count = np.zeros(n, dtype=np.int)
+        indels = np.zeros(n, dtype=np.int)
+        allele_frequency = np.zeros(n)
+        cursor.set_min(chrom, start)
+        cursor.set_max(chrom, end + 1)
+        position[0] = start
+        position[-1] = end 
+        j = 0
+        for pos, ref, alt, af in cursor:
+            count[j] += 1
+            allele_frequency[j] += af[0]
+            if isindel(ref, alt):
+                indels[j] += 1
+            if pos >= start + j * self.__window:
+                position[j] = pos
+                j += 1
+        # Get the mean allele frequency
+        count_div_safe = np.array(count)
+        count_div_safe[count==0] = 1
+        allele_frequency /= count_div_safe 
+        # Now plot these data 
+        plt.plot(position, count)
+        plt.xlabel("position")
+        plt.ylabel("count")
+        plt.savefig("count_chr{0}.png".format(chrom), dpi=72)
+        plt.clf()
+        plt.plot(position, indels)
+        plt.xlabel("position")
+        plt.ylabel("indels")
+        plt.savefig("indels_chr{0}.png".format(chrom), dpi=72)
+        plt.clf()
+        plt.plot(position, allele_frequency)
+        plt.xlabel("position")
+        plt.ylabel("frequency")
+        plt.savefig("allele_frequency_chr{0}.png".format(chrom), dpi=72)
+        plt.clf()
+
+
+    def close(self):
+        """
+        Closes the opened table and index.
+        """
+        self.__index.close()
+        self.__table.close()
+
+
+##################
+
 
 
 def count_rows(t, i, chr, start, stop):
@@ -106,8 +177,17 @@ def sliding_window(homedir, chrs, fn, wsize=500, slide=500):
                 print(chr, x, x+wsize, fn(t, i, chr, x, x+wsize))
 
 
-sliding_window('sample.wt', ['1','2','3'], count_rows)
-sliding_window('sample.wt', ['1','2','3'], count_indels)
-sliding_window('sample.wt', ['1','2','3'], mean_AF, wsize=1000, slide=1000)
-sliding_window('sample.wt', ['1','2','3'], AFS, wsize=10000, slide=10000)
-sliding_window('sample.wt', ['1','2','3'], AFS_gt, wsize=10000, slide=10000)
+def dan(homedir):
+
+    sliding_window(homedir, ['1','2','3'], count_rows)
+    #sliding_window(homedir, ['1','2','3'], count_indels)
+    #sliding_window(homedir, ['1','2','3'], mean_AF, wsize=1000, slide=1000)
+    #sliding_window(homedir, ['1','2','3'], AFS, wsize=10000, slide=10000)
+    #sliding_window(homedir, ['1','2','3'], AFS_gt, wsize=10000, slide=10000)
+
+if __name__ == "__main__":
+    #dan(sys.argv[1])
+     sw = SlidingWindow(sys.argv[1])
+     for chrom in  ['1','2','3']:
+         sw.run(chrom)
+     sw.close()
