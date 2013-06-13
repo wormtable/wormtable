@@ -24,7 +24,7 @@ Full documentation for ``wormtable`` is available at `<http://jeromekelleher.git
 Installation
 ------------
 
-Wormtable requires Berkeley DB. (TODO: document requirements and installation).
+Wormtable requires Berkeley DB. (TODO: document requirements and installation
 
 
 *****
@@ -38,7 +38,7 @@ It is a good idea to run these immediately after installation::
         $ python tests.py
 
 
-***************
+****************
 Tested platforms
 ****************
 
