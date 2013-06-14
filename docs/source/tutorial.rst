@@ -12,6 +12,7 @@ Reading a table
 Once a table has been built, it is very easy to read 
 values back. For example, we can now print out all the 
 rows::
+        
     with wt.open_table("example.wt") as t:
         print("there are ", len(t), "rows in the table")
         for row in t:
