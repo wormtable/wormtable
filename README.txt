@@ -120,15 +120,10 @@ To remedy this we must set the
 ``LDFLAGS`` and ``CFLAGS`` environment variables to 
 their correct values. Unfortunately there is no simple method to do this 
 and some knowledge of where your system keeps headers and libraries 
-is needed.  For example on FreeBSD (after installing the ``db48`` package) we 
+is needed.  On FreeBSD (after installing the ``db48`` package as above) we 
 might use::
         
          $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
-
-Some systems may also have very old Berkeley DB headers, which are not compatible 
-with the modern API. For example, on NetBSD we get very simular errors to those seen 
-above, even when we have set the paths to point to the correct locations.
-
 
 ----------
 Test suite
