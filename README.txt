@@ -79,27 +79,9 @@ and on Red Hat/Fedora use::
 Other distributions and package managers should provide a similarly easy
 option to install the DB development files.
 
-********
-Mac OS X
-********
-
-TODO: document installation on a mac. MacPorts/Homebrew/installer package?
-
-*****
-Unix
-*****
-
-Most Unix systems provide Berkeley DB packages. For example, on FreeBSD
-we have::
-
-    # pkg_add -r db48
-
-If necessary, Berkeley DB can be built from source and installed manually quite 
-easily.
-
-******************
-Potential problems
-******************
+***************
+Other Platforms
+***************
 
 On platforms that Berkeley DB is not available as part of the native packaging 
 system (or DB was installed locally because of non-root access)
@@ -124,6 +106,37 @@ is needed.  On FreeBSD (after installing the ``db48`` package as above) we
 might use::
         
          $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
+
+********
+Mac OS X
+********
+
+Berkeley DB can be installed from source on a mac, via macports or via homebrew
+
+For MacPorts, to install e.g. v5.3 ::
+
+    $ sudo port install db53
+    
+for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
+
+Assuming Berkeley DB is installed with macports then we need to set the CFLAGS
+and LDFLAGS environment variables to use the headers and libraries in /opt::
+ 
+    $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python setup.py build
+    $ sudo python setup.py install
+
+
+*****
+Unix
+*****
+
+Most Unix systems provide Berkeley DB packages. For example, on FreeBSD
+we have::
+
+    # pkg_add -r db48
+
+If necessary, Berkeley DB can be built from source and installed manually quite 
+easily.
 
 ----------
 Test suite
