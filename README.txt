@@ -13,7 +13,7 @@ a highly respected embedded database toolkit. Wormtable also
 supports efficient searching and retrieval of rows with particular
 values through the use of indexes.
 
-The Variant Call Format (VCF) format is supported directly by wormtable
+The Variant Call Format (VCF) is supported directly by wormtable
 through a command line conversion program, vcf2wt. There is also a
 command line utility wtadmin to manage wormtables, including the ability to 
 dump values and add, remove and view indexes.
@@ -40,6 +40,26 @@ Wormtable requires Berkeley DB, which is available for all major platforms.
 Any recent version of Berkeley DB should work, but the various versions 
 have not been tested extensively. Development and testing have been 
 carried out primarily on the DB 4.x series.
+
+Once DB has been installed (see below) we can build the ``wormtable`` module using the 
+standard Python `methods <http://docs.python.org/install/index.html>`_. For 
+example, using pip we have ::
+        
+        $ sudo pip install wormtable
+
+Or, we can manually download the package, unpack it and then run::
+        
+        $ python setup.py build
+        $ sudo python setup.py install
+
+Most of the time this will compile and install the module without difficulty.
+
+It is also possible to download the latest development version of 
+``wormtable`` from `github <https://github.com/jeromekelleher/wormtable>`_. 
+
+----------------------
+Installing Berkeley DB
+----------------------
 
 *****
 Linux
@@ -108,6 +128,7 @@ might use::
 Some systems may also have very old Berkeley DB headers, which are not compatible 
 with the modern API. For example, on NetBSD we get very simular errors to those seen 
 above, even when we have set the paths to point to the correct locations.
+
 
 ----------
 Test suite
