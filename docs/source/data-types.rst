@@ -13,3 +13,93 @@ is that data is stored in a compact binary format, minimising the space used and
 also allowing us to efficiently retrieve values from the table. 
 
 
+---------------
+Columns
+---------------
+
+The fundamental storage units of wormtable are *rows* and *columns*, 
+similar to relational databases. A row is split into a fixed number of
+columns, and within a column we store some number of *elements* of a 
+fixed *type* and size. The size of the elements determines the range 
+of the values that can be stored in a column; for example, an unsigned 
+integer column with element size 1 can store values from 0 up to 
+254 only.
+
+The number of elements that is stored in a column is 
+either fixed or variable. In a column with a fixed number of elements, 
+space is reserved for all of these elements, and so the total space used 
+by that column is always *num_elements* * *element_size*.
+In variable length columns, we can store
+from 0 to 255 elements.
+
+---------------
+Integer columns
+---------------
+
+Integer columns with an element size :math:`n`  are :math:`n` byte signed 
+integers. They can store values in the range :math:`-2^{8n - 1} + 1 \leq x 
+\leq 2^{8n - 1} - 1`. Element sizes of :math:`1` up to :math:`8` are supported.
+
+============    ====================    ===================
+Element size    Min                     Max
+============    ====================    ===================
+1               -127                    127
+2               -32767                  32767
+3               -8388607                8388607
+4               -2147483647             2147483647
+5               -549755813887           549755813887
+6               -140737488355327        140737488355327
+7               -36028797018963967      36028797018963967
+8               -9223372036854775807    9223372036854775807
+============    ====================    ===================
+
+
+------------------------
+Unsigned integer columns
+------------------------
+Unsigned integer columns with an element size :math:`n`  are :math:`n` byte 
+unsigned integers. They can store values in the range :math:`0 \leq x 
+\leq 2^{8n} - 2`. Element sizes of :math:`1` up to :math:`8` are supported.
+
+============    ====    ===================
+Element size    Min     Max
+============    ====    ===================
+1               0       254
+2               0       65534
+3               0       16777214
+4               0       4294967294
+5               0       1099511627774
+6               0       281474976710654
+7               0       72057594037927934
+8               0       18446744073709551614
+============    ====    ===================
+
+
+
+----------------------
+Floating point columns 
+----------------------
+Floating point columns represent real numbers using the 
+`IEEE floating point <https://en.wikipedia.org/wiki/IEEE_floating_point>`_
+format. Currently, :math:`4` and :math:`8` byte floating point values 
+are supported, corresponding to IEEE single and double precision values,
+respectively. 
+
+============    =======      ===================
+Element size    C type       Details 
+============    =======      ===================
+4               float        `float 32 <https://en.wikipedia.org/wiki/Single_precision_floating-point_format>`_ 
+8               double       `float 64 <https://en.wikipedia.org/wiki/Double_precision_floating-point_format>`_ 
+============    =======      ===================
+
+-----------------
+Character columns
+-----------------
+
+Character columns store strings of bytes, and are treated in a slightly different way to the numeric
+columns seen above. For a character column, the `element_size` must be equal to 1, since 
+only one-byte character sets are supported. A fixed size of column `num_elements` elements can
+therefore store strings of length up to `num_elements`. Variable length `char` columns 
+can store strings of length 0 to 255 bytes.
+
+

@@ -1,24 +1,17 @@
+size(16cm);
 
-real w = 80mm; 
-pair[] n;
+real u = 2;
+real w = 20; 
+real h = 2;
+real b = 1;
 
+draw((0,0)--(w*u,0)--(w*u,h)--(0,h)--cycle);
 
-n[1] = (0,0);
-n[2] = (w / 2,0);
-n[3] = (w,0);
-n[4] = (w/3,w/3);
-n[5] = (2w/3,2w/3);
-
-int i;
-for (i = 1; i < 6; ++i) {
-    dot(format("%d", i), n[i]);
+for (int j = 0; j < w; ++j) {
+    draw((j*u,0)--(j*u,h));
+    label(format("%d", j), (j * u + u / 2, 0), S);
 }
 
-draw(n[1]--n[4]);
-draw(n[2]--n[4]);
-draw(n[3]--n[5]);
-draw(n[4]--n[5]);
-
-draw("30441.57", (-w/20, 0) -- (-w/20, w/3), W, Arrows);
-draw("46750.11", (w + w/20, 0) -- (w + w/20, 2w/3), Arrows);
+draw((0, -b)--(2*u, -b)--(2*u, h+b)--(0, h+b)--cycle, dashed);
+label("row\_id", (u, h+b), N);
 
