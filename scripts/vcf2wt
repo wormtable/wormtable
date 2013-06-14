@@ -299,7 +299,9 @@ class VCFReader(object):
                     for k in range(len(fmt)):
                         if fmt[k] in genotype_columns[j]:
                             col = genotype_columns[j][fmt[k]]
-                            row[col] = tokens[k]
+                            tok = tokens[k]
+                            if tok != MISSING_VALUE:
+                                row[col] = tok 
                 elif len(tokens) > 1:
                     # We can treat a genotype value on its own as missing values.
                     # We can have skipped columns at the end though, which we 

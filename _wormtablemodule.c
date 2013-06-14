@@ -997,6 +997,16 @@ out:
  *
  *************************************/
 
+static void
+Column_encoded_elements_parse_error(Column *self, const char *message, 
+        char *source)
+{
+    PyErr_Format(PyExc_ValueError, 
+            "Parse error on column '%s': %s: '%s'",
+            PyBytes_AsString(self->name), message, source);
+}
+
+
 /*
  * Takes a string sequence and places pointers to the start
  * of each individual element into the input_elements list.
@@ -1016,7 +1026,7 @@ Column_parse_string_sequence(Column *self, char *s)
         num_elements = 0;
         delimiter = -1;
         if (s[0] == '\0') {
-            PyErr_SetString(PyExc_ValueError, "Empty value");
+            Column_encoded_elements_parse_error(self, "Empty value", s); 
             goto out;
         }
         /* TODO this needs lots of error checking! */
@@ -1034,7 +1044,8 @@ Column_parse_string_sequence(Column *self, char *s)
     }
     if (self->num_elements != WT_VAR_1) {
         if (num_elements != self->num_elements) {
-            PyErr_SetString(PyExc_ValueError, "incorrect number of elements");
+            Column_encoded_elements_parse_error(self, 
+                    "incorrect number of elements", s); 
             goto out;
         }
     }
@@ -1059,16 +1070,18 @@ Column_string_to_native_uint(Column *self, char *string)
         errno = 0;
         native[j] = (u_int64_t) strtoull(v, &tail, 0);
         if (errno) {
-            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            Column_encoded_elements_parse_error(self, "element overflow", 
+                    string); 
             goto out;
         }
         if (v == tail) {
-            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            Column_encoded_elements_parse_error(self, "parse error", string); 
             goto out;
         }
         if (*tail != '\0') {
             if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
-                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                Column_encoded_elements_parse_error(self, "parse error", 
+                        string); 
                 goto out;
             }
         }
@@ -1094,16 +1107,18 @@ Column_string_to_native_int(Column *self, char *string)
         errno = 0;
         native[j] = (int64_t) strtoll(v, &tail, 0);
         if (errno) {
-            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            Column_encoded_elements_parse_error(self, "element overflow", 
+                    string); 
             goto out;
         }
         if (v == tail) {
-            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            Column_encoded_elements_parse_error(self, "parse error", string); 
             goto out;
         }
         if (*tail != '\0') {
             if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
-                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                Column_encoded_elements_parse_error(self, "parse error", 
+                        string); 
                 goto out;
             }
         }
@@ -1129,16 +1144,18 @@ Column_string_to_native_float(Column *self, char *string)
         errno = 0;
         native[j] = (double) strtod(v, &tail);
         if (errno) {
-            PyErr_SetString(PyExc_ValueError, "Element overflow");
+            Column_encoded_elements_parse_error(self, "element overflow", 
+                    string); 
             goto out;
         }
         if (v == tail) {
-            PyErr_SetString(PyExc_ValueError, "Element parse error");
+            Column_encoded_elements_parse_error(self, "parse error", string); 
             goto out;
         }
         if (*tail != '\0') {
             if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
-                PyErr_SetString(PyExc_ValueError, "Element parse error");
+                Column_encoded_elements_parse_error(self, "parse error", 
+                        string); 
                 goto out;
             }
         }
