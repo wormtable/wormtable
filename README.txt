@@ -36,12 +36,82 @@ Full documentation for ``wormtable`` is available at `<http://jeromekelleher.git
 Installation
 ------------
 
-Wormtable requires Berkeley DB. (TODO: document requirements and installation
-
+Wormtable requires Berkeley DB, which is available for all major platforms.  
+Any recent version of Berkeley DB should work, but the various versions 
+have not been tested extensively. Development and testing have been 
+carried out primarily on the DB 4.x series.
 
 *****
-Tests
+Linux
 *****
+Wormtable is primarily developed on Linux and should work very well on any 
+modern Linux distribution. Installing Berkeley DB is very easy on Linux 
+distributions. 
+
+On Debian/Ubuntu use::
+
+        $ sudo apt-get install libdb-dev 
+
+and on Red Hat/Fedora use::
+
+        # yum install db4-devel
+
+Other distributions and package managers should provide a similarly easy
+option to install the DB development files.
+
+********
+Mac OS X
+********
+
+TODO: document installation on a mac. MacPorts/Homebrew/installer package?
+
+*****
+Unix
+*****
+
+Most Unix systems provide Berkeley DB packages. For example, on FreeBSD
+we have::
+
+    # pkg_add -r db48
+
+If necessary, Berkeley DB can be built from source and installed manually quite 
+easily.
+
+******************
+Potential problems
+******************
+
+On platforms that Berkeley DB is not available as part of the native packaging 
+system (or DB was installed locally because of non-root access)
+there can be issues with finding the correct headers and libraries
+when compiling ``wormtable``. For example, on FreeBSD we get something 
+like this::
+
+        $ python setup.py build
+        ... [Messages cut for brevity] ...
+        _wormtablemodule.c:3727: error: 'DB_NEXT_NODUP' undeclared (first use in this function)
+        _wormtablemodule.c:3733: error: 'DB_NOTFOUND' undeclared (first use in this function)
+        _wormtablemodule.c:3739: error: 'DistinctValueIterator' has no member named 'cursor'
+        _wormtablemodule.c:3739: error: 'DistinctValueIterator' has no member named 'cursor'
+        _wormtablemodule.c:3740: error: 'DistinctValueIterator' has no member named 'cursor'
+        error: command 'cc' failed with exit status 1
+
+To remedy this we must set the 
+``LDFLAGS`` and ``CFLAGS`` environment variables to 
+their correct values. Unfortunately there is no simple method to do this 
+and some knowledge of where your system keeps headers and libraries 
+is needed.  For example on FreeBSD (after installing the ``db48`` package) we 
+might use::
+        
+         $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
+
+Some systems may also have very old Berkeley DB headers, which are not compatible 
+with the modern API. For example, on NetBSD we get very simular errors to those seen 
+above, even when we have set the paths to point to the correct locations.
+
+----------
+Test suite
+----------
 
 Wormtable has an extensive suite of tests to ensure that data
 is stored correctly.
@@ -54,29 +124,27 @@ It is a good idea to run these immediately after installation::
 Tested platforms
 ****************
 
-Wormtable has been successfully built and tested on the following platforms
-(TODO: update):
+Wormtable is higly portable, and 
+has been successfully built and tested 
+on the following platforms:
 
-================        ========        ======          ========
-Operating system        Platform        Python          Compiler
-================        ========        ======          ========
-Ubuntu 8.04             i386            2.5.2           gcc 4.2.3 
-NetBSD 5.0              i386            2.7.3           gcc 4.1.3
+================        ========        ======          ===========     
+Operating system        Platform        Python          Compiler        
+================        ========        ======          ===========     
+Ubuntu 13.04            x86-64          2.7.4           gcc 4.7.3       
+Ubuntu 13.04            x86-64          3.3.1           gcc 4.7.3       
+Ubuntu 13.04            x86-64          2.7.4           clang 3.2.1     
+Debian squeeze          x86-64          2.6.6           gcc 4.4.5       
+Debian squeeze          x86-64          3.1.3           gcc 4.4.5        
+Debian squeeze          x86-64          3.1.3           clang 1.1 
+Debian squeeze          ppc64           2.6.6           gcc 4.4.5	    
+Debian squeeze          ppc64           3.1.3           gcc 4.4.5	
+Debian squeeze          ppc64           3.1.3           clang 1.1 
+Debian wheezy           armv6l          2.7.3           gcc 4.6.3
 Fedora 17               i386            2.7.3           gcc 4.7.2
 Fedora 17               i386            3.2.3           gcc 4.7.2
-Cygwin                  i386            2.6.8           gcc 4.5.3
-Ubuntu 12.04            x86-64          2.7.3           gcc 4.6.3
-Ubuntu 12.04            x86-64          3.2.3           gcc 4.6.3
 FreeBSD 9.0             i386            3.2.2           gcc 4.2.2        
 FreeBSD 9.0             i386            2.7.2           gcc 4.2.2        
 FreeBSD 9.0             i386            3.1.4           clang 3.0 
-Solaris 11              x86-64          2.6.4           Sun C 5.12
-Mac OSX 10.6.8          x86-64          2.6.1           gcc 4.2.1
-Mac OSX 10.6.8          x86-64          3.2.3           gcc 4.2.1
-Mac OS X 10.4.11        ppc             3.2.3           gcc 4.0.1
-Mac OS X 10.4.11        ppc             2.7.3           gcc 4.0.1
-Debian wheezy           armv6l          2.7.3           gcc 4.6.3
-Debian squeeze          ppc64           2.6.6           gcc 4.4.5	
-Debian squeeze          ppc64           3.1.3           gcc 4.4.5	
-================        ========        ======          ========
+================        ========        ======          ===========     
 

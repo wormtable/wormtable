@@ -10,7 +10,6 @@ import tempfile
 import shutil 
 import os.path
 import random
-import collections
 import itertools
 
 from xml.etree import ElementTree
@@ -29,6 +28,19 @@ def histogram(l, width):
         else:
             d[v] = 1
     return d
+
+class UITest(unittest.TestCase):
+    """
+    Test cases for the user interface for the command line utilities.
+    """
+    def test_argparse(self):
+        imported = False
+        try:
+           import argparse
+           imported = True
+        except ImportError:
+            pass
+        self.assertTrue(imported)
 
 class WormtableTest(unittest.TestCase):
     """
@@ -355,7 +367,11 @@ class IndexIntegrityTest(WormtableTest):
             self.assertEqual(i.get_min(), min(t)) 
             self.assertEqual(i.get_max(), max(t)) 
             keys = [k for k in i.keys()]
-            c1 = collections.Counter(t)
+            c1 = {}
+            for k in t:
+                if k not in c1:
+                    c1[k] = 0 
+                c1[k] += 1
             l1 = list(i.keys())
             l2 = sorted(list(c1.keys()))
             self.assertEqual(l1, l2) 

@@ -1221,7 +1221,8 @@ Column_unpack_variable_elements_address(Column *self, void *src,
     byteswap_copy(&off, v, sizeof(off)); 
     byteswap_copy(&n, v + sizeof(off), sizeof(n)); 
 #endif
-    if (off >= MAX_ROW_SIZE) {
+    /* this is actually always false now, but will be important in future */
+    if (((u_int32_t) off) >= MAX_ROW_SIZE) {
         PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
     }

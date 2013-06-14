@@ -17,6 +17,8 @@ from _wormtable import WormtableError
 
 __column_id = 0
 
+TEMPFILE_PREFIX = "wtll_"
+
 # module variables used to control the number of tests that we do.
 num_random_test_rows = 10
 
@@ -98,19 +100,7 @@ class TestDatabase(unittest.TestCase):
     method.
     """
     def setUp(self):
-        """
-        fd, self._db_file = tempfile.mkstemp("-test.db") 
-        self._columns = self.get_columns()
-        self._database = _wormtable.BerkeleyDatabase(self._db_file.encode(), 
-                self._columns, cache_size=1024)
-        self._database.create()
-        # We can close the open fd now that db has opened it.
-        os.close(fd)
-        buffer_size = 64 * 1024
-        self._row_buffer = _wormtable.WriteBuffer(self._database, buffer_size, 1)
-        self.num_random_test_rows = num_random_test_rows 
-        """
-        fd, self._db_file = tempfile.mkstemp("-test.db") 
+        fd, self._db_file = tempfile.mkstemp("-test.db", prefix=TEMPFILE_PREFIX) 
         os.close(fd)
         self._key_size = 4
         self._columns = [get_uint_column(self._key_size, 1)] + self.get_columns()
@@ -794,7 +784,7 @@ class TestIndexIntegrity(object):
         self._index_files = []
         # make the single column indexes
         for j in range(1, len(self._columns)):
-            fd, index_file = tempfile.mkstemp("-index-test.db") 
+            fd, index_file = tempfile.mkstemp("-index-test.db", prefix=TEMPFILE_PREFIX)  
             index = _wormtable.Index(self._database, index_file.encode(), [j], 
                     cache_size)
             os.close(fd)
@@ -891,7 +881,7 @@ class TestIndexIntegrity(object):
             # verified and the correct sorting procedure used here.
             if c1.num_elements != _wormtable.WT_VAR_1 and \
                     c2.num_elements != _wormtable.WT_VAR_1:
-                fd, index_file = tempfile.mkstemp("-index-test.db") 
+                fd, index_file = tempfile.mkstemp("-index-test.db", prefix=TEMPFILE_PREFIX)  
                 index = _wormtable.Index(self._database, index_file.encode(), [j, k], 
                         cache_size)
                 os.close(fd)
@@ -1016,7 +1006,7 @@ class TestMultiColumnIndex(object):
                 self._indexes[tuple(cols)] = None
 
         for cols in self._indexes.keys():
-            fd, index_file = tempfile.mkstemp("-index-test.db") 
+            fd, index_file = tempfile.mkstemp("-index-test.db", prefix=TEMPFILE_PREFIX) 
             index = _wormtable.Index(self._database, index_file.encode(), 
                     list(cols), 0)
             os.close(fd)
@@ -1125,7 +1115,7 @@ class TestTable(unittest.TestCase):
     Base class for testing tables.
     """
     def setUp(self):
-        fd, self._db_file = tempfile.mkstemp("-test.db") 
+        fd, self._db_file = tempfile.mkstemp("-test.db", prefix=TEMPFILE_PREFIX) 
         os.close(fd)
     
     def tearDown(self):
@@ -1281,11 +1271,11 @@ class TestIndex(unittest.TestCase):
     Base class for testing tables.
     """
     def setUp(self):
-        fd, self._table_db_file = tempfile.mkstemp("-test.db") 
+        fd, self._table_db_file = tempfile.mkstemp("-test.db", prefix=TEMPFILE_PREFIX) 
         self._columns = [get_uint_column(2, 1), get_uint_column(1, 1)]
         self._table = _wormtable.Table(self._table_db_file.encode(), self._columns, 0)
         os.close(fd)
-        fd, self._index_db_file = tempfile.mkstemp("-index.db") 
+        fd, self._index_db_file = tempfile.mkstemp("-index.db", prefix=TEMPFILE_PREFIX) 
         os.close(fd)
     
     def tearDown(self):

@@ -16,8 +16,7 @@ def cleanup():
     """
     for f in glob.glob("/tmp/wthl_*"):
         shutil.rmtree(f) 
-    # TODO make the low-level files more distinct with a prefix
-    for f in glob.glob("/tmp/*.db"):
+    for f in glob.glob("/tmp/wtll_*.db"):
         os.unlink(f) 
 
 def main():
@@ -26,7 +25,7 @@ def main():
     parser.add_option("-s", "--random-seed", dest="random_seed",
             help="Random seed", default=1)
     parser.add_option("-r", "--rows", dest="num_rows",
-            help="Number of rows for random data tests.", default=1000)
+            help="Number of rows for random data tests.", default=100)
     parser.add_option("-n", "--name-case", dest="name",
             help="Run this specified test", default=None)
     parser.add_option("-i", "--iterations", dest="iterations",

@@ -1,9 +1,7 @@
 import re
+import sys
 from distutils.core import setup, Extension
 
-f = open("README.txt")
-wormtable_readme = f.read()
-f.close()
 
 # Following the recommendations of PEP 396 we parse the version number 
 # out of the module.
@@ -20,11 +18,21 @@ def parse_version(module_file):
     match = re.findall("__version__ = '([^']+)'", s)
     return match[0]
 
+
+
+f = open("README.txt")
+wormtable_readme = f.read()
+f.close()
 wormtable_version = parse_version("wormtable.py") 
 
 _wormtable_module = Extension('_wormtable', 
     sources = ["_wormtablemodule.c"],
     libraries = ["db"])
+
+requirements = []
+v = sys.version_info[:2]
+if v < (2, 7) or v == (3, 0) or v == (3, 1):
+    requirements.append("argparse")
 
 setup(
     name = "wormtable",
@@ -48,6 +56,7 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
+    requires = requirements, 
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
     py_modules = ['wormtable'],

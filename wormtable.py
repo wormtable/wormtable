@@ -15,9 +15,9 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.1a1'
-SCHEMA_VERSION = "0.1-alpha"
-INDEX_METADATA_VERSION = "0.1-alpha"
+__version__ = '0.1.0a1'
+SCHEMA_VERSION = "0.1"
+INDEX_METADATA_VERSION = "0.1"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
 
@@ -548,7 +548,8 @@ class Table(Database):
         version = root.get("version")
         if version is None:
             raise ValueError("invalid xml")
-        if version != SCHEMA_VERSION:
+        supported_versions = ["0.1-alpha", SCHEMA_VERSION]
+        if version not in supported_versions: 
             raise ValueError("Unsupported schema version - rebuild required.")
         xml_columns = root.find("columns")
         for xmlcol in xml_columns.getchildren():
@@ -777,7 +778,8 @@ class Index(Database):
         if version is None:
             # Should have a custom error for this.
             raise ValueError("invalid xml")
-        if version != INDEX_METADATA_VERSION:
+        supported_versions = ["0.1-alpha", INDEX_METADATA_VERSION]
+        if version not in supported_versions:
             raise ValueError("Unsupported index metadata version - rebuild required.")
         xml_key_columns = root.find("key_columns")
         for xmlcol in xml_key_columns.getchildren():
