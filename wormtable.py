@@ -41,7 +41,7 @@ __version__ = '0.1.0a1'
 SCHEMA_VERSION = "0.1"
 INDEX_METADATA_VERSION = "0.1"
 
-DEFAULT_CACHE_SIZE = "16M" 
+DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
