@@ -17,7 +17,12 @@
 # along with wormtable.  If not, see <http://www.gnu.org/licenses/>.
 # 
 """
-Wormtable.
+Wormtable is a read-once write-many table for large scale datasets.
+
+This is the high-level module for wormtable, and provides a convenient
+interface to the low-level interface defined in _wormtable. The low
+level interface is not intended to be used directly and is subject 
+to change in non-backward compatible ways.
 """
 from __future__ import print_function
 from __future__ import division 
@@ -30,14 +35,13 @@ import collections
 from xml.dom import minidom
 from xml.etree import ElementTree
 
-
 import _wormtable
 
 __version__ = '0.1.0a1'
 SCHEMA_VERSION = "0.1"
 INDEX_METADATA_VERSION = "0.1"
 
-DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
+DEFAULT_CACHE_SIZE = "16M" 
 
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
@@ -50,7 +54,9 @@ WT_VAR_1  = _wormtable.WT_VAR_1
 
 def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE):
     """
-    Opens a table in read mode ready for use.
+    Returns a table opened in read mode with cache size 
+    set to the specified value. This is the recommended 
+    interface when opening tables for reading.
     """
     t = Table(homedir)
     if not t.exists():

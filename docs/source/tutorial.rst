@@ -1,12 +1,17 @@
+.. _tutorial-index:
+
+========
 Tutorial
 ========
 This is the tutorial for getting started with wormtable.
 
+-----------------
 Making a table
 -----------------
 In this section we make a table useing the command line tool 
 wtadmin.
 
+-----------------
 Reading a table
 -----------------
 Once a table has been built, it is very easy to read 
