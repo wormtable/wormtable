@@ -57,15 +57,23 @@ INFO_NAME = b"INFO"
 VCF_FIXED_COLUMNS = [CHROM_NAME, POS_NAME, ID_NAME, REF_NAME, ALT_NAME, 
         QUAL_NAME, FILTER_NAME]
 
-# TODO put in proper descriptions
-CHROM_DESCRIPTION = b"CHROM"
-POS_DESCRIPTION = b"POS"
-ID_DESCRIPTION = b"ID"
-REF_DESCRIPTION = b"REF"
-ALT_DESCRIPTION = b"ALT"
-QUAL_DESCRIPTION = b"QUAL"
-FILTER_DESCRIPTION = b"FILTER"
-INFO_DESCRIPTION = b"INFO"
+# Descriptions taken from 
+# http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-41 
+CHROM_DESCRIPTION = b"""chromosome: an identifier from the reference genome or an \
+angle-bracketed ID String ("<ID>") pointing to a contig in the assembly file"""
+POS_DESCRIPTION = b"""position: The reference position, with the 1st base having \
+position 1"""
+ID_DESCRIPTION = b"""semi-colon separated list of unique identifiers where \
+available"""
+REF_DESCRIPTION = b"""reference base(s): Each base must be one of A,C,G,T,N \
+(case insensitive)""" 
+ALT_DESCRIPTION = b"""comma separated list of alternate non-reference alleles\
+called on at least one of the samples"""
+QUAL_DESCRIPTION = b"""phred-scaled quality score for the assertion made in \
+ALT. i.e. -10log_10 prob(call in ALT is wrong)."""
+FILTER_DESCRIPTION = b"""PASS if this position has passed all filters, i.e. \
+a call is made at this position. Otherwise, if the site has not passed all \
+filters, a semicolon-separated list of codes for filters that fail. """
 
 # Special values in VCF
 MISSING_VALUE = b"."
@@ -82,6 +90,13 @@ FLAG = b"Flag"
 CHARACTER = b"Character"
 STRING = b"String"
 
+BROKEN_GZIP_MESSAGE = """
+An error occurred reading the input gzip file. This is probably due to a
+bug in recent versions of Python, resulting in an error when trying 
+to read BGZF files. See http://bugs.python.org/issue17666 
+To convert this file to wormtable, you must decompress it first using gunzip.
+"""
+
 class VCFReader(object):
     """
     A class for reading VCF files. 
@@ -89,6 +104,15 @@ class VCFReader(object):
     def __init__(self, vcf_file):
         self.__genotypes = []
         if vcf_file.endswith(".gz"):
+            # Detect broken GZIP handling in 2.7/3.2 and others and abort
+            f = gzip.open(vcf_file, "rb")
+            try:
+                s = f.readline()
+            except Exception as e:
+                print(BROKEN_GZIP_MESSAGE)
+                sys.exit(1)
+            f.close() 
+            # Carry on as before
             self.__input_file = gzip.open(vcf_file, "rb")
             self.__progress_file = self.__input_file.fileobj
         else:
@@ -107,14 +131,13 @@ class VCFReader(object):
         if progress:
             self.__progress_monitor = wt.ProgressMonitor(self.__input_file_size, 
                     "bytes")
-            # FIXME This doesn't work
             self.__progress_update_rows = 100
             if self.__input_file_size > 2**30:
-                progress_rows = 10000
-        
-    def set_truncate_REF(self, truncate):
+                self.__progress_update_rows = 10000
+    
+    def set_truncate_REF_ALT(self, truncate):
         """
-        If true, truncate REF columns to be no more than 254 characters long.
+        If true, truncate REF and ALT columns to be no more than 254 characters long.
         This is a temporary workaround until more sophisticated truncation 
         across all columns is implemented.
         """
@@ -284,6 +307,7 @@ class VCFReader(object):
                     index = self.__genotypes.index(g)
                     genotype_columns[index][name] = v 
         ref_index = 3
+        alt_index = 4
         # Now we are ready to process the file.
         num_rows = 0
         for s in self.__input_file:
@@ -293,8 +317,8 @@ class VCFReader(object):
             for vcf_index, wt_index in fixed_columns:
                 if l[vcf_index] != MISSING_VALUE:
                     row[wt_index] = l[vcf_index]
-                    if vcf_index == ref_index and self.__truncate:
-                        # truncate the REF column if necessary; this is a 
+                    if vcf_index in (ref_index, alt_index) and self.__truncate:
+                        # truncate the REF/ALT column if necessary; this is a 
                         # temporary workaround until more sophisticated 
                         # truncation on a per column basis is implemented.
                         if len(l[vcf_index]) > 255:
@@ -310,25 +334,26 @@ class VCFReader(object):
                     else:
                         # This is a Flag column.
                         row[col] = b"1"
-            # Process the genotype columns. 
-            j = 0
-            fmt = l[8].split(b":")
-            for genotype_values in l[9:]:
-                tokens = genotype_values.split(b":")
-                if len(tokens) == len(fmt):
-                    for k in range(len(fmt)):
-                        if fmt[k] in genotype_columns[j]:
-                            col = genotype_columns[j][fmt[k]]
-                            tok = tokens[k]
-                            if tok != MISSING_VALUE:
-                                row[col] = tok 
-                elif len(tokens) > 1:
-                    # We can treat a genotype value on its own as missing values.
-                    # We can have skipped columns at the end though, which we 
-                    # should deal with properly. So, put in a loud complaint 
-                    # here and fix later.
-                    print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
-                j += 1
+            # Process the genotype columns, if they exist
+            if len(l) > 8:
+                j = 0
+                fmt = l[8].split(b":")
+                for genotype_values in l[9:]:
+                    tokens = genotype_values.split(b":")
+                    if len(tokens) == len(fmt):
+                        for k in range(len(fmt)):
+                            if fmt[k] in genotype_columns[j]:
+                                col = genotype_columns[j][fmt[k]]
+                                tok = tokens[k]
+                                if tok != MISSING_VALUE:
+                                    row[col] = tok 
+                    elif len(tokens) > 1:
+                        # We can treat a genotype value on its own as missing values.
+                        # We can have skipped columns at the end though, which we 
+                        # should deal with properly. So, put in a loud complaint 
+                        # here and fix later.
+                        print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
+                    j += 1
             yield row
             num_rows += 1
             if num_rows % self.__progress_update_rows == 0:
@@ -471,7 +496,7 @@ class ProgramRunner(object):
         """
         self.__reader = VCFReader(self.__source)
         self.__reader.set_progress(self.__progress)
-        self.__reader.set_truncate_REF(self.__truncate)
+        self.__reader.set_truncate_REF_ALT(self.__truncate)
         self.initialise_writer()
         for r in self.__reader.rows(self.__column_map):
             self.__writer.append(r) 
@@ -539,8 +564,8 @@ def main():
     parser.add_argument("--truncate", "-t", action="store_true", default=False,
         help="""Truncate values that are too large for a column and store
             the maximum the column will allow. Currently this option 
-            only supports truncating REF column values more than 255 
-            characters long. REF values are truncated to 254 characters
+            only supports truncating REF and ALT column values more than 255 
+            characters long. REF and ALT values are truncated to 254 characters
             and suffixed with a '+' to indicate that truncation has 
             occured""")   
     parser.add_argument("--queue-size", "-q", default=65536, type=int,
