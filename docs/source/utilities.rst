@@ -1,8 +1,8 @@
-.. _api-index:
+.. _utilities-index:
 
-=================
-API Documentation
-=================
+======================
+Command line utilities
+======================
 
 :Release: |version|
 :Date: |today|
@@ -11,48 +11,33 @@ API Documentation
     :platform: Unix
     :synopsis: Write-once read-many table for large datasets. 
 
+Wormtable is distributed with two command line utility programs,
+:ref:`vcf2wt-index` and :ref:`wtadmin-index`. These utilities provide a convenient 
+means of creating wormtables from VCF data, and to administer 
+existing wormtables.
+
+.. _vcf2wt-index:
+
 --------
-Overview
+vcf2wt
 --------
 
-This is the API documentation for wormtable. The documentation currently
-concentrates the read-API, since the initial release is intended 
-primarily for use with VCF data. For details on how to build a 
-wormtable from a VCF file see the :ref:`tutorial <tutorial-index>` or the 
-documentation for :ref:`vcf2wt-index`.
+.. program:: vcf2wt 
 
+Converts data files written in the 
+`Variant Call Format <http://vcftools.sourceforge.net/specs.html>`_
+(VCF) to wormtable. See `vcf2wt --help` for detailed program options.
 
-
-The :func:`open_table` function returns a :class:`Table` object
-opened for reading, and is analogous to the `open` function 
-from the Python standard library. For to get the length 
-of a table we might do the following::
-    
-    import wormtable as wt
-    t = open_table("example.wt")
-    print("example.wt as ", len(t), "rows")
-    t.close()
-
-The :class:`Table` class also supports the 
-`context manager <http://www.python.org/dev/peps/pep-0343/>`_
-protocol, so we can automatically close a table that has 
-been opened::
-
-    import wormtable as wt
-    with open_table("example.wt") as t:
-        print("example.wt as ", len(t), "rows")
-
+.. _wtadmin-index:
 
 ---------
-Reference
+wtadmin
 ---------
 
-.. autofunction:: open_table
+.. program:: wtadmin 
 
-.. autoclass:: Table
-
-.. autoclass:: Index
-
-
-
+Administration tool for wormtable. Provides commands to add and remove 
+indexes, list the indexes present, show the columns in the table
+and to dump rows from the table stdout. See `wtadmin --help` for 
+details and program options.
 
