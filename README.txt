@@ -175,6 +175,7 @@ Fedora 17               i386            3.2.3           gcc 4.7.2
 FreeBSD 9.0             i386            3.2.2           gcc 4.2.2        
 FreeBSD 9.0             i386            2.7.2           gcc 4.2.2        
 FreeBSD 9.0             i386            3.1.4           clang 3.0 
-OS X 10.8.4             x86-64          2.7.2           clang Apple LLVM version 4.2
+OS X 10.8.4             x86-64          2.7.2           clang 4.2
+SunOS 5.10              SPARC           3.3.2           gcc 4.8.0 
 ================        ========        ======          ===========     
 
