@@ -102,23 +102,29 @@ class VCFReader(object):
     """
     def __init__(self, vcf_file):
         self.__genotypes = []
-        if vcf_file.endswith(".gz"):
-            # Detect broken GZIP handling in 2.7/3.2 and others and abort
-            f = gzip.open(vcf_file, "rb")
-            try:
-                s = f.readline()
-            except Exception as e:
-                print(BROKEN_GZIP_MESSAGE)
-                sys.exit(1)
-            f.close() 
-            # Carry on as before
-            self.__input_file = gzip.open(vcf_file, "rb")
-            self.__progress_file = self.__input_file.fileobj
+        if vcf_file == '-':
+            self.__input_file = sys.stdin
+            self.__progress_monitor = None
+            self.__input_file_size = None
+            self.__progress_file = None
         else:
-            self.__input_file = open(vcf_file, "rb")
-            self.__progress_file = self.__input_file 
-        statinfo = os.stat(vcf_file)
-        self.__input_file_size = statinfo.st_size 
+            if vcf_file.endswith(".gz"):
+                # Detect broken GZIP handling in 2.7/3.2 and others and abort
+                f = gzip.open(vcf_file, "rb")
+                try:
+                    s = f.readline()
+                except Exception as e:
+                    print(BROKEN_GZIP_MESSAGE)
+                    sys.exit(1)
+                f.close() 
+                # Carry on as before
+                self.__input_file = gzip.open(vcf_file, "rb")
+                self.__progress_file = self.__input_file.fileobj
+            else:
+                self.__input_file = open(vcf_file, "rb")
+                self.__progress_file = self.__input_file 
+            statinfo = os.stat(vcf_file)
+            self.__input_file_size = statinfo.st_size 
         self.__progress_update_rows = 2**32 
         self.__progress_monitor = None
         self.__truncate = False
@@ -136,8 +142,8 @@ class VCFReader(object):
     
     def set_truncate_REF_ALT(self, truncate):
         """
-        If true, truncate REF and ALT columns to be no more than 254 characters long.
-        This is a temporary workaround until more sophisticated truncation 
+        If true, truncate REF and ALT columns to be no more than 254 characters 
+        long. This is a temporary workaround until more sophisticated truncation 
         across all columns is implemented.
         """
         self.__truncate = truncate
@@ -164,7 +170,7 @@ class VCFReader(object):
         Closes any open files on this Reader.
         """
         self.__input_file.close()
-        self.__progress_file.close()
+        if self.__progress_file is not None: self.__progress_file.close()
 
     def parse_version(self, s):
         """
@@ -282,7 +288,6 @@ class VCFReader(object):
         Returns an iterator over the rows in this VCF file. Each row is a 
         dictionary mapping column positions to their encoded string values.
         """
-        self.read_header()
         # First we construct the mappings from the various parts of the 
         # VCF row to the corresponding column index in the wormtable
         num_columns = len(table_columns) 
@@ -427,7 +432,6 @@ class ProgramRunner(object):
     Class responsible for running the vcf2wt program.
     """
     def __init__(self, args):
-        self.__source = args.SOURCE
         self.__destination = args.DEST 
         self.__cache_size = args.cache_size
         self.__force = args.force
@@ -440,8 +444,13 @@ class ProgramRunner(object):
         self.__tmp_files = []
         self.__table = None
         self.__column_map = None
-        self.__reader = None
+        self.__reader = VCFReader(args.SOURCE)
         self.__writer = None
+        
+        # set progress monitoring to false if input is from STDIN
+        if args.SOURCE == '-' and self.__progress:
+            self.error("Unable to monitor progress when reading from STDIN")
+
        
     def get_table(self):
         return self.__table
@@ -459,10 +468,8 @@ class ProgramRunner(object):
         tmpdir = tempfile.mkdtemp(suffix=".wt", prefix="vcf2wt_")
         self.__tmp_dirs.append(tmpdir)
         table = wt.Table(tmpdir)
-        reader = VCFReader(self.__source)
-        reader.generate_schema(table)
+        self.__reader.generate_schema(table)
         table.write_metadata(schema_file)
-        reader.close()
         self.__schema = schema_file
 
     def initialise_writer(self):
@@ -494,7 +501,6 @@ class ProgramRunner(object):
         Writes the table, assuming that we have created a directory with
         a table ready for writing.
         """
-        self.__reader = VCFReader(self.__source)
         self.__reader.set_progress(self.__progress)
         self.__reader.set_truncate_REF_ALT(self.__truncate)
         self.initialise_writer()
@@ -510,6 +516,7 @@ class ProgramRunner(object):
         Top level entry point.
         """ 
         if self.__schema is None:
+            # read header and use it to generate schema
             self.generate_schema()
         if os.path.exists(self.__destination):
             if self.__force:
@@ -521,6 +528,8 @@ class ProgramRunner(object):
                 s = "'{0}' exists; use -f to overwrite".format(self.__destination)
                 self.error(s)
         if self.__generate_schema:
+            # read header and discard
+            self.read_header()
             # copy the schema and we're done.
             shutil.copyfile(self.__schema, self.__destination) 
         else:
@@ -551,7 +560,7 @@ def main():
     prog_description = "Convert VCF file to Wormtable format."
     parser = argparse.ArgumentParser(description=prog_description) 
     parser.add_argument("SOURCE", 
-        help="VCF file to convert")   
+        help="VCF file to convert (use '-' for STDIN)")   
     parser.add_argument("DEST", 
         help="""Output wormtable home directory, or schema file 
             if we are generating a candidate schema using the 
