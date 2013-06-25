@@ -1,5 +1,4 @@
 #!python
-
 # 
 # Copyright (C) 2013 Jerome Kelleher <jerome.kelleher@ed.ac.uk>
 #
@@ -277,6 +276,7 @@ class VCFReader(object):
             s = f.readline()
         self.parse_header_line(s) 
         
+
     def rows(self, table_columns):
         """
         Returns an iterator over the rows in this VCF file. Each row is a 
@@ -299,7 +299,7 @@ class VCFReader(object):
             if b"_" in k and v != 0:
                 split = k.split(b"_")
                 if split[0] == INFO:
-                    name = split[1]
+                    name = b"_".join(split[1:])
                     info_columns[name] = v 
                 else:
                     g = b"_".join(split[:-1])
