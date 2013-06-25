@@ -42,6 +42,7 @@ SCHEMA_VERSION = "0.1"
 INDEX_METADATA_VERSION = "0.1"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
+DEFAULT_CACHE_SIZE_STR = "16M" 
 
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
@@ -52,11 +53,18 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 WT_VAR_1  = _wormtable.WT_VAR_1
 
-def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE):
+def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE_STR):
     """
     Returns a table opened in read mode with cache size 
     set to the specified value. This is the recommended 
     interface when opening tables for reading.
+   
+    See :ref:`performance-cache` for details on setting cache sizes. 
+
+    :param homedir: the filesystem path for the wormtable home directory
+    :type homedir: str
+    :param cache_size: The Berkeley DB cache size for the table.
+    :type cache_size: str or int. 
     """
     t = Table(homedir)
     if not t.exists():
@@ -312,9 +320,17 @@ class Database(object):
 
     def set_cache_size(self, cache_size):
         """
-        Sets the cache size for this database object to the specified 
-        value. If cache_size is a string, it can be suffixed with 
+        Sets the cache size to the specified value. 
+        If cache_size is a string, it can be suffixed with 
         K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.
+        
+        This must be called before a table is opened, and has no effect 
+        on a table that is already open.
+    
+        See :ref:`performance-cache` for details on setting cache sizes. 
+
+        :param cache_size: the size of the cache
+        :type cache_size: str or int 
         """
         if isinstance(cache_size, str):
             s = cache_size
@@ -373,8 +389,11 @@ class Database(object):
 
     def open(self, mode):
         """
-        Opens this database in the specified mode. Mode must be one of 
+        Opens this table in the specified mode. Mode must be one of 
         'r' or 'w'.
+
+        :param: mode: The mode to open the table in.
+        :type: mode: str
         """
         modes = {'r': _wormtable.WT_READ, 'w': _wormtable.WT_WRITE}
         if mode not in modes:
@@ -528,15 +547,18 @@ class Table(Database):
     # Methods for accessing the columns
     def columns(self):
         """
-        Returns the list of columns. 
+        Returns the list of columns in this table. 
         """
         return list(self.__columns)
 
     def get_column(self, col_id):
         """
-        Returns a column corresponding to the specified id. If this is an
+        Returns the :class:`Column` corresponding to the specified id. If this is an
         integer, we return the column at this position; if it is a string
         we return the column with the specified name.
+        
+        :param: col_id: the column idenifier
+        :type: col_id: str or int
         """
         ret = None
         if isinstance(col_id, int):
@@ -642,7 +664,7 @@ class Table(Database):
     
     def close(self):
         """
-        Closes this Table.
+        Closes this table freeing all underlying resources.
         """
         self.verify_open()
         try:
@@ -655,11 +677,20 @@ class Table(Database):
     
     def cursor(self, columns, index=None):
         """
-        Returns a cursor over the rows in this database, retreiving the specified 
+        Returns a cursor over the rows in this database, retrieving the specified 
         columns. If index is provided, the cursor will iterate over the rows in 
         the order defined by the index.
 
-        Columns must be a list of column identifiers, or Column instances.
+        The columns specified may be either :class:`Column` instances, integers 
+        or strings. If an integer is provided, the column
+        at the specified position is used and if a string is provided, the column 
+        with the specified identifier is used. These may be mixed arbitrarily.
+
+        :param columns: columns to retrieve from the table
+        :type columns: sequence of column identifiers
+        :param index: index defining the order in which rows are retrieved 
+        :type index: :class:`Index`
+        :rtype: :class:`Cursor`
         """
         self.verify_open(WT_READ)
         c = None
@@ -691,10 +722,17 @@ class Table(Database):
             yield name 
 
 
-    def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE):
+    def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE_STR):
         """
-        Returns an open index on the this table. Supports the contextmanager
-        protocol.
+        Returns an index with the specified name opened in read mode with 
+        the specified cache_size.
+        
+        See :ref:`performance-cache` for details on setting cache sizes. 
+
+        :param index_name: the name of the index to open
+        :type index_name: str
+        :param cache_size: the size of the cache on the index
+        :type cache_size: str or int. 
         """
         self.verify_open(WT_READ)
         index = Index(self, index_name) 
@@ -935,10 +973,6 @@ class Cursor(object):
     an iterator.
     """
     def __iter__(self):
-        #if len(self._columns) == 1:
-        #    for r in self._row_iterator:
-        #        yield r[0]
-        #else:
         for r in self._row_iterator:
             yield r
 

@@ -66,23 +66,30 @@ Reference
             print("first row = ", t[0])
             print("last row  = ", t[-1]) 
 
-    Rows are currently returned as tuple objects, with values for each column occupying 
-    the corresponding position in the returned tuple. A more efficient method 
+    Rows are returned as tuples, with values for each column occupying 
+    the corresponding position. This is not the recommended interface 
+    for retrieving values from a table, however. 
+    A more efficient method 
     of iterating over values in a table is to use a :class:`Cursor`.
+    
+    .. automethod:: cursor
 
-    .. automethod:: Table.open
+    .. automethod:: open_index
 
-    .. automethod:: Table.close 
+    .. automethod:: open
+    
+    .. automethod:: close 
 
-    .. automethod:: Table.cursor
+    .. automethod:: set_cache_size 
+   
+    .. automethod:: columns
 
-    .. automethod:: Table.open_index
+    .. automethod:: get_column
 
-    .. automethod:: Table.columns
 
-    .. automethod:: Table.get_column
 
 .. class:: Cursor
+
 
     Cursors provide an efficient means of iterating over the rows in a table, 
     retreiving a subset of the columns in the row. This is much more efficient 
@@ -116,3 +123,9 @@ Reference
 
     .. automethod:: Index.counter
 
+
+.. class:: Column
+    
+    Columns define the storage types for values within a table.
+
+    .. automethod:: get_name 

@@ -1,3 +1,4 @@
+==========================
 Performance tuning 
 ==========================
 Wormtable can be deployed on any Unix system supporting Berkeley DB, and 
@@ -15,8 +16,20 @@ are likely to affect any modern Unix and machines with
 smaller available resources, so may provide a useful 
 starting point for tuning performance on these systems.
     
-Cache
------
+.. _performance-cache:
+
+------------
+Cache tuning
+------------
+
+This sets the 
+size of the Berkeley DB cache, and is subject to the rules of 
+the `DB->set_cache_size 
+<http://docs.oracle.com/cd/E17276_01/html/api_reference/C/dbset_cachesize.html>`_
+method. 
+
+
+
 The single most important parameter to tune for performance in wormtable 
 is the amount of cache. The general rule for cache is "more is 
 better", but with some important caveats. The considerations are 
