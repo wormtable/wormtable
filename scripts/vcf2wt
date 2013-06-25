@@ -104,6 +104,8 @@ class VCFReader(object):
         self.__genotypes = []
         if vcf_file == '-':
             self.__input_file = sys.stdin
+            if sys.version_info[:2] >= (3, 1):
+                self.__input_file = sys.stdin.detach()
             self.__progress_monitor = None
             self.__input_file_size = None
             self.__progress_file = None
