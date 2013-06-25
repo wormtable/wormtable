@@ -365,6 +365,7 @@ class VCFReader(object):
                 self.update_progress()
         self.finish_progress()
 
+
 class VCFWriter(object):
     """
     Class that writes VCF rows to a wormtable.
@@ -397,35 +398,6 @@ def writer_process(table, row_queue, error_event):
         print("Exception occured", e)
         error_event.set()
 
-class VCFWriterProxy(object):
-    """
-    Proxy for a VCFWriter object in a subprocess.
-    """
-    def __init__(self, runner):
-        self.__program_runner = runner
-        self.__queue = multiprocessing.Queue(runner.get_queue_size())
-        self.__error_event = multiprocessing.Event() 
-        self.__writer_process = multiprocessing.Process(target=writer_process,
-                args=(runner.get_table(), self.__queue, self.__error_event))
-        self.__writer_process.start() 
-
-    def append(self, row):  
-        """
-        Appends the specified row to the queue.
-        """
-        if self.__error_event.is_set():
-            self.__queue.cancel_join_thread()
-            self.__queue.close()
-            self.__queue = None
-            self.__writer_process.join()
-            self.__program_runner.error("Subprocess failed")
-        else:
-            self.__queue.put(row)
-
-    def close(self):
-        if self.__queue is not None:
-            self.__queue.put(None)
-
 
 class ProgramRunner(object):
     """
@@ -436,10 +408,9 @@ class ProgramRunner(object):
         self.__cache_size = args.cache_size
         self.__force = args.force
         self.__generate_schema = args.generate_schema
-        self.__progress = args.progress
+        self.__progress = not args.quiet
         self.__schema = args.schema
         self.__truncate = args.truncate
-        self.__queue_size = args.queue_size
         self.__tmp_dirs = []
         self.__tmp_files = []
         self.__table = None
@@ -447,17 +418,13 @@ class ProgramRunner(object):
         self.__reader = VCFReader(args.SOURCE)
         self.__writer = None
         
-        # set progress monitoring to false if input is from STDIN
-        if args.SOURCE == '-' and self.__progress:
-            self.error("Unable to monitor progress when reading from STDIN")
+        # if reading from STDIN, set progress monitor to False regardless
+        if args.SOURCE == '-': self.__progress = False
 
        
     def get_table(self):
         return self.__table
 
-    def get_queue_size(self):
-        return self.__queue_size
-        
     def generate_schema(self):
         """
         Reads the header of the input VCF and generates a schema file.
@@ -471,16 +438,6 @@ class ProgramRunner(object):
         self.__reader.generate_schema(table)
         table.write_metadata(schema_file)
         self.__schema = schema_file
-
-    def initialise_writer(self):
-        """
-        Initialises the writer object and starts the writer process if it 
-        is being used.
-        """
-        if self.__queue_size == 0:
-            self.__writer = VCFWriter(self.__table)
-        else:
-            self.__writer = VCFWriterProxy(self) 
 
     def create_table(self):
         """
@@ -503,7 +460,7 @@ class ProgramRunner(object):
         """
         self.__reader.set_progress(self.__progress)
         self.__reader.set_truncate_REF_ALT(self.__truncate)
-        self.initialise_writer()
+        self.__writer = VCFWriter(self.__table)
         for r in self.__reader.rows(self.__column_map):
             self.__writer.append(r) 
         self.__reader.close()
@@ -515,9 +472,12 @@ class ProgramRunner(object):
         """
         Top level entry point.
         """ 
-        if self.__schema is None:
-            # read header and use it to generate schema
+        # discard header if schema provided or generate schema from header
+        if self.__schema:
+            self.__reader.read_header()
+        else:
             self.generate_schema()
+        
         if os.path.exists(self.__destination):
             if self.__force:
                 if os.path.isdir(self.__destination):
@@ -527,9 +487,8 @@ class ProgramRunner(object):
             else:
                 s = "'{0}' exists; use -f to overwrite".format(self.__destination)
                 self.error(s)
+                
         if self.__generate_schema:
-            # read header and discard
-            self.read_header()
             # copy the schema and we're done.
             shutil.copyfile(self.__schema, self.__destination) 
         else:
@@ -565,9 +524,9 @@ def main():
         help="""Output wormtable home directory, or schema file 
             if we are generating a candidate schema using the 
             --generate-schema option""")   
-    parser.add_argument("--progress", "-p", action="store_true", 
+    parser.add_argument("--quiet", "-q", action="store_true", 
         default=False,
-        help="Show progress monitor")   
+        help="Suppress progress monitor")   
     parser.add_argument("--force", "-f", action="store_true", default=False,
         help="Force over-writing of existing wormtable")   
     parser.add_argument("--truncate", "-t", action="store_true", default=False,
@@ -577,9 +536,6 @@ def main():
             characters long. REF and ALT values are truncated to 254 characters
             and suffixed with a '+' to indicate that truncation has 
             occured""")   
-    parser.add_argument("--queue-size", "-q", default=65536, type=int,
-        help="""queue size for interprocess communication; set to 0 to 
-            disable multiprocessing (recommended for single core systems)""")
     parser.add_argument("--cache-size", "-c", default="64M",
         help="cache size in bytes; suffixes K, M and G also supported.")   
     g = parser.add_mutually_exclusive_group()
@@ -591,6 +547,7 @@ def main():
         help="""Use schema from the file SCHEMA rather than default 
                 generated schema""")
     args = parser.parse_args()
+    
     runner = ProgramRunner(args) 
     try:
         runner.run()
