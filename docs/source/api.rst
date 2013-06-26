@@ -11,36 +11,11 @@ API Documentation
     :platform: Unix
     :synopsis: Write-once read-many table for large datasets. 
 
---------
-Overview
---------
-
 This is the API documentation for wormtable. The documentation currently
 concentrates the read-API, since the initial release is intended 
 primarily for use with VCF data. For details on how to build a 
 wormtable from a VCF file see the :ref:`tutorial <tutorial-index>` or the 
 documentation for :ref:`vcf2wt-index`.
-
-
-
-The :func:`open_table` function returns a :class:`Table` object
-opened for reading, and is analogous to the `open` function 
-from the Python standard library. For to get the length 
-of a table we might do the following::
-    
-    import wormtable as wt
-    t = open_table("example.wt")
-    print("example.wt has ", len(t), "rows")
-    t.close()
-
-The :class:`Table` class also supports the 
-`context manager <http://www.python.org/dev/peps/pep-0343/>`_
-protocol, so we can automatically close a table that has 
-been opened::
-
-    import wormtable as wt
-    with open_table("example.wt") as t:
-        print("example.wt has ", len(t), "rows")
 
 
 ---------
@@ -57,21 +32,7 @@ Reference
     intended to be accessed directly; modifications to a table should be made through 
     this API only.
 
-    The table class supports the (read-only) Python Sequence protocol. This allows us to
-    directly access the rows in a table using the standard Python notation, for example::
-
-        import wormtable as wt
-        with open_table("example.wt") as t:
-            print("example.wt has ", len(t), "rows")
-            print("first row = ", t[0])
-            print("last row  = ", t[-1]) 
-
-    Rows are returned as tuples, with values for each column occupying 
-    the corresponding position. This is not the recommended interface 
-    for retrieving values from a table, however. 
-    A more efficient method 
-    of iterating over values in a table is to use a :class:`Cursor`.
-    
+   
     .. automethod:: cursor
 
     .. automethod:: open_index
@@ -129,3 +90,67 @@ Reference
     Columns define the storage types for values within a table.
 
     .. automethod:: get_name 
+
+
+---------
+Examples
+---------
+
+To illustrate the API above, we use a wormtable `pythons.wt` which contains
+the following data:
+
+==============      ====    ======  =====   ========    ========
+name                born    writer  actor   director    producer 
+==============      ====    ======  =====   ========    ========
+John Cleese         1939    60      127     0           43  
+Terry Gilliam       1940    25      24      18          8   
+Eric Idle           1943    38      74      7           5   
+Terry Jones         1942    50      49      16          1   
+Michael Palin       1943    58      56      0           1   
+Graham Chapman      1941    46      24      0           2   
+==============      ====    ======  =====   ========    ========
+
+This table consists of three columns: the name of the Python, the year they were 
+born and the number of entries in `IMDB <http://www.imdb.com>`_ they have under these
+headings as of 2013.
+
+The :func:`open_table` function returns a :class:`Table` object
+opened for reading, and is analogous to the :func:`open` function 
+from the Python standard library. So, to open our Pythons table 
+for reading, we might do the following::
+    
+    >>> import wormtable as wt
+    >>> t = wt.open_table("pythons.wt")
+    >>> len(t)
+    6
+
+The :func:`len` function tells us that there are 6 rows in the `pythons.wt`
+table.  The :class:`Table` class supports the read-only Python sequence 
+protocol, and so it can be treated like a two-dimensional list in 
+many ways. For example::
+
+    >>> t[0]
+    (0, b'John Cleese', 1939, 60, 127, 0, 43)
+    >>> t[-1]
+    (5, b'Graham Chapman', 1941, 46, 24, 0, 2)
+    >>> t[4:]
+    [(4, b'Michael Palin', 1943, 58, 56, 0, 1), (5, b'Graham Chapman', 1941, 46, 24, 0, 2)]
+
+Rows are returned as tuples, with values for each column occupying 
+the corresponding position. This is not the recommended interface 
+for retrieving values from a table, however. 
+A more efficient method 
+of iterating over values in a table is to use a :class:`Cursor`.
+
+
+
+
+The :class:`Table` class also supports the 
+`context manager <http://www.python.org/dev/peps/pep-0343/>`_
+protocol, so we can automatically close a table that has 
+been opened::
+
+    with wt.open_table("sample.wt") as t:
+        print("example.wt has ", len(t), "rows")
+
+
