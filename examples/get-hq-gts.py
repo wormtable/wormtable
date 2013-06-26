@@ -22,7 +22,7 @@ def get_index(t, name) :
 
 def hq_hets(homedir, sample, gt, minq, cols):
     t =  wt.open_table(homedir)
-    i = get_index(t, sample+'_GT+QUAL[1]')
+    i = get_index(t, "%s_GT+QUAL[1]" %(sample))
     cursor = t.cursor(cols, i)
     cursor.set_min(gt, minq)
     cursor.set_max(gt, i.get_max(gt)[1])
