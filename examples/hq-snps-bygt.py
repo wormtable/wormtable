@@ -1,11 +1,11 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 """
 Get a list of high quality genotypes of given type (e.g. heterozygotes) for a
 specified sample (e.g. S1). This program builds the necessary index if missing 
 (a compound index on genotype of the given sample and (binned) QUAL. The output 
 is a tab separated list of CHROM, POS, REF, ALT and QUAL of SNPs that pass (in 
-order of lowest->highest quality.
+order of lowest->highest quality).
 """
 
 import sys
@@ -20,7 +20,7 @@ def get_index(t, name) :
     return t.open_index(name)
 
 
-def hq_hets(homedir, sample, gt, minq, cols):
+def hq_snps_bygt(homedir, sample, gt, minq, cols):
     t =  wt.open_table(homedir)
     i = get_index(t, "%s_GT+QUAL[1]" %(sample))
     cursor = t.cursor(cols, i)
@@ -54,7 +54,7 @@ def main():
     if(args['H']):
         print "\t".join(cols)
     
-    hq_hets(args['homedir'], sample=args['s'], gt=args['g'], minq=args['q'], cols=cols)
+    hq_snps_bygt(args['homedir'], args['s'], args['g'], args['q'], cols)
 
 
 if __name__ == "__main__":
