@@ -1,0 +1,62 @@
+#!/usr/bin/python
+
+"""
+Get a list of high quality genotypes of given type (e.g. heterozygotes) for a
+specified sample (e.g. S1). This program builds the necessary index if missing 
+(a compound index on genotype of the given sample and (binned) QUAL. The output 
+is a tab separated list of CHROM, POS, REF, ALT and QUAL of SNPs that pass (in 
+order of lowest->highest quality.
+"""
+
+import sys
+import wormtable as wt
+import os.path
+import argparse
+
+def get_index(t, name) :
+    if not os.path.isfile("%s/index_%s.db" %(t.get_homedir(), name)):
+        sys.stderr.write("Building index %s\n" %(name)) 
+        os.system("wtadmin add %s %s" %(t.get_homedir(), name))
+    return t.open_index(name)
+
+
+def hq_hets(homedir, sample, gt, minq, cols):
+    t =  wt.open_table(homedir)
+    i = get_index(t, sample+'_GT+QUAL[1]')
+    cursor = t.cursor(cols, i)
+    cursor.set_min(gt, minq)
+    cursor.set_max(gt, i.get_max(gt)[1])
+    for row in cursor:
+        print "\t".join([str(i) for i in row])
+
+def main():
+    parser = argparse.ArgumentParser(description=globals()['__doc__'])
+    
+    parser.add_argument('-s', default='S1',
+        help='The sample name')
+    
+    parser.add_argument('-g', default='0/1',
+        help='Genotype code to select')
+    
+    parser.add_argument('-q', default=1000, type=float,
+        help='Minimum QUAL for site')
+    
+    parser.add_argument('homedir',
+        help='home directory of database')
+
+    parser.add_argument('-H', action='store_true',
+        help='print header')
+    
+    args = vars(parser.parse_args())
+    
+    cols = ["CHROM", "POS", "REF", "ALT", "QUAL"]
+    
+    if(args['H']):
+        print "\t".join(cols)
+    
+    hq_hets(args['homedir'], sample=args['s'], gt=args['g'], minq=args['q'], cols=cols)
+
+
+if __name__ == "__main__":
+    main()
+
