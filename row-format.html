@@ -8,7 +8,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>Low level row format &mdash; wormtable 0.1 documentation</title>
+    <title>Row format &mdash; wormtable 0.1.0 documentation</title>
     
     <link rel="stylesheet" href="_static/default.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -16,7 +16,7 @@
     <script type="text/javascript">
       var DOCUMENTATION_OPTIONS = {
         URL_ROOT:    '',
-        VERSION:     '0.1',
+        VERSION:     '0.1.0',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
         HAS_SOURCE:  true
@@ -25,7 +25,7 @@
     <script type="text/javascript" src="_static/jquery.js"></script>
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
-    <link rel="top" title="wormtable 0.1 documentation" href="index.html" />
+    <link rel="top" title="wormtable 0.1.0 documentation" href="index.html" />
     <link rel="prev" title="Performance tuning" href="performance.html" /> 
   </head>
   <body>
@@ -36,9 +36,12 @@
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
           <a href="performance.html" title="Performance tuning"
              accesskey="P">previous</a> |</li>
-        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+        <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
     </div>  
 
@@ -47,43 +50,95 @@
         <div class="bodywrapper">
           <div class="body">
             
-  <div class="section" id="low-level-row-format">
-<span id="row-format-index"></span><h1>Low level row format<a class="headerlink" href="#low-level-row-format" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="row-format">
+<span id="row-format-index"></span><h1>Row format<a class="headerlink" href="#row-format" title="Permalink to this headline">¶</a></h1>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">June 11, 2013</td>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">June 16, 2013</td>
 </tr>
 </tbody>
 </table>
-<p>This reference manual describes the low level details of the binary format
+<p>This page describes the low level details of the binary format
 used to store each row in Wormtable. These details are not important to
 the average programmer who wishes to store data in a table. It may be
 useful to have a basic understanding of the low-level format when
-tuning for performance, and to understand the penalty associated with
+tuning for performance, and to understand the tradeoffs associated with
 fixed and variable size columns. It should also be possible to
 build a custom interface to Wormtable in another language that supports
 Berkeley DB using this data format definition.</p>
-<div class="section" id="fixed-columns">
-<h2>Fixed Columns<a class="headerlink" href="#fixed-columns" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="row-storage">
+<h2>Row storage<a class="headerlink" href="#row-storage" title="Permalink to this headline">¶</a></h2>
+<p>Rows are hold data from a fixed number of predefined columns, which are together referred
+to as a <strong>schema</strong>. A table must have at least two columns, and the first column
+must be an unsigned integer column called <tt class="docutils literal"><span class="pre">row_id</span></tt>. This first column contains
+the key used by Berkeley DB to store and retrieve rows. The values stored in this column
+correspond to the zero-based row index, and they are automatically set by wormtable
+when a new row is appended to a table.</p>
+<p>The schema is defined using an XML format, which describes the names, types, sizes and
+relative positions of the columns in a table.
+Suppose we had the following wormtable schema, describing the first three columns of a
+VCF file.</p>
+<div class="highlight-xml"><div class="highlight"><pre><span class="cp">&lt;?xml version=&quot;1.0&quot; ?&gt;</span>
+<span class="nt">&lt;schema</span> <span class="na">version=</span><span class="s">&quot;0.1&quot;</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;columns&gt;</span>
+    <span class="nt">&lt;column</span> <span class="na">name=</span><span class="s">&quot;row_id&quot;</span> <span class="na">element_size=</span><span class="s">&quot;5&quot;</span> <span class="na">element_type=</span><span class="s">&quot;uint&quot;</span> <span class="na">num_elements=</span><span class="s">&quot;1&quot;</span> <span class="na">description=</span><span class="s">&quot;&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;column</span> <span class="na">name=</span><span class="s">&quot;CHROM&quot;</span> <span class="na">element_size=</span><span class="s">&quot;1&quot;</span> <span class="na">element_type=</span><span class="s">&quot;char&quot;</span> <span class="na">num_elements=</span><span class="s">&quot;var(1)&quot;</span> <span class="na">description=</span><span class="s">&quot;&quot;</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;column</span> <span class="na">name=</span><span class="s">&quot;POS&quot;</span> <span class="na">element_size=</span><span class="s">&quot;5&quot;</span> <span class="na">element_type=</span><span class="s">&quot;uint&quot;</span> <span class="na">num_elements=</span><span class="s">&quot;1&quot;</span> <span class="na">description=</span><span class="s">&quot;&quot;</span><span class="nt">/&gt;</span>
+  <span class="nt">&lt;/columns&gt;</span>
+<span class="nt">&lt;/schema&gt;</span>
+</pre></div>
 </div>
-<div class="section" id="variable-columns">
-<h2>Variable Columns<a class="headerlink" href="#variable-columns" title="Permalink to this headline">¶</a></h2>
+<p>In this schema, we have the mandatory <tt class="docutils literal"><span class="pre">row_id</span></tt> unsigned integer column, a <tt class="docutils literal"><span class="pre">CHROM</span></tt> column
+which holds variable length character data, and a <tt class="docutils literal"><span class="pre">POS</span></tt> column, which also stores
+five byte unsigned integers. When they are stored on disc, rows from this schema look
+something like this:</p>
+<img alt="The low-level row storage format" class="align-center" src="_images/row-format.png" style="width: 15cm;" />
+<p>Rows are divided into two regions: the <strong>fixed</strong> region and the <strong>variable</strong> region.
+The fixed region occupies the first part of the row, and each column occupies
+a fixed number of bytes within the fixed region. For columns with a fixed number
+of elements, the number of bytes they occupy in the
+fixed region is <tt class="docutils literal"><span class="pre">num_elements</span> <span class="pre">*</span> <span class="pre">element_size</span></tt>; this is where the data for this
+column is stored. Columns with a <em>variable</em> number of elements do not
+store their data within the fixed region; instead, they store the <strong>address</strong>
+and <strong>number</strong> of elements that are stored in this particular row. Addresses
+then point to the variable region, which is filled sequentially as values are
+assigned to columns within the row.</p>
+<p>In the example above, <tt class="docutils literal"><span class="pre">row_id</span></tt> and <tt class="docutils literal"><span class="pre">POS</span></tt> are both unsigned integers with
+an <tt class="docutils literal"><span class="pre">element_size</span></tt> of 5 and <tt class="docutils literal"><span class="pre">num_elements</span></tt> equal to 1, and so they both
+occupy exactly 5 bytes within the fixed region (and never use the variable
+region). The <tt class="docutils literal"><span class="pre">CHROM</span></tt> column on the other hand has an <tt class="docutils literal"><span class="pre">element_size</span></tt> of
+1 byte (as each element is a single character), and has <tt class="docutils literal"><span class="pre">num_elements</span></tt>
+equal to <tt class="docutils literal"><span class="pre">var(1)</span></tt>. This means that it is a variable length column
+in which one byte is reserved to store the number of elements
+stored in the variable region, starting at the address stored in the
+fixed region.</p>
+<p>Therefore, variable length columns are assigned three bytes in the fixed
+region; the first two hold the address where the elements for this column
+start, and the third byte holds the number of elements stored. This
+format defines the fundamental limits of wormtable&#8217;s row format: since
+we have two bytes to describe addresses, rows are a maximum of 64K long.
+Similarly, since we have one byte to hold the number of elements in a
+variable length column, we store a maximum of 255 elements within
+a variable length column.</p>
 </div>
-<div class="section" id="data-type-representaion">
-<h2>Data type representaion<a class="headerlink" href="#data-type-representaion" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="integer-data">
-<h3>Integer data<a class="headerlink" href="#integer-data" title="Permalink to this headline">¶</a></h3>
-</div>
-<div class="section" id="floating-point-data">
-<h3>Floating point data<a class="headerlink" href="#floating-point-data" title="Permalink to this headline">¶</a></h3>
-</div>
-<div class="section" id="character-data">
-<h3>Character data<a class="headerlink" href="#character-data" title="Permalink to this headline">¶</a></h3>
-</div>
+<div class="section" id="column-storage">
+<h2>Column storage<a class="headerlink" href="#column-storage" title="Permalink to this headline">¶</a></h2>
+<p>Values are stored in columns in a portable binary format. This binary format is
+very close to the native representation and can be converted into native
+types with very little overhead. The packed representation differs between
+the element types, but there are two overriding requirements that apply to all
+columns:</p>
+<ol class="arabic simple">
+<li>Missing values must be equal to 0 in the packed format;</li>
+<li>Packed values must sort in the same order as the unpacked values.</li>
+</ol>
+<p>The second requirement is particularly important, as this ensures that
+indexes can be constructed by Berkeley DB without requiring a custom
+ordering function.</p>
 </div>
 </div>
 
@@ -95,15 +150,9 @@ Berkeley DB using this data format definition.</p>
         <div class="sphinxsidebarwrapper">
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">Low level row format</a><ul>
-<li><a class="reference internal" href="#fixed-columns">Fixed Columns</a></li>
-<li><a class="reference internal" href="#variable-columns">Variable Columns</a></li>
-<li><a class="reference internal" href="#data-type-representaion">Data type representaion</a><ul>
-<li><a class="reference internal" href="#integer-data">Integer data</a></li>
-<li><a class="reference internal" href="#floating-point-data">Floating point data</a></li>
-<li><a class="reference internal" href="#character-data">Character data</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#">Row format</a><ul>
+<li><a class="reference internal" href="#row-storage">Row storage</a></li>
+<li><a class="reference internal" href="#column-storage">Column storage</a></li>
 </ul>
 </li>
 </ul>
@@ -140,9 +189,12 @@ Berkeley DB using this data format definition.</p>
           <a href="genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
           <a href="performance.html" title="Performance tuning"
              >previous</a> |</li>
-        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+        <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
     </div>
     <div class="footer">

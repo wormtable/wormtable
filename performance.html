@@ -8,7 +8,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>Performance tuning &mdash; wormtable 0.1 documentation</title>
+    <title>Performance tuning &mdash; wormtable 0.1.0 documentation</title>
     
     <link rel="stylesheet" href="_static/default.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -16,7 +16,7 @@
     <script type="text/javascript">
       var DOCUMENTATION_OPTIONS = {
         URL_ROOT:    '',
-        VERSION:     '0.1',
+        VERSION:     '0.1.0',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
         HAS_SOURCE:  true
@@ -25,9 +25,9 @@
     <script type="text/javascript" src="_static/jquery.js"></script>
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
-    <link rel="top" title="wormtable 0.1 documentation" href="index.html" />
-    <link rel="next" title="Low level row format" href="row-format.html" />
-    <link rel="prev" title="API Documentation" href="api.html" /> 
+    <link rel="top" title="wormtable 0.1.0 documentation" href="index.html" />
+    <link rel="next" title="Row format" href="row-format.html" />
+    <link rel="prev" title="Command line utilities" href="utilities.html" /> 
   </head>
   <body>
     <div class="related">
@@ -37,12 +37,15 @@
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
-          <a href="row-format.html" title="Low level row format"
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="row-format.html" title="Row format"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="api.html" title="API Documentation"
+          <a href="utilities.html" title="Command line utilities"
              accesskey="P">previous</a> |</li>
-        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+        <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
     </div>  
 
@@ -67,8 +70,12 @@ sizes.  Howevever, the underlying issues
 are likely to affect any modern Unix and machines with
 smaller available resources, so may provide a useful
 starting point for tuning performance on these systems.</p>
-<div class="section" id="cache">
-<h2>Cache<a class="headerlink" href="#cache" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="cache-tuning">
+<span id="performance-cache"></span><h2>Cache tuning<a class="headerlink" href="#cache-tuning" title="Permalink to this headline">¶</a></h2>
+<p>This sets the
+size of the Berkeley DB cache, and is subject to the rules of
+the <a class="reference external" href="http://docs.oracle.com/cd/E17276_01/html/api_reference/C/dbset_cachesize.html">DB-&gt;set_cache_size</a>
+method.</p>
 <p>The single most important parameter to tune for performance in wormtable
 is the amount of cache. The general rule for cache is &#8220;more is
 better&#8221;, but with some important caveats. The considerations are
@@ -94,9 +101,8 @@ if the system is busy. The amount of cache to allocate
 to different indexes and to the main table is a subtle issue
 and depends on the type of queries that you run.</p>
 <p>[Fill this in with examples and discussion of the issues.]</p>
-</div>
 <div class="section" id="linux-filesystems-and-kernel-parameters">
-<h2>Linux filesystems and kernel parameters<a class="headerlink" href="#linux-filesystems-and-kernel-parameters" title="Permalink to this headline">¶</a></h2>
+<h3>Linux filesystems and kernel parameters<a class="headerlink" href="#linux-filesystems-and-kernel-parameters" title="Permalink to this headline">¶</a></h3>
 <p>For very large tables substantial space savings and performance
 benifts can be made by choosing filesystems and parameters
 well. Good performance has been obtained with the ext4 filesystem
@@ -123,6 +129,7 @@ large amounts of RAM).</p>
 <p>[Finish up this discussion].</p>
 </div>
 </div>
+</div>
 
 
           </div>
@@ -133,18 +140,20 @@ large amounts of RAM).</p>
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Performance tuning</a><ul>
-<li><a class="reference internal" href="#cache">Cache</a></li>
+<li><a class="reference internal" href="#cache-tuning">Cache tuning</a><ul>
 <li><a class="reference internal" href="#linux-filesystems-and-kernel-parameters">Linux filesystems and kernel parameters</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
-  <p class="topless"><a href="api.html"
-                        title="previous chapter">API Documentation</a></p>
+  <p class="topless"><a href="utilities.html"
+                        title="previous chapter">Command line utilities</a></p>
   <h4>Next topic</h4>
   <p class="topless"><a href="row-format.html"
-                        title="next chapter">Low level row format</a></p>
+                        title="next chapter">Row format</a></p>
   <h3>This Page</h3>
   <ul class="this-page-menu">
     <li><a href="_sources/performance.txt"
@@ -174,12 +183,15 @@ large amounts of RAM).</p>
           <a href="genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
-          <a href="row-format.html" title="Low level row format"
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="row-format.html" title="Row format"
              >next</a> |</li>
         <li class="right" >
-          <a href="api.html" title="API Documentation"
+          <a href="utilities.html" title="Command line utilities"
              >previous</a> |</li>
-        <li><a href="index.html">wormtable 0.1 documentation</a> &raquo;</li> 
+        <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
     </div>
     <div class="footer">

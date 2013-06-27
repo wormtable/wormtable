@@ -15,6 +15,7 @@ Welcome! This is the documentation for Wormtable 0.1.
     tutorial 
     data-types
     api
+    utilities 
     performance 
     row-format
 
