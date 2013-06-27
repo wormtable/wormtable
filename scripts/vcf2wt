@@ -131,6 +131,8 @@ class VCFReader(object):
         self.__progress_monitor = None
         self.__truncate = False
 
+        self.read_header()
+
     def set_progress(self, progress):
         """
         If progress is True turn on progress monitoring for this VCF reader.
@@ -244,21 +246,18 @@ class VCFReader(object):
         Reads the header from the specified VCF file and returns a Table 
         with the correct columns.
         """
-        f = self.__input_file
-        s = f.readline()
         info_descriptions = []
         genotype_descriptions = []
-        self.parse_version(s)
+        
         if self._version < 4.0:
             raise ValueError("VCF versions < 4.0 not supported")
-        while s.startswith(b"##"):
+        for s in self.__header:
             # skip FILTER values 
             if s.startswith(b"##INFO"):
                 info_descriptions.append(s)
             elif s.startswith(b"##FORMAT"):
                 genotype_descriptions.append(s)
-            s = f.readline()
-        self.parse_header_line(s)
+
         # Add the fixed columns
         table.add_id_column(5)
         table.add_char_column(CHROM_NAME, CHROM_DESCRIPTION)
@@ -268,6 +267,7 @@ class VCFReader(object):
         table.add_char_column(ALT_NAME, ALT_DESCRIPTION)
         table.add_float_column(QUAL_NAME, QUAL_DESCRIPTION, 4)
         table.add_char_column(FILTER_NAME, FILTER_DESCRIPTION)
+
         for s in info_descriptions:
             self.add_column(table, INFO_NAME, s)
         for genotype in self.__genotypes:
@@ -276,13 +276,14 @@ class VCFReader(object):
 
     def read_header(self):
         """
-        Reads the VCF header and skips to the first line of the content.
+        Read header lines, parse version and column names
         """
         f = self.__input_file
-        s = f.readline()
-        while s.startswith(b"##"):
-            s = f.readline()
-        self.parse_header_line(s) 
+        self.__header = [f.readline()]  
+        while self.__header[-1].startswith(b"##"):
+            self.__header.append(f.readline())
+        self.parse_version(self.__header[0])
+        self.parse_header_line(self.__header.pop()) 
         
 
     def rows(self, table_columns):
@@ -474,10 +475,7 @@ class ProgramRunner(object):
         """
         Top level entry point.
         """ 
-        # discard header if schema provided or generate schema from header
-        if self.__schema:
-            self.__reader.read_header()
-        else:
+        if not self.__schema:
             self.generate_schema()
         
         if os.path.exists(self.__destination):

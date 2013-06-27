@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Count numbers of transitions and transversions
 Usage: ts_tv.py [OPTIONS] homedir

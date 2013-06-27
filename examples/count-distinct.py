@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Count the number of distinct values for a given index
 Usage: count-distinct.py homedir index
