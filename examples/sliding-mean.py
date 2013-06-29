@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 """
-Perform a simple sliding window over chromosomes in a VCF. Within each window
-we calculate the mean of any given numeric value from the wormtable
+Perform a simple sliding window over a chromosome in a VCF. Within each
+non-overlapping window we calculate the means of a specified numeric columns
+(e.g. QUAL,INFO_DP)
 """
 
 from __future__ import print_function
@@ -25,24 +26,30 @@ class SlidingWindow(object):
         self.__index = self.__table.open_index("CHROM+POS", cache_size=cache_size)
         self.__wsize = wsize
     
-    def run(self, chrom, col, indels=None):
-        cols = ['POS', col]
-        cursor = self.__table.cursor(cols, self.__index)
+    def run(self, chrom, cols, indels=None):
+        cursor = self.__table.cursor(["POS"]+cols, self.__index)
         
         start = self.__index.get_min(chrom)[1]
         end = self.__index.get_max(chrom)[1]
         n = 1 + math.ceil((end - start) / self.__wsize)
         cursor.set_min(chrom, start)
         cursor.set_max(chrom, end + 1)
-        j, count, tot = 0, 0, 0
-        for pos, val in cursor:
-            count += 1
-            tot += val
-            if pos >= start + j * self.__wsize:
-                if count==0:
-                    count = 1
-                print("%s\t%d\t%f" %(chrom, start+j * self.__wsize, tot/count))
-                count, tot = 0, 0
+        
+        dat = {n:{'c':0, 't':0} for n in cols}
+        j = 0
+        for row in cursor:
+            for i in range(len(cols)):
+                if row[i+1] is not None:
+                    dat[cols[i]]['c'] += 1
+                    dat[cols[i]]['t'] += row[i+1]
+            if row[0] >= start + j * self.__wsize:
+                for n in dat:
+                    if dat[n]['c'] == 0:
+                        dat[n]['c'] = 1
+                print("%s\t%d\t" %(chrom, start+j * self.__wsize) + 
+                      "\t".join([str(dat[n]['t']/dat[n]['c']) for n in dat]))
+                for n in cols:
+                    dat[n]['t'],dat[n]['c'] = 0,0
                 j += 1
     
     def close(self):
@@ -62,8 +69,8 @@ def main():
     parser.add_argument('-H', action='store_true',
         help='print header')
 
-    parser.add_argument('col',
-        help='wormtable column name')
+    parser.add_argument('cols',
+        help='comma separated column names to calculate mean on')
 
     parser.add_argument('chr',
         help='chromsome to use')
@@ -73,13 +80,13 @@ def main():
         
     args = vars(parser.parse_args())
     
+    cols = args['cols'].split(',')
     if(args['H']):
-        print('pos\t%s' %(args['col']))
+        print('chr\tpos\t' + "\t".join(cols))
     
     sw = SlidingWindow(args['homedir'], wsize=args['w'])
-    sw.run(args['chr'], args['col'])
+    sw.run(args['chr'], cols)
   
 
 if __name__ == "__main__":
     main()
-
