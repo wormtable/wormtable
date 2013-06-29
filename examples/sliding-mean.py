@@ -72,8 +72,8 @@ def main():
     parser.add_argument('cols',
         help='comma separated column names to calculate mean on')
 
-    parser.add_argument('chr',
-        help='chromsome to use')
+    parser.add_argument('chrs',
+        help='comma separated chromsomes to use')
 
     parser.add_argument('homedir',
         help='home directory of database')
@@ -85,7 +85,8 @@ def main():
         print('chr\tpos\t' + "\t".join(cols))
     
     sw = SlidingWindow(args['homedir'], wsize=args['w'])
-    sw.run(args['chr'], cols)
+    for chr in args['chrs'].split(','):
+        sw.run(chr, cols)
   
 
 if __name__ == "__main__":
