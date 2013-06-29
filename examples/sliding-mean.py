@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Perform a simple sliding window over a chromosome in a VCF. Within each
+Perform a simple sliding window over chromosomes in a VCF. Within each
 non-overlapping window we calculate the means of a specified numeric columns
 (e.g. QUAL,INFO_DP)
 """
