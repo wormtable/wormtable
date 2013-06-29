@@ -111,7 +111,9 @@ might use::
 Mac OS X
 ********
 
-Berkeley DB can be installed from source on a mac, via macports or via homebrew
+Berkeley DB can be installed from source on a mac, via 
+`macports <https://www.macports.org/>`_ or 
+`homebrew <http://mxcl.github.io/homebrew/>`_.
 
 For MacPorts, to install e.g. v5.3 ::
 
