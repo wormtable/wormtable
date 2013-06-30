@@ -1,5 +1,5 @@
 # 
-# Copyright (C) 2013 Jerome Kelleher <jerome.kelleher@ed.ac.uk>
+# Copyright (C) 2013 by the Wormtable team, see AUTHORS.txt.
 #
 # This file is part of wormtable.
 # 

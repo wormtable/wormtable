@@ -1,0 +1,7 @@
+Wormtable is written and maintained by:
+
+* Jerome Kelleher <jerome.kelleher@ed.ac.uk>
+* Dan Halligan <dan.halligan@gmail.com>
+* Rob Ness <rob.ness@.ed.ac.uk>
+
+
