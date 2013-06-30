@@ -3,7 +3,8 @@
 """
 Perform a simple sliding window over chromosomes in a VCF. Within each
 non-overlapping window we calculate the means of a specified numeric columns
-(e.g. QUAL,INFO_DP)
+(e.g. QUAL,INFO_DP). In the case that the requested value is a tuple (e.g.
+allele frequency (AF) from GATK) just take the first value.
 """
 
 from __future__ import print_function
@@ -15,41 +16,51 @@ import math
 import wormtable as wt
 import argparse
 
+def increment(val, dat):
+    if val is not None:
+        dat['c'] += 1
+        if isinstance(val, tuple):
+            dat['t'] += val[0]
+        else:
+            dat['t'] += val
 
 class SlidingWindow(object):
     """
     A class representing a sliding window over statistics in a VCF 
     wormtable.
     """
-    def __init__(self, homedir, wsize=10000, cache_size="256M"):
+    def __init__(self, homedir, chrs, cols, wsize=10000, cache_size="256M"):
         self.__table = wt.open_table(homedir, cache_size=cache_size)
         self.__index = self.__table.open_index("CHROM+POS", cache_size=cache_size)
         self.__wsize = wsize
+        self.__chrs = chrs
+        self.__cols = cols
     
-    def run(self, chrom, cols, indels=None):
-        cursor = self.__table.cursor(["POS"]+cols, self.__index)
-        
+    def __iter__(self):
+        for chrom in self.__chrs:
+            for window in self.__chriter(chrom):
+                yield window
+
+    def __chriter(self, chrom):        
+        cursor = self.__table.cursor(["POS"]+self.__cols, self.__index)
+    
         start = self.__index.get_min(chrom)[1]
         end = self.__index.get_max(chrom)[1]
         n = 1 + math.ceil((end - start) / self.__wsize)
         cursor.set_min(chrom, start)
         cursor.set_max(chrom, end + 1)
-        
-        dat = {n:{'c':0, 't':0} for n in cols}
+    
+        dat = {n:{'c':0, 't':0} for n in self.__cols}
         j = 0
         for row in cursor:
-            for i in range(len(cols)):
-                if row[i+1] is not None:
-                    dat[cols[i]]['c'] += 1
-                    dat[cols[i]]['t'] += row[i+1]
-            if row[0] >= start + j * self.__wsize:
-                for n in dat:
-                    if dat[n]['c'] == 0:
-                        dat[n]['c'] = 1
-                print("%s\t%d\t" %(chrom, start+j * self.__wsize) + 
-                      "\t".join([str(dat[n]['t']/dat[n]['c']) for n in dat]))
-                for n in cols:
-                    dat[n]['t'],dat[n]['c'] = 0,0
+            pos = row[0]
+            vals = row[1:]
+            for i in range(len(self.__cols)):
+                increment(vals[i], dat[self.__cols[i]])
+            if pos >= start + j * self.__wsize:
+                yield([chrom, start+j * self.__wsize] + 
+                      [dat[n]['t']/dat[n]['c'] for n in dat])
+                dat = {n:{'c':0, 't':0} for n in self.__cols}
                 j += 1
     
     def close(self):
@@ -83,10 +94,11 @@ def main():
     cols = args['cols'].split(',')
     if(args['H']):
         print('chr\tpos\t' + "\t".join(cols))
+    chrs = args['chrs'].split(',')
     
-    sw = SlidingWindow(args['homedir'], wsize=args['w'])
-    for chr in args['chrs'].split(','):
-        sw.run(chr, cols)
+    sw = SlidingWindow(args['homedir'], chrs=chrs, cols=cols, wsize=args['w'])
+    for window in sw:
+        print("\t".join([str(x) for x in window]))
   
 
 if __name__ == "__main__":
