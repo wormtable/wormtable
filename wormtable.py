@@ -987,13 +987,13 @@ class Cursor(object):
         for r in self._row_iterator:
             yield r
 
-    def set_min(self, v):
+    def set_min(self, *v):
         """
         Sets the minimum row key to retrieve to the specified value.
         """
         raise NotImplementedError
 
-    def set_max(self, v):
+    def set_max(self, *v):
         """
         Sets the maximum row key to retrieve to the specified value.
         """

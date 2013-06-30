@@ -7,9 +7,6 @@ API Documentation
 :Release: |version|
 :Date: |today|
 
-.. module:: wormtable 
-    :platform: Unix
-    :synopsis: Write-once read-many table for large datasets. 
 
 This is the API documentation for wormtable. The documentation currently
 concentrates the read-API, since the initial release is intended 
@@ -26,6 +23,8 @@ API documentation for the :mod:`wormtable` module.
 ---------
 Examples
 ---------
+
+.. py:currentmodule:: wormtable 
 
 To illustrate the :mod:`wormtable` API, we use a wormtable `pythons.wt` which contains
 the following data:
@@ -45,9 +44,13 @@ This table consists of six columns: the name of the Python, the year they were
 born and the number of entries in `IMDB <http://www.imdb.com>`_ they have under these
 headings as of 2013.
 
+######
+Tables
+######
+
 The :func:`open_table` function returns a :class:`Table` object
 opened for reading, and is analogous to the :func:`open` function 
-from the Python standard library. So, to open our Pythons table 
+from the Python standard library. So, to open our `pythons.wt` table 
 for reading, we might do the following::
     
     >>> import wormtable as wt
@@ -77,13 +80,14 @@ protocol, so we can automatically close a table that has
 been opened::
 
     with wt.open_table("pythons.wt") as t:
-        print(len(t)) 
+        print(len(t))
+    # t is now closed and cannot be accessed
 
-The :func:`len` function tells us that there are 6 rows in the `pythons.wt`
-table.  The :class:`Table` class supports the read-only Python sequence 
-protocol, and so tabless can be treated like a two-dimensional list in 
+The :class:`Table` class supports the read-only Python sequence 
+protocol, and so tables can be treated like a two-dimensional list in 
 many ways. For example::
 
+    >>> t = wt.open_table("pythons.wt")
     >>> t[0]
     (0, b'John Cleese', 1939, 60, 127, 0, 43)
     >>> t[-1]
@@ -92,10 +96,35 @@ many ways. For example::
     [(4, b'Michael Palin', 1943, 58, 56, 0, 1), (5, b'Graham Chapman', 1941, 46, 24, 0, 2)]
 
 Rows are returned as tuples, with values for each column occupying 
-the corresponding position. This is not the recommended interface 
-for retrieving values from a table, however. 
-A more efficient method of iterating over values in a table is 
-to use a :class:`Cursor`.
+the corresponding position. Each table consists of a fixed number of columns, which 
+describe the size and type of the data in the column. The :class:`Column` class 
+has some methods to query these types and sizes, and these are accessed 
+either via the :meth:`Table.columns` method, or the :meth:`Table.get_column`
+method::
+
+    >>> [c.get_name() for c in t.columns()]
+    ['row_id', 'name', 'born', 'writer', 'actor', 'director', 'producer']
+    >>> c = t.get_column("born")
+    >>> (c.get_type_name(), c.get_element_size())
+    ('uint', 2)
+
+This tells us that the ``born`` column holds unsigned integer data with 
+an element size of 2, and so it can store values from 0 to 65534. See 
+:ref:`data-types-index` for details on the various data types 
+and sizes supported by wormtable.
+
+The first column in every wormtable is an unsigned integer column, 
+called ``row_id``. This is the column used to index rows,
+and the size of this column determines the number of rows that can be 
+stored in the table. As a result, we always have ``t[j][0] == j``::
+
+    >>> [t[j][0] for j in range(len(t))]
+    [0, 1, 2, 3, 4, 5]
+
+
+#######
+Cursors
+#######
 
 Suppose we are only interested in the name and the birth year of the pythons. We could 
 do something like::
@@ -104,7 +133,7 @@ do something like::
     >>> [(r[1], r[2]) for r in t]
     [(b'John Cleese', 1939), (b'Terry Gilliam', 1940), (b'Eric Idle', 1943), (b'Terry Jones', 1942), (b'Michael Palin', 1943), (b'Graham Chapman', 1941)]
 
-This is very inefficient, however, if we have a large number of columns, because :mod:`wormtable`
+This is very inefficient if we have a large number of columns, because :mod:`wormtable`
 must build a tuple containing all of the columns in each row, even though most of this will
 not be used. It is also inconvenient: we must remember that the `name` column is in position 
 1, and the `born` column is in position 2. 
@@ -131,15 +160,175 @@ do the following (rows are zero-indexed in wormtable)::
 
 Note here that :meth:`Cursor.set_min` is *inclusive* and :meth:`Cursor.set_max` is *exclusive*.
 
+##############
+Simple Indexes
+##############
+
+Suppose we wished to rank the Monty Python team in terms of writing credits from IMDB. We could
+simply retrieve the columns that we are interested in  and sort them in terms of the ``writer``
+column using the built in :func:`sorted` function. This does not work very well, however, if we
+have millions of rows in our table. It is very slow, and may not even be possible if there are
+too many rows to fit in memory.
+
+An *index* in wormtable is a persistent sorting of a table with respect to a given column
+(or list of columns, as we see in the `Compound Indexes`_ section). Indexes are extremely useful, and 
+can be used to make many different operations more efficient. Each index has a *name*, which 
+is it's unique identifier. Indexes are created using the
+:ref:`wtadmin-index` command line tool. See the documentation for details of how to 
+create indexes on a table.
+
+To open an index on a table, we use the :meth:`Table.open_index`
+method. For example, to open an index called ``writer``, we might use::
+
+    >>> i = t.open_index("writer")
+
+The :meth:`Table.open_index` method is directly analogous to the :func:`open_table` function 
+used to open tables. Indexes should be closed after use, like tables, and also support
+the `context manager <http://www.python.org/dev/peps/pep-0343/>`_ protocol to 
+automatically close indexes::
+
+    with t.open_index("writer") as i:
+        print(i.get_max())
+    # Index i is now closed and cannot be accessed
+
+Indexes sort the *keys* in the columns of interest, and map these keys to the rows
+of the table that they are found. To get the minumum and maximum keys from the
+index, we use the :meth:`Index.get_min` and :meth:`Index.get_max` methods::
+
+    >>> i = t.open_index("writer")
+    >>> (i.get_min(), i.get_max())
+    (25, 60)
+
+This tells us that the least productive Python has 25 writing credits on 
+IMDB, and the most has 60. This does not tell us *who* they are though. To 
+get information about other columns, we must use a :class:`Cursor`::
+
+    >>> for r in t.cursor(["name", "writer"], i):
+    ...     print(r)
+    ... 
+    (b'Terry Gilliam', 25)
+    (b'Eric Idle', 38)
+    (b'Graham Chapman', 46)
+    (b'Terry Jones', 50)
+    (b'Michael Palin', 58)
+    (b'John Cleese', 60)
+
+When we provide an index as the second argument to the :meth:`Table.cursor` method, 
+this defines the *order* in which the rows are returned by the :class:`Cursor`
+object.
+
+If we are only interested in the Pythons who have between 30 (inclusive) and 50 (exclusive)
+writing credits, we can write::
+
+    >>> c = t.cursor(["name", "writer"], i)
+    >>> c.set_min(30)
+    >>> c.set_max(50)
+    >>> for r in c:
+    ...     print(r)
+    ... 
+    (b'Eric Idle', 38)
+    (b'Graham Chapman', 46)
+
+##############
+Index Counters
+##############
+
+To find out the number of rows in a table correspond to a given index key, we use 
+a Counter object. This is closely modelled on a the :class:`collections.Counter`
+class; it is a mapping from keys to the number of rows in the table containing 
+this key. For example, if we make an index on the ``director`` Column::
+
+    >>> i = t.open_index("director")
+    >>> c = i.counter()
+    >>> for k, v in c.items(): 
+    ...     print(k, "->",  v)
+    ... 
+    0 -> 3
+    7 -> 1
+    16 -> 1
+    18 -> 1
+
+This shows that there are 3 Pythons who have directed 0 films,
+and the three others have directed 7, 16 and 18 respectively.
+Counters implement the read-only Python mapping protocol, and so can be treated 
+very much like a dictionary::
+
+    >>> c[0]
+    3
+    >>> c[1]
+    0
+    >>> len(c)
+    4
+
+
+################
+Compound Indexes
+################
+
+Wormtable also supports indexes over more than one column. These differ from simple 
+indexes in that the keys for each index and constructed by concatenating the
+values from the constituent columns, in the order that they are specified. For example, 
+we can make an index on the columns ``director`` and ``producer``, which we call
+``director+producer``::
+
+    >>> i = t.open_index("director+producer")
+    >>> for r in t.cursor(["name", "director", "producer"], i):
+    ...     print(r)
+    ... 
+    (b'Michael Palin', 0, 1)
+    (b'Graham Chapman', 0, 2)
+    (b'John Cleese', 0, 43)
+    (b'Eric Idle', 7, 5)
+    (b'Terry Jones', 16, 1)
+    (b'Terry Gilliam', 18, 8)
+    
+This lists the rows in the order defined by the index. Keys are sorted lexicographically,
+so that we sort on the first column first, and if there are duplicate values for the first
+column we then sort on the second column. Here, for example, we have Michael Palin, Graham 
+Chapman and John Cleese have all directed 0 films. But since this is a compound index, 
+we then sort on the producer column, giving the ordering that we see.
+
+Since keys now contain values from multiple columns, the :meth:`Index.get_min` and 
+:meth:`Index.get_max` now return tuples::
+
+    >>> i.get_min()
+    (0, 1)
+    >>> i.get_max()
+    (18, 8)
+
+These are also more flexible now, however, as we can get the minumum and maximum keys 
+with a given prefix::
+
+    >>> i.get_min(7)
+    (7, 5)
+    >>> i.get_max(0)
+    (0, 43)
+
+The :meth:`Cursor.set_min` and :meth:`Cursor.set_max` methods also support this 
+flexible key prefixing::
+
+    >>> c = t.cursor(["name", "director", "producer"], i)
+    >>> c.set_min(7)
+    >>> [r for r in c]
+    [(b'Eric Idle', 7, 5), (b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
+
+
 .. _api-reference:
 
----------
-Reference
----------
+----------------
+Module reference
+----------------
 
-
+.. module:: wormtable 
+    :platform: Unix
+    :synopsis: Write-once read-many table for large datasets. 
 
 .. autofunction:: open_table
+
+
+####################
+:class:`Table` class
+####################
 
 .. class:: Table
 
@@ -164,10 +353,11 @@ Reference
 
     .. automethod:: get_column
 
-
+#####################
+:class:`Cursor` class
+#####################
 
 .. class:: Cursor
-
 
     Cursors provide an efficient means of iterating over the rows in a table, 
     retreiving a subset of the columns in the row. This is much more efficient 
@@ -183,6 +373,10 @@ Reference
     .. automethod:: Cursor.set_min
 
     .. automethod:: Cursor.set_max
+
+####################
+:class:`Index` class
+####################
 
 .. class:: Index
 
@@ -201,12 +395,23 @@ Reference
 
     .. automethod:: Index.counter
 
+#####################
+:class:`Column` class
+#####################
 
 .. class:: Column
     
     Columns define the storage types for values within a table.
 
     .. automethod:: get_name 
+    
+    .. automethod:: get_description
 
+    .. automethod:: get_type
 
+    .. automethod:: get_type_name
+
+    .. automethod:: get_element_size
+    
+    .. automethod:: get_num_elements
 
