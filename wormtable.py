@@ -44,6 +44,7 @@ INDEX_METADATA_VERSION = "0.1"
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
 
+
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
 WT_FLOAT = _wormtable.WT_FLOAT
@@ -108,19 +109,22 @@ class Column(object):
 
     def get_name(self):
         """
-        Returns the name of this column.
+        Returns the name of this column. This is the unique identifier for 
+        a column.
         """
         return self.__ll_object.name.decode()
    
     def get_description(self):
         """
-        Returns the description of this column.
+        Returns the description of this column. This is an optional string 
+        describing the purpose of a column.
         """
         return self.__ll_object.description.decode()
     
     def get_type(self):
         """
-        Returns the type code for this column.
+        Returns the type code for this column. This is 
+        one of WT_INT,  WT_UINT, WT_FLOAT or  WT_CHAR.
         """
         return self.__ll_object.element_type
 
@@ -138,8 +142,10 @@ class Column(object):
 
     def get_num_elements(self):
         """
-        Returns the number of elements in this column; 0 means the number 
-        of elements is variable.
+        Returns the number of elements in this column. This is either a 
+        positive integer >= 1 or WT_VAR1. If the number of elements 
+        is WT_VAR1, the number of elements in the column is variable,
+        from 0 to 255.
         """
         return self.__ll_object.num_elements
   
@@ -728,11 +734,13 @@ class Table(Database):
         the specified cache_size.
         
         See :ref:`performance-cache` for details on setting cache sizes. 
+        The cache size may be either an integer specifying the size in 
+        bytes or a string with the optional suffixes K, M or G.
 
         :param index_name: the name of the index to open
         :type index_name: str
         :param cache_size: the size of the cache on the index
-        :type cache_size: str or int. 
+        :type cache_size: str or int. See :meth:`Table.set_cache_size` for details.  
         """
         self.verify_open(WT_READ)
         index = Index(self, index_name) 
@@ -909,8 +917,11 @@ class Index(Database):
         high-level equivalent.
         """
         ret = v
-        if len(v) == 1:
-            ret = v[0]
+        cols = self.__key_columns
+        if len(cols) == 1:
+            c = cols[0]
+            if c.get_num_elements() == 1 or c.get_type() == WT_CHAR:
+                ret = v[0]
         return ret
 
     def get_min(self, *k):
