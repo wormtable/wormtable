@@ -49,7 +49,7 @@ class ProgramRunner(object):
         Initialises the instance variables in this runner object.
         """
         if not self._table.exists():
-            self.error("Table '{0}' not found".format(homedir))
+            self.error("Table '{0}' not found".format(self._homedir))
         self._table.set_cache_size(self._cache_size)
         self._table.open("r")
 
