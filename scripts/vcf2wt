@@ -226,8 +226,9 @@ class VCFReader(object):
             element_type = wt.WT_FLOAT
             element_size = 4
         elif st == FLAG: 
-            element_type = wt.WT_INT
+            element_type = wt.WT_UINT
             element_size = 1
+            num_elements = 1
         elif st == CHARACTER: 
             element_type = wt.WT_CHAR
             element_size = 1
