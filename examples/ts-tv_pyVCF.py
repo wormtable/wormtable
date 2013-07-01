@@ -1,18 +1,18 @@
-# """
-# Count numbers of transitions and transversions
-# Usage: ts_tv.py [OPTIONS] homedir
-# """
-# 
-# from __future__ import print_function
-# from __future__ import division
+"""
+Count numbers of transitions and transversions
+Usage: ts_tv.py [OPTIONS] homedir
+"""
+
+from __future__ import print_function
+from __future__ import division
 
 import sys, vcf
 
 
 def count_Ts_Tv(vcf_file):
-	# """ 
-	# Count number of of transitions and transversions across an entire VCF
-	# """
+	""" 
+	Count number of of transitions and transversions across an entire VCF
+	"""
 	bases = {'A':'purine', 'G':'purine', 'C':'pyrimidine', 'T':'pyrimidine'}
 	vcf_reader = vcf.Reader(filename=vcf_file)
 	Ts, Tv = 0, 0
