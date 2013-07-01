@@ -22,26 +22,28 @@ dump values and add, remove and view indexes.
 Documentation
 -------------
 
-Here's a quick example for the impatient::
-
-        import wormtable as wt 
-        with wt.open_table("example.wt") as t:
-	    c = t.cursor("POS", "ALT", "REF")
-	    for pos, alt, ref in c:
-	    	print(pos, ":", alt, ":", ref)
-
-Full documentation for ``wormtable`` is available at `<http://jeromekelleher.github.com/wormtable>`_.
+Full documentation for ``wormtable`` is available at `<http://jeromekelleher.github.io/wormtable>`_.
 
 ------------
 Installation
 ------------
 
-Wormtable requires Berkeley DB, which is available for all major platforms.  
-Any recent version of Berkeley DB should work, but the various versions 
-have not been tested extensively. Development and testing have been 
-carried out primarily on the DB 4.x series.
+*******************************
+Quick install for Debian/Ubuntu
+*******************************
 
-Once DB has been installed (see below) we can build the ``wormtable`` module using the 
+If you are running Debian or Ubuntu, this should get you up and running quickly::
+
+        $ sudo apt-get install python-dev libdb-dev
+        $ sudo pip install wormtable
+
+For Python 3, use ``python3-dev`` and ``pip3``.
+
+********************
+General instructions
+********************
+
+Once Berkeley DB has been installed (see below) we can build the ``wormtable`` module using the 
 standard Python `methods <http://docs.python.org/install/index.html>`_. For 
 example, using pip we have ::
         
@@ -57,16 +59,34 @@ Most of the time this will compile and install the module without difficulty.
 It is also possible to download the latest development version of 
 ``wormtable`` from `github <https://github.com/jeromekelleher/wormtable>`_. 
 
+
+**************
+Python 2.6/3.1
+**************
+
+Wormtable requires the ``argparse`` package, which was introduced to the 
+standard library for version 3.2 (it is also included in 2.7). For users 
+of older Python versions, the ``argparse`` module must be installed for 
+the command line utilities to work::
+
+        $ sudo pip install argparse 
+
+This is not necessary for recent versions of Python.
+
 ----------------------
 Installing Berkeley DB
 ----------------------
 
+Wormtable requires Berkeley DB, which is available for all major platforms.  
+Any recent version of Berkeley DB should work, but the various versions 
+have not been tested extensively. Development and testing have been 
+carried out primarily on the DB 4.x series.
+
 *****
 Linux
 *****
-Wormtable is primarily developed on Linux and should work very well on any 
-modern Linux distribution. Installing Berkeley DB is very easy on Linux 
-distributions. 
+
+Installing Berkeley DB is very easy on Linux distributions. 
 
 On Debian/Ubuntu use::
 
@@ -111,7 +131,9 @@ might use::
 Mac OS X
 ********
 
-Berkeley DB can be installed from source on a mac, via macports or via homebrew
+Berkeley DB can be installed from source on a mac, via 
+`macports <https://www.macports.org/>`_ or 
+`homebrew <http://mxcl.github.io/homebrew/>`_.
 
 For MacPorts, to install e.g. v5.3 ::
 

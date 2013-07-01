@@ -1,7 +1,7 @@
 #!python
 
 # 
-# Copyright (C) 2013 Jerome Kelleher <jerome.kelleher@ed.ac.uk>
+# Copyright (C) 2013 by the Wormtable team, see AUTHORS.txt.
 #
 # This file is part of wormtable.
 # 
@@ -49,7 +49,7 @@ class ProgramRunner(object):
         Initialises the instance variables in this runner object.
         """
         if not self._table.exists():
-            self.error("Table '{0}' not found".format(homedir))
+            self.error("Table '{0}' not found".format(self._homedir))
         self._table.set_cache_size(self._cache_size)
         self._table.open("r")
 
