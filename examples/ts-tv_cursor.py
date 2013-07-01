@@ -19,8 +19,6 @@ def count_Ts_Tv(homedir):
 	t = wt.open_table(homedir)
 	i = t.open_index("CHROM+POS")
 	c = t.cursor(["REF","ALT"], i)
-	# c.set_min(i.get_min())
-	# c.set_max(i.get_max())
 	Ts, Tv = 0, 0
 	for row in c:
 		if str(row[0]) in bases.keys() and \
