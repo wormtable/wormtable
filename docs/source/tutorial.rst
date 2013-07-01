@@ -32,117 +32,10 @@ consult the full specifications of a VCF file on the `1000 genomes website
 Installation
 ------------
 
-Wormtable requires Berkeley DB, which is available for all major platforms. Any 
-recent version of Berkeley DB should work, but the various versions but we 
-recommend using the DB 4.x series. Below we provide
+Before you get started make sure you have installed Berkeley DB and then 
+Wormtable. For more details see the `installation instructions 
+<https://pypi.python.org/pypi/wormtable>`_.
 
-Installing Berkeley DB
-----------------------
-
-
-Linux
-*****
-Wormtable is primarily developed on Linux and should work very well on any
-modern Linux distribution. Installing Berkeley DB is very easy on Linux
-distributions.
-
-On Debian/Ubuntu use::
-
-	   $ sudo apt-get install libdb-dev
-
-and on Red Hat/Fedora use::
-
-	   # yum install db4-devel
-
-Other distributions and package managers should provide a similarly easy
-option to install the DB development files.
-
-Other Platforms
-***************
-
-On platforms that Berkeley DB is not available as part of the native packaging
-system (or DB was installed locally because of non-root access)
-there can be issues with finding the correct headers and libraries
-when compiling ``wormtable``. For example, on FreeBSD we get something
-like this::
-
-	   $ python setup.py build
-	   ... [Messages cut for brevity] ...
-	   _wormtablemodule.c:3727: error: 'DB_NEXT_NODUP' undeclared (first 
-use in this function)
-	   _wormtablemodule.c:3733: error: 'DB_NOTFOUND' undeclared (first use 
-in this function)
-	   _wormtablemodule.c:3739: error: 'DistinctValueIterator' has no 
-member named 'cursor'
-	   _wormtablemodule.c:3739: error: 'DistinctValueIterator' has no 
-member named 'cursor'
-	   _wormtablemodule.c:3740: error: 'DistinctValueIterator' has no 
-member named 'cursor'
-	   error: command 'cc' failed with exit status 1
-
-To remedy this we must set the
-``LDFLAGS`` and ``CFLAGS`` environment variables to
-their correct values. Unfortunately there is no simple method to do this
-and some knowledge of where your system keeps headers and libraries
-is needed.  On FreeBSD (after installing the ``db48`` package as above) we
-might use::
-	  
-	    $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 
-python setup.py build
-
-Mac OS X
-********
-
-Berkeley DB can be installed from source on a mac, via macports or via homebrew
-
-For MacPorts, to install e.g. v5.3 ::
-
-    $ sudo port install db53
-   
-for more details of Berkely DB versions, see `here 
-<https://www.macports.org/ports.php?by=category&substr=databases>`_.
-
-Assuming Berkeley DB is installed with macports then we need to set the CFLAGS 
-and LDFLAGS environment variables to use the headers and libraries in /opt::
- 
-    $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python 
-setup.py build
-    $ sudo python setup.py install
-
-
-Unix
-*****
-
-Most Unix systems provide Berkeley DB packages. For example, on FreeBSD
-we have::
-
-    # pkg_add -r db48
-
-If necessary, Berkeley DB can be built from source and installed manually quite
-easily.
-
-
-Installing wormtable
-----------------------
-
-Once Berkeley DB has been installed we can build and install the ``wormtable`` 
-module using the
-standard Python `methods <http://docs.python.org/install/index.html>`_. For
-example, using pip we have ::
-	  
-	   $ sudo pip install wormtable
-
-Or, we can manually download the package, unpack it and then run::
-	  
-	   $ python setup.py build
-	   $ sudo python setup.py install
-
-Most of the time this will compile and install the module without difficulty.
-
-It is also possible to download the latest development version of
-``wormtable`` from `github <https://github.com/jeromekelleher/wormtable>`_.
-
- 
 ---------------------------------
 Convert a VCF to Wormtable format
 ---------------------------------
@@ -156,18 +49,16 @@ after the utility ::
 
 Building a wormtable from a vcf file is easy using this command ::
 
-	$ vcf2wt sample.vcf sample_DB/
+	$ vcf2wt sample.vcf sample_wt/
 
-In this command the VCF file called sample.vcf is read into a DB in the folder 
-sample_DB. If the folder already exists you will have to use the "--force" (or 
--f) argument to tell vcf2wt to overwrite the old DB::
+In this command the VCF file called sample.vcf is read into a wormtable in the 
+folder 
+sample_wt. If the folder already exists you will have to use the "--force" (or 
+-f) argument to tell vcf2wt to overwrite the old wormtable::
 
-	$ vcf2wt -f sample.vcf sample_DB/
+	$ vcf2wt -f sample.vcf sample_wt/
 
-The --progress (or -p) will keep you informed of the progress of the DB 
-construction which will be helpful when monitoring larger jobs::
-
-	$ vcf2wt -f -p sample.vcf sample_DB/
+Something about the cache
 
 
 ---------------------------------
@@ -191,38 +82,38 @@ indexed (wtadmin ls). If we want to access the rows of our table according to
 their position in the genome we need to index the position column called 
 "*POS*"::
 
-	$ wtadmin add sample_DB/ POS
+	$ wtadmin add sample_wt/ POS
 
-Here the "sample_DB" is the homedirectory which contains our wormtable and POS 
+Here the "sample_wt" is the homedirectory which contains our wormtable and POS 
 is the name of the column for which we built an index. If you want to list the 
 columns that are available to index use ::
 
- 	$ wtadmin show sample_DB/
+ 	$ wtadmin show sample_wt/
 
 Now that we have our wormtable built and POS indexed we can use python to 
 interact with our new wormtable and index ::
 
 	$ python
-	import wormtable
+	>>> import wormtable
 
-	# We can open the wormtable using the open_table function
-	t = wormtable.open_table('sample_DB/')
+	>>> # We can open the wormtable using the open_table function
+	>>> t = wormtable.open_table('sample_wt/')
 
-	# Open the index that was built using wtadmin (see above)
-	position_index = t.open_index('POS')
+	>>> # Open the index that was built using wtadmin (see above)
+	>>> position_index = t.open_index('POS')
 
 
 Note that if you have not already added the index using wtadmin add you won't 
 be able to open the index in python. The Wormtable module offers a number of 
 methods to interact with the data in your wormtable ::
 
-	#print the minimum and maximum value of a index column
-	position_index.get_min()
-	position_index.get_max()
+	>>> #print the minimum and maximum value of a index column
+	>>> position_index.get_min()
+	>>> position_index.get_max()
 	
-	#keys() returns an iterator to allow you to go through every value in 
-your index in order.
-	all_keys = [i for i in position_index.keys()]
+	>>> #keys() returns an iterator to allow you to go through every value 
+in your index in order.
+	>>> all_keys = [i for i in position_index.keys()]
 
 Another convenient feature is the "cursor", which allows us to retrieve 
 information from any column of our wormtable based on the values in our indexed 
@@ -230,21 +121,21 @@ column. In this case, because we indexed the genomic position 'POS' we can
 return the reference nucleotide (the REF column) from the rows in a particular 
 genomic window ::
 
-	c = t.cursor(["REF"],position_index)
+	>>> c = t.cursor(["REF"],position_index)
 
 The names of the columns we want to retrieve are passed to the cursor as a 
 list. We can set the minimum and maximum values for which the cursor will 
 return columns ::
 
-  c.set_min(8000000)
-  c.set_max(8000500)
+	>>> c.set_min(8000000)
+	>>> c.set_max(8000500)
 
 Now we can iterate through the *REF* columns from genomic positions with *POS* 
 values between 8000000 and 8000500 ::
 
-  for p in c:
-      print p[0] #Note by default the cursor will return a tuple so take the 
-first element returns a string 
+	>>> for p in c:
+	>>> 	print p[0] #Note by default the cursor will return a tuple so 
+take the first element returns a string 
 
 However, you may have noticed this example isn't quite right. The *POS* column 
 does not necessarily identify a single position in the genome because multiple 
@@ -255,7 +146,7 @@ example we can make a compound index of chromosome (*CHROM*) and position
 (*POS*) to retrieve unique genomic positions. To add a compound column we can 
 again use the wtadmin utility ::
 
-	wtadmin add sample_DB CHROM+POS
+	$ wtadmin add sample_wt CHROM+POS
 
 Note that in this case the names of multiple columns are joined using "+" which 
 indicates to wtadmin to make a compound index. It is important to realise that 
@@ -263,14 +154,14 @@ the order that the columns are listed matters. CHROM+POS does not equal
 POS+CHROM. With this new compound column we can specify a region of the genome 
 unambiguously ::
 
-	import wormtable
-	t = wormtable.open_table('sample_DB')
-	chrompos_index = t.open_index('CHROM+POS')
-	c = t.cursor(["REF"],chrompos_index)
-	c.set_min('1',8000000)
-	c.set_max('1',8000500)
-	for p in c:
-		print p[0]
+	>>> import wormtable
+	>>> t = wormtable.open_table('sample_wt')
+	>>> chrompos_index = t.open_index('CHROM+POS')
+	>>> c = t.cursor(["REF"],chrompos_index)
+	>>> c.set_min('1',8000000)
+	>>> c.set_max('1',8000500)
+	>>> for p in c:
+	>>> 	print p[0]
 
 -----------------
 Using the Counter 
@@ -281,9 +172,9 @@ object where the keys are index values which refer to the number of times that
 index occurs. For example, we can quickly and efficiently calculate the 
 fraction of reference sites that are G or C (the GC content) ::
 
-	ref_index = t.open_index('REF')
-	ref_counts = ref_index.counter()
-	GC_content = float(ref_counts['G'] + ref_counts['C']) / 
+	>>> ref_index = t.open_index('REF')
+	>>> ref_counts = ref_index.counter()
+	>>> GC_content = float(ref_counts['G'] + ref_counts['C']) / 
 (ref_counts['T'] + ref_counts['A'] + ref_counts['G'] + ref_counts['C'])
 
 ----------------------------------
@@ -297,18 +188,18 @@ more) and you may not want to discern between sites with quality of 50.1 from
 sites with quality of 50.2. Using wtadmin you can index a column binning 
 indexes into equal sized bins like this ::
 
-	$ wtadmin add sample_DB/ QUAL[5]
+	$ wtadmin add sample_wt/ QUAL[5]
 
 This will make a new index on QUAL where all the QUAL values are grouped into 
 bins of width 5. We can then use this binned index interact with our wormtable 
 ::
 
-	qual_5_index = t.open_index('QUAL[5]')
-	# We can print the number of rows with QUAL scores between 0 and 100 
-using the counter function with our binned index
-	qual_5_counter = qual_5_index.counter()
-	for quality in range(0,101,5):
-		print q, qual_5_counter[q]
+	>>> qual_5_index = t.open_index('QUAL[5]')
+	>>> # We can print the number of rows with QUAL scores between 0 and 
+100 using the counter function with our binned index
+	>>> qual_5_counter = qual_5_index.counter()
+	>>> for quality in range(0,101,5):
+	>>> 	print q, qual_5_counter[q]
 
 
 
@@ -330,7 +221,7 @@ This script will take the name of any wormtable home directory and column which
 has been indexed and print each distinct value in that column and the number of 
 times it occurs ::
 
-	$ python count-distinct.py sample_DB/ REF
+	$ python count-distinct.py sample_wt/ REF
 
 Transition-Transversion ratio - *ts-tv.py*
 -------------------------------------------------
@@ -339,9 +230,9 @@ nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T)
 and transversions (A/G<->C/T). Using the counter feature this task can be very 
 fast with Wormtable ::
 
-	$ wtadmin add sample_DB/ REF+ALT #use this only if the REF+ALT index 
+	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index 
 does not already exist. 
-	$ python ts-tv.py sample_DB/
+	$ python ts-tv.py sample_wt/
 
 High Quality SNPs - *hq-snps.py*
 -------------------------------------------------
@@ -350,9 +241,9 @@ that have a quality score over a particular minimum threshold. This script uses
 a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) 
 ::
 
-	$ wtadmin add sample_DB QUAL[1] #use this only if the QUAL[1] index 
+	$ wtadmin add sample_wt QUAL[1] #use this only if the QUAL[1] index 
 does not already exist.
-	$ python hq-snps.py -q 30 sample_DB/
+	$ python hq-snps.py -q 30 sample_wt/
 
 Sliding window analysis of Genetic Diversity - *sliding-window.py*
 --------------------------------------------------------------------------------
