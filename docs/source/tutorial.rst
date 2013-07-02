@@ -33,7 +33,6 @@ VCF available from BLAH `sample.vcf.gz <http://sample.vcf.gz>`_.
 ------------
 Installation
 ------------
-
 Before you get started make sure you have installed Berkeley DB and then 
 Wormtable. For more details see the `installation instructions 
 <https://pypi.python.org/pypi/wormtable>`_.
@@ -41,28 +40,25 @@ Wormtable. For more details see the `installation instructions
 ---------------------------------
 Convert a VCF to Wormtable format
 ---------------------------------
-
 To convert a standard VCF file to Wormtable format use the provided utility 
 "vcf2wt". Like other utilities provided with Wormtable the description of 
 command line options and arguments can be displayed by adding the "--help" flag 
-after the utility ::
+after the utility::
 
 	$ vcf2wt --help
 
-Building a wormtable from a vcf file is easy using this command ::
+Building a wormtable from a vcf file is easy::
 
 	$ vcf2wt sample.vcf sample_wt
 
-In this command the VCF file called sample.vcf is read into a wormtable in the 
-folder sample_wt. If the folder already exists you will have to use the 
+In this command the VCF file (sample.vcf) converted into a wormtable stored in 
+the directory sample_wt. If the directory already exists you will have to use the 
 "--force" (or -f) argument to tell vcf2wt to overwrite the old wormtable::
 
 	$ vcf2wt -f sample.vcf sample_wt
 
-----------------------
 Setting the cache size
 ----------------------
-
 You can greatly increase the performance of Wormtable by tweaking the cache size 
 parameter. The cache size determines how much of the table is held in memory. In 
 general the more RAM you give the process the better it will perform. As as a 
@@ -76,21 +72,20 @@ components. To alter the cache size while making your wormtable use the
 -----------------
 Building an index
 -----------------
-
 At this point the vcf has been converted into a wormtable but in order to work 
-with it, it is necessary to 'index' the columns that you are interested in. These
-indexes provide a way to quickly and efficiently access information 
-from the wormtable based on the values in the indexed column. 
+with it, it is necessary to 'index' the columns that you are interested in.
+Indexes provide a way to quickly and efficiently access information 
+from the wormtable based on the values in a column. 
 
 In the following example, we'll demonstrate how it is possible to access the 
 DNA sequence of the reference genome (which is stored in the "*REF*" column) 
 for different positions in the genome by creating an index on genomic position.
 Adding an index for a column can be accomlished with the wtadmin utility. In
-our examples, to index the position column called "*POS*" we use::
+our example, to index the position column called "*POS*" we use::
 
-	$ wtadmin add sample_wt/ POS
+	$ wtadmin add sample_wt POS
 
-Here the "sample_wt" is the "home directory" which contains our wormtable and POS 
+Here, sample_wt is the "home directory" which contains our wormtable and POS 
 is the name of the column to be indexed. This utility also allows us to remove 
 indexes (wtadmin rm) or list the columns already indexed (wtadmin ls).
 If you want to list the columns that are available to index use ::
@@ -101,12 +96,11 @@ Similar to the cache size when building our wormtable, we can set the cache size
 when building an index. A large cache size can reduce the time it takes to 
 build an index ::
 
-	$ wtadmin add --index-cache-size 4G sample_wt/ REF 
+	$ wtadmin add --index-cache-size 4G sample_wt REF 
 
 --------------
 Using an index
 --------------
-
 Now that we have built our wormtable and indexed on POS we can use python to 
 interact with our new wormtable and index::
 
@@ -120,13 +114,13 @@ interact with our new wormtable and index::
 	>>> position_index = t.open_index('POS')
 
 Note that if you have not already added the index using wtadmin add you will not 
-be able to open the index in python. Also, worth noting is that like cache sizes 
+be able to open the index in python. Also, worth noting is that, like cache sizes,
 when building tables or adding indexes we can assign memory to both the table 
 and index when we open them by including the cache size as a second argument in 
-opentable() or open_index(). For more details read 
+opentable() or open_index(). For more details see 
 `Performance tuning <http://jeromekelleher.github.io/wormtable/performance.html>`_. 
 
-The Wormtable module offers a number of methods to interact with an index::
+The Wormtable python module offers a number of methods to interact with an index::
 
 	>>> # Print the minimum and maximum value of an index
 	>>> position_index.get_min()
@@ -138,7 +132,6 @@ The Wormtable module offers a number of methods to interact with an index::
 --------------
 Using a cursor
 --------------
-
 Another convenient feature provided by the wormtable python module is the 
 "cursor", which allows us to retrieve information from any column of our 
 wormtable for ranges of values from our indexed column. In our case, we will 
@@ -146,7 +139,7 @@ create a cursor to return the REF column for specific genomic positions ::
 
 	>>> c = t.cursor(["REF"], position_index)
 
-Note that since we can retrieve informatino from multiple columns, the names 
+Note that since we can retrieve information from multiple columns, the names 
 of the columns we want to retrieve are passed to the cursor as a list. 
 
 We can set the minimum and maximum values for which the cursor will return 
@@ -170,10 +163,10 @@ print the the first element.
 Creating compound indexes
 -------------------------
 
-With multiple chromsomes, the example given above will fail because the *POS* 
+With multiple chromsomes, the example above will fail because the *POS* 
 column does not necessarily identify a single position. As a result our cursor 
-will iterate over positions mathing the range specified from any chromosome.
-To deal with this we can can make compound indexes. Compound indexes allow 
+will iterate over positions matching the range specified from multiple 
+chromosomes. To deal with this we can can make compound indexes. Compound indexes allow 
 the user identify all combinations of multiple columns from the wormtable. For 
 example we can make a compound index of chromosome (*CHROM*) and position 
 (*POS*) to retrieve unique genomic positions. To add a compound column we can 
@@ -183,10 +176,10 @@ again use the wtadmin utility ::
 
 Note that in this case the names of multiple columns are joined using "+" which 
 indicates to wtadmin to make a compound index. It is important to realise that 
-the order that the columns are listed matters. CHROM+POS does not equal 
-POS+CHROM. With this new compound column we can specify a region of the genome 
+the order that the columns are listed matters (CHROM+POS does not equal 
+POS+CHROM). With this new compound column we can specify a region of the genome 
 (chromosome 1, positions 8000000 to 8000500) unambiguously and iterate 
-through rows in this range::
+through rows in this region::
 
 	>>> import wormtable
 	>>> t = wormtable.open_table('sample_wt')
@@ -200,7 +193,6 @@ through rows in this range::
 -----------------
 Using the counter
 -----------------
-
 Another useful feature of Wormtable is the ability to count the number of items 
 matching unique keys in an index. The counter is a dictionary-like 
 object where the keys are index values which refer to the number of times that 
