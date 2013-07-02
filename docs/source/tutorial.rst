@@ -42,7 +42,7 @@ Wormtable. For more details see the `installation instructions
 Convert a VCF to Wormtable format
 ---------------------------------
 
-To convert a standard VCF file to WormTable format use the provided utility 
+To convert a standard VCF file to Wormtable format use the provided utility 
 "vcf2wt". Like other utilities provided with Wormtable the description of 
 command line options and arguments can be displayed by adding the "--help" flag 
 after the utility ::
@@ -63,9 +63,9 @@ For more details on the usage of vcf2wt see section BLAH.
 Something about the cache [Dan: save this till later?]
 
 
----------------------------------
+-----------------
 Building an index
----------------------------------
+-----------------
 
 At this point the vcf has been converted into a wormtable but in order to work 
 with it, it is necessary to 'index' the columns that you are interested in. These
@@ -89,8 +89,12 @@ columns that are available to index use ::
 
  	$ wtadmin show sample_wt
 
-Now that we have our wormtable built and POS indexed we can use python to 
-interact with our new wormtable and index ::
+--------------
+Using an index
+--------------
+
+Now that we have built our wormtable and indexed on POS we can use python to 
+interact with our new wormtable and index::
 
 	$ python
 	>>> import wormtable
@@ -100,10 +104,6 @@ interact with our new wormtable and index ::
 
 	>>> # Open the index that was built using wtadmin (see above)
 	>>> position_index = t.open_index('POS')
-
-
-Note that if you have not already added the index using wtadmin add you won't be 
-able to open the index in python. 
 
 The Wormtable module offers a number of methods to interact with the data in 
 your wormtable ::
@@ -115,30 +115,45 @@ your wormtable ::
 	>>> # Use keys() to iterate through sorted value in the index
 	>>> all_keys = [i for i in position_index.keys()]
 
-Another convenient feature is the "cursor", which allows us to retrieve 
-information from any column of our wormtable over ranges of values from our 
-indexed column. In our case, we will create a cursor to return the REF column 
-indexed by genomic position ::
+--------------
+Using a cursor
+--------------
+
+Another convenient feature provided by the wormtable python module is the 
+"cursor", which allows us to retrieve information from any column of our 
+wormtable for ranges of values from our indexed column. In our case, we will 
+create a cursor to return the REF column for specific genomic positions ::
 
 	>>> c = t.cursor(["REF"], position_index)
 
-The names of the columns we want to retrieve are passed to the cursor as a list. 
+Note that since we can retrieve informatino from multiple columns, the names 
+of the columns we want to retrieve are passed to the cursor as a list. 
+
 We can set the minimum and maximum values for which the cursor will return 
-columns ::
+columns::
 
 	>>> c.set_min(8000000)
 	>>> c.set_max(8000500)
 
-Now we can iterate through the *REF* columns from genomic positions with *POS* 
-values between 8000000 and 8000500 ::
+and then iterate through positions in this range (8000000-8000500), returning 
+the *REF* column for each row of the table::
 
 	>>> for p in c:
-	>>> 	print p[0] # By default the cursor will return a tuple so take the first element returns a string 
+	>>> 	print p[0] 
+	
+Note that by default the cursor will return a tuple and we just
+print the the first element. 
 
-However, you may have noticed this example isn't quite right. The *POS* column 
-does not necessarily identify a single position in the genome because multiple 
-chromosomes will have the same position. To deal with this we can can make 
-compound indexes, another powerful feature of Wormtable. Compound indexes allow 
+[Dan: Add something here about inclusive/excludive starts / ends]
+
+-------------------------
+Creating compound indexes
+-------------------------
+
+With multiple chromsomes, the example given above will fail because the *POS* 
+column does not necessarily identify a single position. As a result our cursor 
+will iterate over positions mathing the range specified from any chromosome.
+To deal with this we can can make compound indexes. Compound indexes allow 
 the user identify all combinations of multiple columns from the wormtable. For 
 example we can make a compound index of chromosome (*CHROM*) and position 
 (*POS*) to retrieve unique genomic positions. To add a compound column we can 
@@ -150,7 +165,8 @@ Note that in this case the names of multiple columns are joined using "+" which
 indicates to wtadmin to make a compound index. It is important to realise that 
 the order that the columns are listed matters. CHROM+POS does not equal 
 POS+CHROM. With this new compound column we can specify a region of the genome 
-unambiguously ::
+(chromosome 1, positions 8000000 to 8000500) unambiguously and iterate 
+through rows in this range::
 
 	>>> import wormtable
 	>>> t = wormtable.open_table('sample_wt')
@@ -162,21 +178,29 @@ unambiguously ::
 	>>> 	print p[0]
 
 -----------------
-Using the Counter
+Using the counter
 -----------------
-Another useful feature of Wormtable is that the number of times a particular 
-index value occurs is simple to retrieve. The counter is a dictionary-like 
+
+Another useful feature of Wormtable is the ability to count the number of items 
+matching unique keys in an index. The counter is a dictionary-like 
 object where the keys are index values which refer to the number of times that 
 index occurs. For example, we can quickly and efficiently calculate the 
-fraction of reference sites that are G or C (the GC content) ::
+fraction of reference sites that are G or C (the GC content) by first creating
+an index on the *REF* column::
+
+	$ wtadmin add sample_wt REF
+
+Then in python:
 
 	>>> ref_index = t.open_index('REF')
 	>>> ref_counts = ref_index.counter()
-	>>> GC_content = float(ref_counts['G'] + ref_counts['C']) / (ref_counts['T'] + ref_counts['A'] + ref_counts['G'] + ref_counts['C'])
+	>>> gc = ref_counts['G'] + ref_counts['C'])
+	>>> tot = gc + ref_counts['T'] + ref_counts['A']
+	>>> gc / tot
 
-----------------------------------
+--------------------
 Using binned indexes
-----------------------------------
+--------------------
 Some columns in a VCF contain floats and can therefore have a huge number of 
 distinct values. In these cases it may be useful to condense similar values 
 into 'binned' indexes. For example, in a VCF the column which records the 
@@ -224,7 +248,8 @@ nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T)
 and transversions (A/G<->C/T). Using the counter feature this task can be very 
 fast with Wormtable ::
 
-	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist. 	$ python ts-tv.py sample_wt/
+	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist. 	
+	$ python ts-tv.py sample_wt/
 
 High Quality SNPs - *hq-snps.py*
 --------------------------------
