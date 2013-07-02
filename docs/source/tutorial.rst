@@ -30,6 +30,9 @@ the full specifications of a VCF file on the `1000 genomes website
 In the following examples we will be working with a small ~15,000 line sample 
 VCF available from BLAH `sample.vcf.gz <http://sample.vcf.gz>`_.
 
+Throughout this tutorial code lines beginning `$` imply a bash shell and 
+`>>>` imply a python shell.
+
 ------------
 Installation
 ------------
@@ -52,7 +55,8 @@ Building a wormtable from a vcf file is easy::
 	$ vcf2wt sample.vcf sample_wt
 
 In this command the VCF file (sample.vcf) converted into a wormtable stored in 
-the directory sample_wt. If the directory already exists you will have to use the "--force" (or -f) argument to tell vcf2wt to overwrite the old wormtable::
+the directory sample_wt. If the directory already exists you will have to use 
+the "--force" (or -f) argument to tell vcf2wt to overwrite the old wormtable::
 
 	$ vcf2wt -f sample.vcf sample_wt
 
@@ -66,7 +70,7 @@ will return to the issue of cache size as it can affect a number of performance
 components. To alter the cache size while making your wormtable use the 
 --cache-size (-c) option ::
 
-	$ vcf2wt -f -c 4G sample.vcf sample_wt/
+	$ vcf2wt -f -c 4G sample.vcf sample_wt
 
 -----------------
 Building an index
@@ -100,17 +104,15 @@ build an index ::
 --------------
 Using an index
 --------------
-Now that we have built our wormtable and indexed on POS we can use python to 
-interact with our new wormtable and index::
+Now that we have built our wormtable and indexed on POS we can use the python 
+wormtable module (within an interactive python shell) to interact with our new 
+wormtable and index::
 
-	$ python
 	>>> import wormtable
-
 	>>> # Open the wormtable using the open_table function
-	>>> t = wormtable.open_table('sample_wt')
-
+	>>> table = wormtable.open_table('sample_wt')
 	>>> # Open the index that was built using wtadmin (see above)
-	>>> position_index = t.open_index('POS')
+	>>> position_index = table.open_index('POS')
 
 Note that if you have not already added the index using wtadmin add you will not 
 be able to open the index in python. Also, worth noting is that, like cache sizes,
@@ -124,7 +126,6 @@ The Wormtable python module offers a number of methods to interact with an index
 	>>> # Print the minimum and maximum value of an index
 	>>> position_index.get_min()
 	>>> position_index.get_max()
-	
 	>>> # Use keys() to iterate through sorted value in the index
 	>>> all_keys = [i for i in position_index.keys()]
 
@@ -158,19 +159,22 @@ print the the first element.
 
 [Dan: Add something here about inclusive/excludive starts / ends]
 [Rob: I am not sure what you mean - like 1:100 includes 1 but not 100?]
+[Dan: Jerome will need to clear this up but I think that if you do
+set_max(100), then 100 will not be included. There is also some complication
+about how this then functions with binned indexes. Perhaps we should just
+refer to other documentation at this point.]
 
 -------------------------
 Creating compound indexes
 -------------------------
-
 With multiple chromsomes, the example above will fail because the *POS* 
 column does not necessarily identify a single position. As a result our cursor 
 will iterate over positions matching the range specified from multiple 
-chromosomes. To deal with this we can can make compound indexes. Compound indexes allow 
-the user identify all combinations of multiple columns from the wormtable. For 
-example we can make a compound index of chromosome (*CHROM*) and position 
-(*POS*) to retrieve unique genomic positions. To add a compound column we can 
-again use the wtadmin utility ::
+chromosomes. To deal with this we can can make compound indexes. Compound 
+indexes allow the user identify all combinations of multiple columns from the 
+wormtable. For example we can make a compound index of chromosome (*CHROM*) and 
+position (*POS*) to retrieve unique genomic positions. To add a compound column 
+we can again use the wtadmin utility ::
 
 	$ wtadmin add sample_wt CHROM+POS
 
@@ -179,16 +183,19 @@ indicates to wtadmin to make a compound index. It is important to realise that
 the order that the columns are listed matters (CHROM+POS does not equal 
 POS+CHROM). With this new compound column we can specify a region of the genome 
 (chromosome 1, positions 8000000 to 8000500) unambiguously and iterate 
-through rows in this region::
+through rows in this region, printing CHROM, POS and REF for each::
 
 	>>> import wormtable
 	>>> t = wormtable.open_table('sample_wt')
 	>>> chrompos_index = t.open_index('CHROM+POS')
-	>>> c = t.cursor(["REF"],chrompos_index)
+	>>> c = t.cursor(['CHROM','POS','REF'], chrompos_index)
 	>>> c.set_min('1',8000000)
 	>>> c.set_max('1',8000500)
 	>>> for p in c:
-	>>> 	print p[0]
+	>>> 	print p
+	
+[Dan: At some point we need to discuss the naming of info and genotype columns
+with underscores e.g. INFO_DP etc.]
 
 -----------------
 Using the counter
@@ -221,13 +228,14 @@ may not want to discern between sites with quality of 50.1 from sites with
 quality of 50.2. Using wtadmin you can index a column binning indexes into equal 
 sized bins like this ::
 
-	$ wtadmin add sample_wt/ QUAL[5]
+	$ wtadmin add sample_wt QUAL[5]
 
 This will make a new index on QUAL where all the QUAL values are grouped into 
-bins of width 5. We can then use this binned index interact with our wormtable ::
+bins of width 5. We can then use this binned index interact with our wormtable 
+and print the number of rows matching QUAL scores in bins between 0 and 100 using 
+the counted function ::
 
 	>>> qual_5_index = t.open_index('QUAL[5]')
-	>>> # We can print the number of rows with QUAL scores between 0 and 100 using the counter function with our binned index
 	>>> qual_5_counter = qual_5_index.counter()
 	>>> for quality in range(0,101,5):
 	>>> 	print q, qual_5_counter[q]
@@ -235,14 +243,14 @@ bins of width 5. We can then use this binned index interact with our wormtable :
 
 
 -------------------------------------------------
-Examples ...
+Examples
 -------------------------------------------------
-
 Along with the main program we have included a number of example scripts which 
 will help you get started with Wormtable. These scripts highlight more of 
 Wormtable's features and may be easily modified to suit your own purposes. If 
 you want to read up on how these examples work and write your own scripts for 
-Wormtable, full documentation can be found `here <http://jeromekelleher.github.io/wormtable/>`_. 
+Wormtable, full documentation can be found 
+`here <http://jeromekelleher.github.io/wormtable/>`_. 
 
 Count the distinct index values - *count-distinct.py*
 -----------------------------------------------------
@@ -251,7 +259,7 @@ This script will take the name of any wormtable home directory and column which
 has been indexed and print each distinct value in that column and the number of 
 times it occurs ::
 
-	$ python count-distinct.py sample_wt/ REF
+	$ python count-distinct.py sample_wt REF
 
 Transition-Transversion ratio - *ts-tv.py*
 ------------------------------------------
@@ -260,8 +268,8 @@ nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T) and
 transversions (A/G<->C/T). Using the counter feature this task can be very fast 
 with Wormtable ::
 
-	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist.
-	$ python ts-tv.py sample_wt/
+	$ wtadmin add sample_wt REF+ALT # in case index does not already exist.
+	$ python ts-tv.py sample_wt
 
 High Quality SNPs - *hq-snps.py*
 --------------------------------
@@ -270,8 +278,8 @@ that have a quality score over a particular minimum threshold. This script uses
 a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) 
 ::
 
-	$ wtadmin add sample_wt QUAL[1] #use this only if the QUAL[1] index does not already exist.
-	$ python hq-snps.py -q 30 sample_wt/
+	$ wtadmin add sample_wt QUAL[1] # in case index does not already exist.
+	$ python hq-snps.py -q 30 sample_wt
 
 Sliding window analysis of Genetic Diversity - *sliding-window.py*
 -------------------------------------------------------------------
