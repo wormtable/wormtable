@@ -59,7 +59,6 @@ folder sample_wt. If the folder already exists you will have to use the
 
 	$ vcf2wt -f sample.vcf sample_wt
 
-<<<<<<< HEAD
 Setting the cache size
 ----------------------
 You can greatly increase the performance of Wormtable by tweaking the cache size 
@@ -71,66 +70,25 @@ components. To alter the cache size while making your wormtable use the
 --cache-size (-c) option ::
 
 	$ vcf2wt -f -c 4G sample.vcf sample_wt/
-=======
-For more details on the usage of vcf2wt see section BLAH.
-Something about the cache [Dan: save this till later?]
-
->>>>>>> a71ceaaa4afd9ee6f4b113c6301639498e3b4c97
 
 ---------------------------------
 Building an index
 ---------------------------------
 
-<<<<<<< HEAD
-At this point your vcf has been converted into a wormtable but in order to work 
-with it you need to choose what columns you're interested in and 'index' those 
-columns. The index provides a way to quickly and efficiently access information 
-from the wormtable based on the values in the indexed column. For example, if 
-we are interested in knowing the DNA sequence of the reference genome (which is 
-stored in the "*REF*" column) we can simply ask for the value of the *REF* 
-column across a number of rows in the wormtable that correspond to a piece of 
-the reference genome.
-
-To accomplish this we first need to index a few columns. Indexing columns, along 
-with a number of other tools for administrating your wormtable, are done with 
-the wtadmin utility. Amongst other features, wtadmin allows us to add indexes 
-(wtadmin add), remove indexes (wtadmin rm) or list the columns already indexed 
-(wtadmin ls). If we want to access the rows of our table according to their 
-position in the genome we need to index the position column called "*POS*"::
-
-	$ wtadmin add sample_wt/ POS
-
-Here the "sample_wt" is the homedirectory which contains our wormtable and POS 
-is the name of the column for which we built an index. 
-
-Similar to the cache size when building our wormtable, we can set the cache size 
-when building an index. A large cache size can reduce the time it takes to 
-build an index ::
-
-	$ wtadmin add --index-cache-size 4G sample_wt/ REF 
-
-If you want to list the columns that are available to index use ::
-=======
-At this point the vcf has been converted into a wormtable but in order to work 
-with it, it is necessary to 'index' the columns that you are interested in. These
-indexes provide a way to quickly and efficiently access information 
-from the wormtable based on the values in the indexed column. 
+At this point the VCF has been converted into a wormtable but in order to work 
+with it, it is necessary to 'index' the columns that you are interested in. 
+These indexes provide a way to quickly and efficiently access information 
+from the wormtable based on the values in the indexed column.
 
 In the following example, we'll demonstrate how it is possible to access the 
 DNA sequence of the reference genome (which is stored in the "*REF*" column) 
 for different positions in the genome by creating an index on genomic position.
-Adding an index for a column can be accomlished with the wtadmin utility. In
-our examples, to index the position column called "*POS*" we use::
+Adding an index for a column can be accomplished with the wtadmin utility. In
+our example, to index the position column called "*POS*" we use::
 
 	$ wtadmin add sample_wt POS
 
-This utility also allows us to remove indexes (wtadmin rm) or list the columns 
-already indexed (wtadmin ls).
-
-Here the "sample_wt" is the "home directory" which contains our wormtable and POS 
-is the name of the column to be indexed. If you want to list the 
-columns that are available to index use ::
->>>>>>> a71ceaaa4afd9ee6f4b113c6301639498e3b4c97
+Here the "sample_wt" is the "home directory" which contains our wormtable and POS is the name of the column to be indexed. This utility also allows us to remove indexes (wtadmin rm) or list the columns already indexed (wtadmin ls). If you want to list the  columns that are available to index use ::
 
  	$ wtadmin show sample_wt
 
@@ -152,15 +110,7 @@ when building tables or adding indexes we can assign memory to both the table
 and index when we open them by including the cache size as a second argument in 
 opentable() or open_index() - for more details read `Performance tuning <http://jeromekelleher.github.io/wormtable/performance.html>` _.) 
 
-<<<<<<< HEAD
 The Wormtable module offers a number of methods to interact with the data in your wormtable ::
-=======
-Note that if you have not already added the index using wtadmin add you won't be 
-able to open the index in python. 
-
-The Wormtable module offers a number of methods to interact with the data in 
-your wormtable ::
->>>>>>> a71ceaaa4afd9ee6f4b113c6301639498e3b4c97
 
 	>>> # Print the minimum and maximum value of an index
 	>>> position_index.get_min()
