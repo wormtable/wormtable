@@ -354,14 +354,12 @@ class VCFReader(object):
                             if fmt[k] in genotype_columns[j]:
                                 col = genotype_columns[j][fmt[k]]
                                 tok = tokens[k]
-                                if tok != MISSING_VALUE:
+                                # FIXME this is a hack to detect missing values 
+                                # in genotype columns. I'm not sure why anybody 
+                                # would do this, but we need it to parse the 
+                                # example VCF from the 1000genomes site.
+                                if tok != MISSING_VALUE and tok != b".,.":
                                     row[col] = tok 
-                    elif len(tokens) > 1:
-                        # We can treat a genotype value on its own as missing values.
-                        # We can have skipped columns at the end though, which we 
-                        # should deal with properly. So, put in a loud complaint 
-                        # here and fix later.
-                        print("PARSING CORNER CASE NOT HANDLED!!! FIXME!!!!")
                     j += 1
             yield row
             num_rows += 1
