@@ -17,7 +17,9 @@ In this tutorial we will be taking you through the steps to convert a file to a
 wormtable, index columns and perform some basic operations on the data by using 
 a few examples.
 
-**The VCF format:** Throughout this tutorial we will be using a *Variant Call 
+The VCF format 
+--------------
+Throughout this tutorial we will be using a *Variant Call 
 Format* (VCF) table.  This is a common format for storing DNA sequence and 
 polymorphism data from high throughput genome sequencing projects. In this 
 format rows are individual positions of a genome and are identified by the 
@@ -30,8 +32,8 @@ the full specifications of a VCF file on the `1000 genomes website
 In the following examples we will be working with a small ~15,000 line sample 
 VCF available from BLAH `sample.vcf.gz <http://sample.vcf.gz>`_.
 
-Throughout this tutorial code lines beginning `$` imply a bash shell and 
-`>>>` imply a python shell.
+Throughout this tutorial, code lines beginning ``$`` imply a bash shell and 
+``>>>`` imply a python shell.
 
 ------------
 Installation
@@ -242,9 +244,9 @@ the counted function ::
 
 
 
--------------------------------------------------
+--------
 Examples
--------------------------------------------------
+--------
 Along with the main program we have included a number of example scripts which 
 will help you get started with Wormtable. These scripts highlight more of 
 Wormtable's features and may be easily modified to suit your own purposes. If 
