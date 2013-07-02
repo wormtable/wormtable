@@ -6,26 +6,26 @@ Tutorial
 Introduction
 ------------
 Wormtable is a method for storing and interacting with large scale tabular 
-datasets. It provides those familiar with python the necessary tools to efficiently 
-store, process and search datasets of essentially unlimited size. It is designed
-for tablular data with many rows each with a fixed number of columns. Wormtable 
-can generate indexes of the information in these rows which allows the user to 
-quickly access the information. Since the indexes are stored on the disk they 
-can be used repeatedly.
+datasets. It provides those familiar with python the necessary tools to 
+efficiently store, process and search datasets of essentially unlimited size. It 
+is designed for tablular data with many rows each with a fixed number of 
+columns. Wormtable can generate indexes of the information in these rows which 
+allows the user to quickly access the information. Since the indexes are stored 
+on the disk they can be used repeatedly.
 
 In this tutorial we will be taking you through the steps to convert a file to a 
-wormtable, index columns and perform some basic operations on the data by using
-examples.
+wormtable, index columns and perform some basic operations on the data by using 
+a few examples.
 
 **The VCF format:** Throughout this tutorial we will be using a *Variant Call 
 Format* (VCF) table.  This is a common format for storing DNA sequence and 
 polymorphism data from high throughput genome sequencing projects. In this 
 format rows are individual positions of a genome and are identified by the 
-chromosome they occur on and the position on that chromosome. A variety of 
-other pieces of information are stored as metadata in the proceeding columns. 
-We will explain the relevant columns as they arise. For more information please 
-consult the full specifications of a VCF file on the 
-`1000 genomes website  <http://www.1000genomes.org/wiki/analysis/vcf4.0/>`_. 
+chromosome they occur on and the position on that chromosome. A variety of other 
+pieces of information are stored as metadata in the proceeding columns. We will 
+explain the relevant columns as they arise. For more information please consult 
+the full specifications of a VCF file on the `1000 genomes website  
+<http://www.1000genomes.org/wiki/analysis/vcf4.0/>`_. 
 
 In the following examples we will be working with a small ~15,000 line sample 
 VCF available from BLAH `sample.vcf.gz <http://sample.vcf.gz>`_.
@@ -77,18 +77,21 @@ Building an index
 
 At this point the VCF has been converted into a wormtable but in order to work 
 with it, it is necessary to 'index' the columns that you are interested in. 
-These indexes provide a way to quickly and efficiently access information 
-from the wormtable based on the values in the indexed column.
+These indexes provide a way to quickly and efficiently access information from 
+the wormtable based on the values in the indexed column.
 
-In the following example, we'll demonstrate how it is possible to access the 
-DNA sequence of the reference genome (which is stored in the "*REF*" column) 
-for different positions in the genome by creating an index on genomic position.
-Adding an index for a column can be accomplished with the wtadmin utility. In
+In the following example, we'll demonstrate how it is possible to access the DNA 
+sequence of the reference genome (which is stored in the "*REF*" column) for 
+different positions in the genome by creating an index on genomic position. 
+Adding an index for a column can be accomplished with the wtadmin utility. In 
 our example, to index the position column called "*POS*" we use::
 
 	$ wtadmin add sample_wt POS
 
-Here the "sample_wt" is the "home directory" which contains our wormtable and POS is the name of the column to be indexed. This utility also allows us to remove indexes (wtadmin rm) or list the columns already indexed (wtadmin ls). If you want to list the  columns that are available to index use ::
+Here the "sample_wt" is the "home directory" which contains our wormtable and 
+POS is the name of the column to be indexed. This utility also allows us to 
+remove indexes (wtadmin rm) or list the columns already indexed (wtadmin ls). If 
+you want to list the  columns that are available to index use ::
 
  	$ wtadmin show sample_wt
 
@@ -108,9 +111,11 @@ Note that if you have not already added the index using wtadmin add you will not
 be able to open the index in python. Also, worth noting is that like cache sizes 
 when building tables or adding indexes we can assign memory to both the table 
 and index when we open them by including the cache size as a second argument in 
-opentable() or open_index() - for more details read `Performance tuning <http://jeromekelleher.github.io/wormtable/performance.html>` _.) 
+opentable() or open_index() - for more details read 
+`Performance tuning <http://jeromekelleher.github.io/wormtable/performance.html>` _.) 
 
-The Wormtable module offers a number of methods to interact with the data in your wormtable ::
+The Wormtable module offers a number of methods to interact with the data in 
+your wormtable ::
 
 	>>> # Print the minimum and maximum value of an index
 	>>> position_index.get_min()
@@ -137,7 +142,7 @@ Now we can iterate through the *REF* columns from genomic positions with *POS*
 values between 8000000 and 8000500 ::
 
 	>>> for p in c:
-	>>> 	print p[0] # By default the cursor will return a tuple so take the first element returns a string 
+	>>> 	print p[0] # By default the cursor will return a tuple so take the first element returns a string
 
 However, you may have noticed this example isn't quite right. The *POS* column 
 does not necessarily identify a single position in the genome because multiple 
@@ -171,8 +176,8 @@ Using the Counter
 Another useful feature of Wormtable is that the number of times a particular 
 index value occurs is simple to retrieve. The counter is a dictionary-like 
 object where the keys are index values which refer to the number of times that 
-index occurs. For example, we can quickly and efficiently calculate the 
-fraction of reference sites that are G or C (the GC content) ::
+index occurs. For example, we can quickly and efficiently calculate the fraction 
+of reference sites that are G or C (the GC content) ::
 
 	>>> ref_index = t.open_index('REF')
 	>>> ref_counts = ref_index.counter()
@@ -182,12 +187,12 @@ fraction of reference sites that are G or C (the GC content) ::
 Using binned indexes
 ----------------------------------
 Some columns in a VCF contain floats and can therefore have a huge number of 
-distinct values. In these cases it may be useful to condense similar values 
-into 'binned' indexes. For example, in a VCF the column which records the 
-quality of row (QUAL column) is a float which may range from 0 to 10,000 (or 
-more) and you may not want to discern between sites with quality of 50.1 from 
-sites with quality of 50.2. Using wtadmin you can index a column binning 
-indexes into equal sized bins like this ::
+distinct values. In these cases it may be useful to condense similar values into 
+'binned' indexes. For example, in a VCF the column which records the quality of 
+row (QUAL column) is a float which may range from 0 to 10,000 (or more) and you 
+may not want to discern between sites with quality of 50.1 from sites with 
+quality of 50.2. Using wtadmin you can index a column binning indexes into equal 
+sized bins like this ::
 
 	$ wtadmin add sample_wt/ QUAL[5]
 
@@ -224,9 +229,9 @@ times it occurs ::
 Transition-Transversion ratio - *ts-tv.py*
 ------------------------------------------
 This uses a compound index of the reference nucleotide *REF* and the alternate 
-nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T) 
-and transversions (A/G<->C/T). Using the counter feature this task can be very 
-fast with Wormtable ::
+nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T) and 
+transversions (A/G<->C/T). Using the counter feature this task can be very fast 
+with Wormtable ::
 
 	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist.
 	$ python ts-tv.py sample_wt/
@@ -235,7 +240,8 @@ High Quality SNPs - *hq-snps.py*
 --------------------------------
 In this example we provide a script that will return all the sites in your VCF 
 that have a quality score over a particular minimum threshold. This script uses 
-a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) ::
+a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) 
+::
 
 	$ wtadmin add sample_wt QUAL[1] #use this only if the QUAL[1] index does not already exist.
 	$ python hq-snps.py -q 30 sample_wt/
@@ -244,7 +250,7 @@ Sliding window analysis of Genetic Diversity - *sliding-window.py*
 -------------------------------------------------------------------
 This script demonstrates how we can use the cursor feature of Wormtable to move 
 through a file in windows and perform calculations on those windows. In this 
-case we calculate the amount of genetic diversity that is present in each 
-window using the alternate allele frequency (*AF* column) or by calculating the 
+case we calculate the amount of genetic diversity that is present in each window 
+using the alternate allele frequency (*AF* column) or by calculating the 
 alternate allele frequency using the genotype calls in the sample columns.
 
