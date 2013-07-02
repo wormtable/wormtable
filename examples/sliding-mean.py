@@ -24,6 +24,14 @@ def increment(val, dat):
         else:
             dat['t'] += val
 
+
+def getmean(tot, count):
+    if count == 0:
+        return 'NA'
+    else:
+        return tot/count
+
+
 class SlidingWindow(object):
     """
     A class representing a sliding window over statistics in a VCF 
@@ -59,7 +67,7 @@ class SlidingWindow(object):
                 increment(vals[i], dat[self.__cols[i]])
             if pos >= start + j * self.__wsize:
                 yield([chrom, start+j * self.__wsize] + 
-                      [dat[n]['t']/dat[n]['c'] for n in dat])
+                      [getmean(dat[n]['t'], dat[n]['c']) for n in dat])
                 dat = {n:{'c':0, 't':0} for n in self.__cols}
                 j += 1
     
@@ -93,7 +101,7 @@ def main():
     
     cols = args['cols'].split(',')
     if(args['H']):
-        print('chr\tpos\t' + "\t".join(cols))
+        print('CHROM\tPOS\t' + "\t".join(cols))
     chrs = args['chrs'].split(',')
     
     sw = SlidingWindow(args['homedir'], chrs=chrs, cols=cols, wsize=args['w'])

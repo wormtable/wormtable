@@ -5,7 +5,7 @@ Tutorial
 ------------
 Introduction
 ------------
-Wormtable is a method for storing and interacting with large scale datasets. It 
+Wormtable is a method for storing and interacting with large scale tabular datasets. It 
 provides those familiar with python with the tools necessary to efficiently 
 store, process and search datasets of essentially unlimited size. The data it 
 stores is primarily in tablular format with many rows each with a fixed number 
