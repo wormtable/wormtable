@@ -8,9 +8,9 @@
 \begin{document}
 \firstpage{1}
 
-\title[Wormtable]{Wormtable: A data structure for genome scale tabular data}
-\author[Kelleher \textit{et~al}]{Jerome Kelleher, Daniel L. Halligan 
-    and Robert W. Ness }
+\title[Wormtable]{Wormtable: A data structure for genome scale data}
+\author[Kelleher \textit{et~al}]{Jerome Kelleher, Robert W. Ness 
+and Daniel L. Halligan}
 \address{
 University of Edinburgh,
 King's Buildings,
@@ -28,17 +28,17 @@ UK
 \begin{abstract}
 \section{Summary:}
 Biological research generates vast quantities of tabular data, which must 
-be processed to answer biological questions. These tables are produced by 
-programs and exported to plain text files, which are often tens of gigabytes
-long. Researchers must process these files 
-line-by-line, parsing values encoded as plain text into native types so that 
-calculations may be done. This is an enormously inefficient process.
+be processed to test hypotheses. These tables are produced by 
+programs and exported to plain text files, which are often very large. 
+Researchers must process these files 
+line-by-line, parsing values encoded as text into native types so that 
+calculations may be done. This is an extremely inefficient process.
 Furthermore, there is no simple means of indexing these files so that 
 arbitrary data values within rows can be quickly found. We introduce a new 
-data format and software library called Wormtable, which provides efficient 
-access to tabular data using languages such as Python. Wormtable avoids the 
-overhead of repeatedly parsing text, random access to rows, 
-and also provides efficient indexing of arbitrary columns within these tables.
+data format and software library called wormtable, which provides efficient 
+access to tabular data in Python. Wormtable stores data in a compact
+binary format, provides random access to rows, and enables sophisticated
+indexing on columns within these tables.
 \section{Availability:}
 Package available at 
 \href{http://pypi.python.org/pypi/wormtable}{http://pypi.python.org/pypi/wormtable}
@@ -47,46 +47,48 @@ Package available at
 \end{abstract}
 
 \section{Introduction}
-The large volumes of data that present day bioinformatics generates 
-is well documented. The improvement in sequencing technologies has
-lead to an exponential increase in the volume of data that is available 
-to biologists. Perfectly standard studies require the storage and processing 
+% Lots of data
+The improvement in sequencing technologies has
+lead to an exponential increase in the volume of data being managed 
+by biologists. Standard studies require the storage and processing 
 of hundreds of gigabytes of data, and this volume of data is only set to 
-increase as sequencing technologies continue to improve. [\emph{This 
-intro is intended to set the stage: there is shit loads of data out there,
-and this is only set to increase}].
+increase as sequencing technologies continue to improve.
 
+
+% but we use text files
 Despite the increasing importance of data processing, however, the methods 
-used in Bioinformatics are crude and inefficient being almost entirely 
+used in Bioinformatics are almost entirely 
 based around the use of text files. Plain text files have many advantages:
-they are the most portable format available, and can be processed on 
+they are extremely portable and can be processed on 
 any platform with the minimum of library dependencies. Text files also 
 have many disadvantages however; the principle difficulties for our 
 purposes here are, they are slow to parse and difficult to index.
+
 % text files are also easy to read/comprehend and don't require specialist
 % knowledge to process.
 % I think learning a database syntax is a barrier to many researchers that are
 % not trained bioinformaticians
 
-A popular file format for Bioinformatics use is the Variant Call Format~\citep{da+11},
-or VCF. In VCF,  information about variant sites in a genome is encoded 
-as tab-delimited rows in a text file. To access information about a 
-particular site, one must proceed through the file line-by-line until the 
-desired record is found. There are methods available to index this 
-file~\citep{li11}, but these have no semantic 
-understanding of the structure of the file and so are limited in the 
-fields that can be indexed. One cannot, for example, build an index 
-to quickly obtain all records in which the quality field is greater
-than some value. Such queries can take a considerable time on large VCF 
-files, which discourages testing and checking for the effects of 
-arbitrary thresholds in analyses.
+% Databases solve these problems
+The classical approach to working with large volumes of 
+structured data is to use a database, which solve these 
+problems very effectively.
+Data is typically encoded in an efficient binary 
+format, saving substantial space and giving better precision when 
+dealing with floating point formats. Records are stored in a
+B-tree type structure, leading to fast access times even 
+over very large datasets. Indexing over columns within rows is 
+also very powerful, allowing us to quickly retrieve 
+rows with particular features. 
 
-One may, of course, load VCF data into a relational database, and 
+% Databases but introduce several others. 
+One may, of course, load textual data into a relational database, and 
 use SQL to retrieve the records of interest. This approach has several 
-disadvantages, however. Firstly, one must first examine the VCF 
-header and construct an appropriate SQL schema to hold the columns 
-of interest. It is feasible to do this for more recent versions of VCF, 
-but is certainly not a trivial process, particularly if the schema 
+disadvantages, however. Firstly, one must first examine the data 
+construct an appropriate SQL schema to hold the columns 
+of interest. It is sometimes feasible to do this automatically 
+for data files, but is certainly not a trivial process, 
+particularly if the schema 
 must be portable across different relational database platforms.
 Once the schema has been constructed, the data must be inserted into 
 this database line-by-line by constructing SQL code, which is a 
@@ -97,10 +99,10 @@ server is a difficult task and when the volumes of data become
 large, a specialised administrator is usually required to 
 ensure the server works correctly.
 
+% We don't need concurrency, etc, as it's always read-only.
 Much of the time, a database server is far more complicated than
-we require for large scale biological data. In the case of VCF,
-the file is written once by an application such as [gatk? references?]
-%Also samtools
+we require for large scale biological data. Data files 
+are usually written once by an application 
 and is not subsequently expected to change. Thus, storing this information 
 in a relational database with its sophisticated concurrency control
 and guarantees of consistency in the face of asynchronous updates
@@ -113,19 +115,9 @@ quantities of data. The limitations of relational database servers
 have been acknowledged for some time now, and has led to a 
 variety of `NoSQL' database systems~\citep{m12}.
 
-Databases do, however, have significant advantages over 
-plain text files. Data is typically encoded in an efficient binary 
-format, saving substantial space and giving better precision when 
-dealing with floating point formats. Records are stored in a
-B-tree type structure, leading to fast access times even 
-over very large datasets. Indexing over columns within rows is 
-also very powerful, allowing us to quickly retrieve 
-rows with particular features. Ideally, we would like a data format
-that combines these useful features of databases without the 
-drawbacks of a relational database server outlined above.
+\section{Wormtable}
 
-Wormtable 
-%... [Write Once Read Only Table] ...
+Wormtable (write-once read-many table) 
 is a new data format and software library designed specifically
 to deal with the challenges of data processing in bioinformatics.
 It provides a portable, compact, read-only store for tabular
@@ -135,10 +127,6 @@ from existing formats via command line tools. Tables can be read
 concurrently by any number of processes, and are accessed by a 
 simple API in Python.
 
-% Also provided are scripts to import two common bioinformatic file standards - gff and vcf
-% along with scripts to apply filters to these files?
-
-\section{Wormtable}
 To take advantage of the data processing capabilities of a database
 without the overheads and disadvantages of a relational database 
 server, Wormtable is built on top of Berkeley DB~\citep{obs99}.
@@ -182,6 +170,21 @@ properties very quickly, and are a very useful method of excluding
 rows with certain properties from our analyses.
 
 \section{Examples}
+
+A popular file format for Bioinformatics use is the Variant Call Format~\citep{da+11},
+or VCF. In VCF,  information about variant sites in a genome is encoded 
+as tab-delimited rows in a text file. To access information about a 
+particular site, one must proceed through the file line-by-line until the 
+desired record is found. There are methods available to index this 
+file~\citep{li11}, but these have no semantic 
+understanding of the structure of the file and so are limited in the 
+fields that can be indexed. One cannot, for example, build an index 
+to quickly obtain all records in which the quality field is greater
+than some value. Such queries can take a considerable time on large VCF 
+files, which discourages testing and checking for the effects of 
+arbitrary thresholds in analyses.
+
+
 Wormtable is designed to make working with genome scale data more 
 efficient, and in this section we describe some examples to 
 illustrate the improvements over existing methods. To do this, 
