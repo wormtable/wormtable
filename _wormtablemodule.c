@@ -1988,6 +1988,11 @@ Table_open(Table* self, PyObject *args)
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);
+    db_ret = self->db->set_pagesize(self->db, 64 * 1024);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;
+    }
     db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
