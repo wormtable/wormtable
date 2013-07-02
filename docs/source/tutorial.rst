@@ -101,7 +101,7 @@ Similar to the cache size when building our wormtable, we can set the cache size
 when building an index. A large cache size can reduce the time it takes to 
 build an index ::
 
-	$ wtadmin add --index-cache-size 4G sample_wt REF 
+	$ wtadmin add --index-cache-size 4G sample_wt POS 
 
 --------------
 Using an index
@@ -139,7 +139,7 @@ Another convenient feature provided by the wormtable python module is the
 wormtable for ranges of values from our indexed column. In our case, we will 
 create a cursor to return the REF column for specific genomic positions ::
 
-	>>> c = t.cursor(["REF"], position_index)
+	>>> c = table.cursor(["REF"], position_index)
 
 Note that since we can retrieve information from multiple columns, the names 
 of the columns we want to retrieve are passed to the cursor as a list. 
@@ -189,7 +189,7 @@ through rows in this region, printing CHROM, POS and REF for each::
 
 	>>> import wormtable
 	>>> t = wormtable.open_table('sample_wt')
-	>>> chrompos_index = t.open_index('CHROM+POS')
+	>>> chrompos_index = table.open_index('CHROM+POS')
 	>>> c = t.cursor(['CHROM','POS','REF'], chrompos_index)
 	>>> c.set_min('1',8000000)
 	>>> c.set_max('1',8000500)
@@ -215,9 +215,9 @@ Then in python ::
 
 	>>> ref_index = t.open_index('REF')
 	>>> ref_counts = ref_index.counter()
-	>>> gc = ref_counts['G'] + ref_counts['C'])
+	>>> gc = ref_counts['G'] + ref_counts['C']
 	>>> tot = gc + ref_counts['T'] + ref_counts['A']
-	>>> gc / tot
+	>>> float(gc) / float(tot)
 
 --------------------
 Using binned indexes
