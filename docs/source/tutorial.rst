@@ -242,7 +242,7 @@ Along with the main program we have included a number of example scripts which
 will help you get started with Wormtable. These scripts highlight more of 
 Wormtable's features and may be easily modified to suit your own purposes. If 
 you want to read up on how these examples work and write your own scripts for 
-Wormtable, full documentation can be found `here <http://jeromekelleher.github.io/wormtable/>` _. 
+Wormtable, full documentation can be found `here <http://jeromekelleher.github.io/wormtable/>`_. 
 
 Count the distinct index values - *count-distinct.py*
 -----------------------------------------------------
