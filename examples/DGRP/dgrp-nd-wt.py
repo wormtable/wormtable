@@ -81,8 +81,8 @@ SAMPLES = ['DGRP-021','DGRP-026','DGRP-028','DGRP-031','DGRP-032','DGRP-038',
 
 
 def main():
-    table = wt.open_table(sys.argv[1])
-    index = table.open_index("INFO_IN+INFO_UT+INFO_SY+INFO_NS")
+    table = wt.open_table(sys.argv[1], cache_size='4G')
+    index = table.open_index("INFO_IN+INFO_UT+INFO_SY+INFO_NS", cache_size='1G')
     
     keys = [x for x in index.keys()]
     keys.append((1,1,1,1))
