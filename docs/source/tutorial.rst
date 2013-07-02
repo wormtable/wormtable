@@ -57,8 +57,17 @@ folder sample_wt. If the folder already exists you will have to use the
 
 	$ vcf2wt -f sample.vcf sample_wt/
 
-Something about the cache
+Setting the cache size
+----------------------
+You can greatly increase the performance of Wormtable by tweaking the cache size 
+parameter. The cache size determines how much of the table is held in memory. In 
+general the more RAM you give the process the better it will perform. As as a 
+rule of thumb try to give it half the available RAM. Later in this tutorial we 
+will return to the issue of cache size as it can affect a number of performance 
+components. To alter the cache size while making your wormtable use the 
+--cache-size (-c) option ::
 
+	$ vcf2wt -f -c 4G sample.vcf sample_wt/
 
 ---------------------------------
 Building an index
@@ -75,20 +84,27 @@ the reference genome.
 
 To accomplish this we first need to index a few columns. Indexing columns, along 
 with a number of other tools for administrating your wormtable, are done with 
-the wtadmin utility. Amongst other features, wtadmin allows us to add indexes
- (wtadmin add), remove indexes (wtadmin rm) or list the columns already indexed 
+the wtadmin utility. Amongst other features, wtadmin allows us to add indexes 
+(wtadmin add), remove indexes (wtadmin rm) or list the columns already indexed 
 (wtadmin ls). If we want to access the rows of our table according to their 
 position in the genome we need to index the position column called "*POS*"::
 
 	$ wtadmin add sample_wt/ POS
 
 Here the "sample_wt" is the homedirectory which contains our wormtable and POS 
-is the name of the column for which we built an index. If you want to list the 
-columns that are available to index use ::
+is the name of the column for which we built an index. 
+
+Similar to the cache size when building our wormtable, we can set the cache size 
+when building an index. A large cache size can reduce the time it takes to 
+build an index ::
+
+	$ wtadmin add --index-cache-size 4G sample_wt/ REF 
+
+If you want to list the columns that are available to index use ::
 
  	$ wtadmin show sample_wt/
 
-Now that we have our wormtable built and POS indexed we can use python to 
+Now that we have our wormtable built and POS indexed we can use Python to 
 interact with our new wormtable and index ::
 
 	$ python
@@ -100,10 +116,13 @@ interact with our new wormtable and index ::
 	>>> # Open the index that was built using wtadmin (see above)
 	>>> position_index = t.open_index('POS')
 
+Note that if you have not already added the index using wtadmin add you will not 
+be able to open the index in python. Also, worth noting is that like cache sizes 
+when building tables or adding indexes we can assign memory to both the table 
+and index when we open them by including the cache size as a second argument in 
+opentable() or open_index() - for more details read `Performance tuning <http://jeromekelleher.github.io/wormtable/performance.html>` _.) 
 
-Note that if you have not already added the index using wtadmin add you won't be 
-able to open the index in python. The Wormtable module offers a number of 
-methods to interact with the data in your wormtable ::
+The Wormtable module offers a number of methods to interact with the data in your wormtable ::
 
 	>>> #print the minimum and maximum value of a index column
 	>>> position_index.get_min()
@@ -204,7 +223,7 @@ Along with the main program we have included a number of example scripts which
 will help you get started with Wormtable. These scripts highlight more of 
 Wormtable's features and may be easily modified to suit your own purposes. If 
 you want to read up on how these examples work and write your own scripts for 
-Wormtable, full documentation can be found `here <link_to_wormtable>` _. 
+Wormtable, full documentation can be found `here <http://jeromekelleher.github.io/wormtable/>` _. 
 
 Count the distinct index values - *count-distinct.py*
 -----------------------------------------------------
@@ -222,7 +241,8 @@ nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T)
 and transversions (A/G<->C/T). Using the counter feature this task can be very 
 fast with Wormtable ::
 
-	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist. 	$ python ts-tv.py sample_wt/
+	$ wtadmin add sample_wt/ REF+ALT #use this only if the REF+ALT index does not already exist.
+	$ python ts-tv.py sample_wt/
 
 High Quality SNPs - *hq-snps.py*
 --------------------------------
