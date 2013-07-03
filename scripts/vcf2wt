@@ -74,6 +74,9 @@ FILTER_DESCRIPTION = b"""PASS if this position has passed all filters, i.e. \
 a call is made at this position. Otherwise, if the site has not passed all \
 filters, a semicolon-separated list of codes for filters that fail. """
 
+# char used to seperate VCF columns from their prefix, e.g INFO.AF
+COLUMN_SEPARATOR = b"."
+
 # Special values in VCF
 MISSING_VALUE = b"."
 
@@ -140,9 +143,10 @@ class VCFReader(object):
         if progress:
             self.__progress_monitor = wt.ProgressMonitor(self.__input_file_size, 
                     "bytes")
+            self.__progress_monitor.update(0)
             self.__progress_update_rows = 100
             if self.__input_file_size > 2**30:
-                self.__progress_update_rows = 10000
+                self.__progress_update_rows = 1000
     
     def set_truncate_REF_ALT(self, truncate):
         """
@@ -239,8 +243,8 @@ class VCFReader(object):
         else:
             raise ValueError("Unknown VCF type:", st)
         
-        table.add_column(prefix + b"_" + name,  description, element_type, 
-                element_size, num_elements)
+        table.add_column(prefix + COLUMN_SEPARATOR + name,  description, 
+                element_type, element_size, num_elements)
 
     def generate_schema(self, table):
         """
@@ -305,13 +309,13 @@ class VCFReader(object):
         info_columns = {}
         genotype_columns = [{} for g in self.__genotypes]
         for k, v in table_columns.items(): 
-            if b"_" in k and v != 0:
-                split = k.split(b"_")
+            if COLUMN_SEPARATOR in k and v != 0:
+                split = k.split(COLUMN_SEPARATOR)
                 if split[0] == INFO:
-                    name = b"_".join(split[1:])
+                    name = COLUMN_SEPARATOR.join(split[1:])
                     info_columns[name] = v 
                 else:
-                    g = b"_".join(split[:-1])
+                    g = COLUMN_SEPARATOR.join(split[:-1])
                     name = split[-1]
                     index = self.__genotypes.index(g)
                     genotype_columns[index][name] = v 
