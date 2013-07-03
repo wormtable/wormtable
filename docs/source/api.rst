@@ -173,7 +173,7 @@ too many rows to fit in memory.
 An *index* in wormtable is a persistent sorting of a table with respect to a given column
 (or list of columns, as we see in the `Compound Indexes`_ section). Indexes are extremely useful, and 
 can be used to make many different operations more efficient. Each index has a *name*, which 
-is it's unique identifier. Indexes are created using the
+is its unique identifier. Indexes are created using the
 :ref:`wtadmin-index` command line tool. See the documentation for details of how to 
 create indexes on a table.
 

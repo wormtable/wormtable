@@ -13,10 +13,10 @@ Welcome! This is the documentation for Wormtable 0.1.
     
     introduction 
     tutorial 
-    data-types
     api
     utilities 
     performance 
+    data-types
     row-format
 
 Indices and tables
