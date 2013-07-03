@@ -82,6 +82,7 @@ typedef struct {
     PyObject *filename;
     Column **columns;
     Py_ssize_t cache_size;
+    u_int32_t page_size;
     u_int32_t num_columns;
     u_int32_t fixed_region_size;
     void *row_buffer;
@@ -1782,7 +1783,8 @@ static int
 Table_init(Table *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    static char *kwlist[] = {"filename", "columns", "cache_size", NULL}; 
+    static char *kwlist[] = {"filename", "columns", "cache_size", "page_size",
+            NULL}; 
     Column *col;
     PyObject *filename = NULL;
     PyObject *columns = NULL;
@@ -1792,10 +1794,14 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     self->columns = NULL;
     self->filename = NULL;
     self->cache_size = 0;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n", kwlist, 
+    /* TODO: take page size out of this initialiser and make it 
+     * an optional setter. There should be a proper getter method 
+     * also which queries DB */
+    self->page_size = 64 * 1024;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n|n", kwlist, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
-            &self->cache_size)) {
+            &self->cache_size, &self->page_size)) {
         goto out;
     }
     self->filename = filename;
@@ -1838,6 +1844,7 @@ out:
 static PyMemberDef Table_members[] = {
     {"filename", T_OBJECT_EX, offsetof(Table, filename), READONLY, "filename"},
     {"cache_size", T_PYSSIZET, offsetof(Table, cache_size), READONLY, "cache_size"},
+    {"page_size", T_PYSSIZET, offsetof(Table, page_size), READONLY, "page_size"},
     {"fixed_region_size", T_INT, offsetof(Table, fixed_region_size), READONLY, 
             "fixed_region_size"},
     {NULL}  /* Sentinel */
@@ -1986,13 +1993,13 @@ Table_open(Table* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    /* Disable DB error messages */
-    self->db->set_errcall(self->db, NULL);
-    db_ret = self->db->set_pagesize(self->db, 64 * 1024);
+    db_ret = self->db->set_pagesize(self->db, self->page_size);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;
     }
+    /* Disable DB error messages */
+    self->db->set_errcall(self->db, NULL);
     db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);         
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
