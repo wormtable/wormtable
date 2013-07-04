@@ -15,7 +15,7 @@ def count(homedir, index):
     with wt.open_table(homedir) as t, t.open_index(index) as i:
         table = [[k,v] for k,v in i.counter().items()]
         assert(len(t) == sum(r[1] for r in table))
-        return(table)
+    return(table)
 
 
 def main():
