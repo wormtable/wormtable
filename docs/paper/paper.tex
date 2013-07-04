@@ -181,15 +181,15 @@ here: ftp://ftp.hgsc.bcm.edu/DGRP/freeze2_Feb_2013/) contains variant calls
 from a population consisting 192 inbred Drosophila lines and contains data 
 from the whole genome over a total of 6,146,611 rows). This VCF was converted to 
 wormtable format using the included \texttt{vcf2wt} conversion program.  
-The (uncompressed) VCF file was 15Gb, and the converted wormtable was 12Gb,
-which required X hours.
+The (uncompressed) VCF file was 15GB, and the converted wormtable was 12GB 
+and took 30 minutes, 55 seconds to create.
 
 Values are stored in wormtable in a binary format, so that no parsing is
 required when reading in rows whereas methods that use the VCF directly 
 must parse each row before it can be used, and is by far the most time 
 consuming part of processing VCF data. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset, using wormtable and using PyVCF[citation?], a module for
+in the dataset, using wormtable and using PyVCF[http://pyvcf.readthedocs.org/?], a module for
 python to parse VCF files. In both of these examples we proceed 
 row-by-row, checking the REF and ALT columns for the type of variant and
 summing transitions and transversions (ignoring indels). The 
@@ -206,8 +206,8 @@ This binary format does alleviate the problem of parsing overhead,
 but does not solve the problem of indexing \emph{within} rows.
 
 To illustrate the use of indexes in wormtable, we created an index 
-on the REF and ALT columns. This index required X MB of disc space 
-Y minutes to build, respectively. The REF+ALT index provides a much more 
+on the REF and ALT columns. This index required 66MB of disc space 
+3 minutes 50 seconds to build, respectively. The REF+ALT index provides a much more 
 efficient means of counting the number of transitions and transversions 
 (we can just count the number of rows matching keys in the index 
 corresponding the SNPs of each type). A script to calculate these 
