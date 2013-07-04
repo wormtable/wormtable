@@ -379,6 +379,20 @@ class VCFWriter(object):
     def __init__(self, table):
         self.__table = table
         self.__table.read_metadata(self.__table.get_metadata_path())
+        # Set the page size based on the fixed region size
+        # Opening and closing a is a temporary workaround. A more elegant 
+        # solution should be found here.
+        self.__table.open("w")
+        n = self.__table.get_fixed_region_size()
+        self.__table.close()
+        page_size = 64 * 1024
+        # If the fixed region size is > 10k, then rows are probably more 
+        # than 16K, so we revert to a small page size to minimise the space
+        # wasted in overflow pages.
+        if n > 10 * 1024:
+            page_size = 512
+        self.__table.set_page_size(page_size)
+        self.__table.read_metadata(self.__table.get_metadata_path())
         self.__table.open("w")
     
     def append(self, row):
@@ -387,23 +401,6 @@ class VCFWriter(object):
     def close(self):
         self.__table.close()
     
-def writer_process(table, row_queue, error_event):
-    """
-    Reads records from the specified queue and writes them to the specified
-    table. 
-    """
-    try:
-        table.read_metadata(table.get_metadata_path())
-        table.open("w") 
-        r = row_queue.get()
-        while r is not None:
-            table.append_encoded(r)
-            r = row_queue.get()
-        table.close()
-    except Exception as e:
-        print("Exception occured", e)
-        error_event.set()
-
 
 class ProgramRunner(object):
     """
@@ -415,6 +412,7 @@ class ProgramRunner(object):
         self.__force = args.force
         self.__generate_schema = args.generate_schema
         self.__progress = not args.quiet
+        self.__quiet = args.quiet
         self.__schema = args.schema
         self.__truncate = args.truncate
         self.__tmp_dirs = []
@@ -423,9 +421,9 @@ class ProgramRunner(object):
         self.__column_map = None
         self.__reader = VCFReader(args.SOURCE)
         self.__writer = None
-        
         # if reading from STDIN, set progress monitor to False regardless
-        if args.SOURCE == '-': self.__progress = False
+        if args.SOURCE == '-': 
+            self.__progress = False
 
        
     def get_table(self):
@@ -471,6 +469,8 @@ class ProgramRunner(object):
             self.__writer.append(r) 
         self.__reader.close()
         self.__reader = None
+        if not self.__quiet:
+            print("Flushing cache; this may take some time...")
         self.__writer.close()
         self.__writer = None
 
