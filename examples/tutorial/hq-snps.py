@@ -11,7 +11,7 @@ import argparse
 
 def hq_snps(homedir, minq, cols):
     t =  wt.open_table(homedir)
-    i = t.open_index("QUAL[1]")
+    i = t.open_index("QUAL[5]")
     cursor = t.cursor(cols, i)
     cursor.set_min(minq)
     cursor.set_max(i.get_max())

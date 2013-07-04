@@ -29,8 +29,8 @@ explain the relevant columns as they arise. For more information please consult
 the full specifications of a VCF file on the `1000 genomes website  
 <http://www.1000genomes.org/wiki/analysis/vcf4.0/>`_. 
 
-In the following examples we will be working with a small ~15,000 line sample 
-VCF available from BLAH `sample.vcf.gz <http://sample.vcf.gz>`_.
+In the following examples we will be working with a very small vcf file with only 5 genomic positions taken from the `1000 genomes website  
+<http://www.1000genomes.org/wiki/analysis/vcf4.0/>`_. 
 
 Throughout this tutorial, code lines beginning ``$`` imply a bash shell and 
 ``>>>`` imply a python shell.
@@ -96,6 +96,36 @@ indexes (wtadmin rm) or list the columns already indexed (wtadmin ls).
 If you want to list the columns that are available to index use ::
 
  	$ wtadmin show sample_wt
+	==============================================================
+	       name         type     size   n        |   description
+	==============================================================
+	   0   row_id       uint        5   1        |   Primary key column
+	   1   CHROM        char        1   var(1)   |   chromosome: an identifier from the reference genome or an angle-bracketed ID String ("<ID>") pointing to a contig in the assembly file
+	   2   POS          uint        5   1        |   position: The reference position, with the 1st base having position 1
+	   3   ID           char        1   var(1)   |   semi-colon separated list of unique identifiers where available
+	   4   REF          char        1   var(1)   |   reference base(s): Each base must be one of A,C,G,T,N (case insensitive)
+	   5   ALT          char        1   var(1)   |   comma separated list of alternate non-reference allelescalled on at least one of the samples
+	   6   QUAL         float       4   1        |   phred-scaled quality score for the assertion made in ALT. i.e. -10log_10 prob(call in ALT is wrong).
+	   7   FILTER       char        1   var(1)   |   PASS if this position has passed all filters, i.e. a call is made at this position. Otherwise, if the site has not passed all filters, a semicolon-separated list of codes for filters that fail. 
+	   8   INFO_NS      int         4   1        |   Number of Samples With Data
+	   9   INFO_DP      int         4   1        |   Total Depth
+	  10   INFO_AF      float       4   var(1)   |   Allele Frequency
+	  11   INFO_AA      char        1   var(1)   |   Ancestral Allele
+	  12   INFO_DB      uint        1   1        |   dbSNP membership, build 129
+	  13   INFO_H2      uint        1   1        |   HapMap2 membership
+	  14   NA00001_GT   char        1   var(1)   |   Genotype
+	  15   NA00001_GQ   int         4   1        |   Genotype Quality
+	  16   NA00001_DP   int         4   1        |   Read Depth
+	  17   NA00001_HQ   int         4   2        |   Haplotype Quality
+	  18   NA00002_GT   char        1   var(1)   |   Genotype
+	  19   NA00002_GQ   int         4   1        |   Genotype Quality
+	  20   NA00002_DP   int         4   1        |   Read Depth
+	  21   NA00002_HQ   int         4   2        |   Haplotype Quality
+	  22   NA00003_GT   char        1   var(1)   |   Genotype
+	  23   NA00003_GQ   int         4   1        |   Genotype Quality
+	  24   NA00003_DP   int         4   1        |   Read Depth
+	  25   NA00003_HQ   int         4   2        |   Haplotype Quality
+
 
 Similar to the cache size when building our wormtable, we can set the cache size 
 when building an index. A large cache size can reduce the time it takes to 
@@ -127,9 +157,18 @@ The Wormtable python module offers a number of methods to interact with an index
 
 	>>> # Print the minimum and maximum value of an index
 	>>> position_index.get_min()
+	14370L
 	>>> position_index.get_max()
+	1234567L
 	>>> # Use keys() to iterate through sorted value in the index
-	>>> all_keys = [i for i in position_index.keys()]
+	>>> for i in position_index.keys():
+	... 	print(i) 
+	... 
+	14370
+	17330
+	1110696
+	1230237
+	1234567
 
 --------------
 Using a cursor
@@ -147,20 +186,24 @@ of the columns we want to retrieve are passed to the cursor as a list.
 We can set the minimum and maximum values for which the cursor will return 
 columns::
 
-	>>> c.set_min(8000000)
-	>>> c.set_max(8000500)
+	>>> c.set_min(1)
+	>>> c.set_max(1150000)
 
-and then iterate through positions in this range (8000000-8000500), returning 
+and then iterate through positions in this range (1-1150000), returning 
 the *REF* column for each row of the table::
 
-	>>> for p in c:
-	>>> 	print p[0] 
-	
-Note that by default the cursor will return a tuple and we just
-print the the first element. 
+	>>> for p in c: 
+	... 	print(p[0]) 
+	... 
+	G
+	T
+	A
 
-[Dan: Add something here about inclusive/excludive starts / ends]
-[Rob: I am not sure what you mean - like 1:100 includes 1 but not 100?]
+Note that by default the cursor will return a tuple and we just 
+print the the first element. It is also worth noting that like other 
+ranges in Python, the maximum value is not included. For example, 
+1 to 100 would return 1 to 99 and not include 100.
+
 [Dan: Jerome will need to clear this up but I think that if you do
 set_max(100), then 100 will not be included. There is also some complication
 about how this then functions with binned indexes. Perhaps we should just
@@ -190,12 +233,16 @@ through rows in this region, printing CHROM, POS and REF for each::
 	>>> import wormtable
 	>>> t = wormtable.open_table('sample_wt')
 	>>> chrompos_index = table.open_index('CHROM+POS')
-	>>> c = t.cursor(['CHROM','POS','REF'], chrompos_index)
-	>>> c.set_min('1',8000000)
-	>>> c.set_max('1',8000500)
+	>>> c = t.cursor(['REF'], chrompos_index)
+	>>> c.set_min('20',1)
+	>>> c.set_max('20',1150000)
 	>>> for p in c:
-	>>> 	print p
-	
+	... 	print(p[0])
+	... 
+	G
+	T
+	A
+
 [Dan: At some point we need to discuss the naming of info and genotype columns
 with underscores e.g. INFO_DP etc.]
 
@@ -217,7 +264,9 @@ Then in python ::
 	>>> ref_counts = ref_index.counter()
 	>>> gc = ref_counts['G'] + ref_counts['C']
 	>>> tot = gc + ref_counts['T'] + ref_counts['A']
-	>>> float(gc) / float(tot)
+	>>> gc_content = float(gc) / float(tot)
+	>>> print(gc_content)
+	0.25
 
 --------------------
 Using binned indexes
@@ -240,18 +289,38 @@ the counted function ::
 	>>> qual_5_index = t.open_index('QUAL[5]')
 	>>> qual_5_counter = qual_5_index.counter()
 	>>> for quality in range(0,101,5):
-	>>> 	print q, qual_5_counter[q]
-
-
+	...  	print(q, qual_5_counter[q])
+	... 
+	0 1
+	5 0
+	10 0
+	15 0
+	20 0
+	25 1
+	30 0
+	35 0
+	40 0
+	45 1
+	50 1
+	55 0
+	60 0
+	65 1
+	70 0
+	75 0
+	80 0
+	85 0
+	90 0
+	95 0
+	100 0
 
 --------
 Examples
 --------
 Along with the main program we have included a number of example scripts which 
-will help you get started with Wormtable. These scripts highlight more of 
-Wormtable's features and may be easily modified to suit your own purposes. If 
-you want to read up on how these examples work and write your own scripts for 
-Wormtable, full documentation can be found 
+will help you get started with Wormtable. In the next few examples we will 
+demonstrate the concepts in these examples. The full scripts are available should 
+you want to use or modify the example scripts for your own purposes 
+If you want write your own scripts for Wormtable, full documentation can be found 
 `here <http://jeromekelleher.github.io/wormtable/>`_. 
 
 Count the distinct index values - *count-distinct.py*
@@ -261,17 +330,71 @@ This script will take the name of any wormtable home directory and column which
 has been indexed and print each distinct value in that column and the number of 
 times it occurs ::
 
+	>>> import wormtable
+	>>> def count_distinct(homedir, index):
+	... 	#here homedir is the directory where your wormtable is found
+	... 	#index is the name of any existing index
+	... 	t = wormtable.open_table(homedir)
+	... 	i = t.open_index(index)
+	... 	table = [[k,v] for k,v in i.counter().items()]
+	... 	return table
+	...
+	>>> ref_table = count_distinct('sample_wt', 'REF')
+	>>> for r in ref_table:
+	... 	print("%s\t%i" %(r[0], r[1]))
+	... 
+	A       1
+	G       1
+	GTCT    1
+	T       2
+
+Alternatively you can use the python script provided in the examples folder ::
+
 	$ python count-distinct.py sample_wt REF
+	A       1
+	G       1
+	GTCT    1
+	T       2
 
 Transition-Transversion ratio - *ts-tv.py*
 ------------------------------------------
-This uses a compound index of the reference nucleotide *REF* and the alternate 
+This example uses a compound index of the reference nucleotide *REF* and the alternate 
 nucleotide *ALT* to count the number of transitions (changes A<->G or C<->T) and 
 transversions (A/G<->C/T). Using the counter feature this task can be very fast 
-with Wormtable ::
+with Wormtable. First we use Python's itertools to generate a list of all possible 
+single bases changes (ie all pairs of A,C,G and T). We then count the number of
+instances of each change in our data ::
+
+	>>> import wormtable
+	>>> from itertools import permutations
+	>>> def count_Ts_Tv(homedir):
+	... 	""" 
+	... 	Count number of of transitions and transversions using an index on REF+ALT
+	... 	"""
+	... 	subs = [p for p in permutations([b'A',b'C',b'G',b'T'], 2)]
+	... 	bases = {b'A':'purine', b'G':'purine', b'C':'pyrimidine', b'T':'pyrimidine'}
+	... 	t = wormtable.open_table(homedir)
+	... 	i = t.open_index("REF+ALT")
+	... 	Ts, Tv = 0, 0
+	... 	c = i.counter()
+	... 	for s in subs:
+	... 		if bases[s[0]] == bases[s[1]]: 
+	... 			Ts += c[s] 
+	... 		else: 
+	... 			Tv += c[s] 
+	... 	i.close()
+	... 	t.close()
+	... 	return Ts, Tv
+	...
+	>>> count_Ts_Tv('sample_wt')
+	(1L, 1L)
+
+Similar to the previous example we have provided a script for doing this that can be 
+called form the commandline ::
 
 	$ wtadmin add sample_wt REF+ALT # in case index does not already exist.
 	$ python ts-tv.py sample_wt
+	ts: 1 tv: 1
 
 High Quality SNPs - *hq-snps.py*
 --------------------------------
@@ -280,8 +403,31 @@ that have a quality score over a particular minimum threshold. This script uses
 a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) 
 ::
 
-	$ wtadmin add sample_wt QUAL[1] # in case index does not already exist.
+	>>> import wormtable
+	>>> def hq_snps(homedir, minq, cols):
+	... 	"""
+	... 	minq is the minimum quality that determines a high quality site
+	... 	cols is a list of the columns from the VCF that you want to return
+	... 	"""
+	... 	t =  wormtable.open_table(homedir)
+	... 	i = t.open_index("QUAL[5]")
+	... 	cursor = t.cursor(cols, i)
+	... 	cursor.set_min(minq)
+	... 	cursor.set_max(i.get_max())
+	... 	for row in cursor:
+	... 		print "\t".join([str(i) for i in row])
+	... 
+	>>> hq_snps('sample_wt',30, ['CHROM', 'POS', 'REF', 'ALT', 'QUAL'])
+	20      1230237 T               47.0
+	20      1234567 GTCT    G,GTACT 50.0
+
+or using the provided python script ::
+
+	$ wtadmin add sample_wt QUAL[5] # in case index does not already exist.
 	$ python hq-snps.py -q 30 sample_wt
+	20      1230237 T               47.0
+	20      1234567 GTCT    G,GTACT 50.0
+
 
 Sliding window analysis of Genetic Diversity - *sliding-window.py*
 -------------------------------------------------------------------
