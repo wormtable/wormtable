@@ -58,7 +58,7 @@ increase as sequencing technologies continue to improve.
 Despite the increasing importance of data processing, however, the methods 
 used in Bioinformatics are almost entirely 
 based around the use of text files. Plain text files have many advantages:
-they are extremely portable and can be processed on 
+they are extremely portable, easy to view and interpret and can be processed on 
 any platform with the minimum of library dependencies. Text files also 
 have many disadvantages however; the principle difficulties for our 
 purposes here are, they are slow to parse and difficult to index.
@@ -70,7 +70,7 @@ purposes here are, they are slow to parse and difficult to index.
 
 % Databases solve these problems
 The classical approach to working with large volumes of 
-structured data is to use a database, which solve these 
+structured data is to use a database, which can solve these 
 problems very effectively.
 Data is typically encoded in an efficient binary 
 format, saving substantial space and avoiding the need
@@ -79,6 +79,9 @@ B-tree, leading to fast access times even
 over very large datasets. Indexing over columns within rows is 
 also very powerful, allowing us to quickly retrieve 
 rows with particular features. 
+
+% there are a range of standard (well defined) tabular data formats: vcf, gtf
+% lends itself to a database solution geared towards specific file types
 
 % Databases but introduce several others. 
 One may, of course, load textual data into a relational database, and 
@@ -110,6 +113,9 @@ powerful data management technologies are far more complex than
 is required, and are therefore little used for the types of 
 data that we are interested in.
 
+% are other database solutions less flexible when it comes to where the 
+% data is stored?
+
 \section{Wormtable}
 % what is wormtable?
 Wormtable (write-once read-many table) 
@@ -129,7 +135,7 @@ server, wormtable uses Berkeley DB~\citep{obs99} for row storage and indexing.
 Berkeley DB is an open source embedded database toolkit, that provides a
 scalable key-value store~\citep{m12}. It is a mature and stable platform, 
 and is currently the most widely deployed database toolkit in the 
-world~\citep{sb12}. DB is a highly modular library, providing the 
+world~\citep{sb12}. DB is a highly modular library, providing the  % do you mean Berkeley DB?
 means to define a very lightweight read-only database, without the 
 overheads of a server process
 
@@ -154,11 +160,11 @@ making many operations extremely efficient.
 
 % What is VCF?
 A popular file format for Bioinformatics use is the Variant Call Format~\citep{da+11},
-or VCF. In VCF,  information about variant sites in a genome is encoded 
+or VCF. In a VCF file, information about variant sites in a genome is encoded 
 as tab-delimited rows in a text file. To access information about a 
-particular site, one must proceed through the file line-by-line until the 
+particular site naively, one must proceed through the file line-by-line until the 
 desired record is found. There are methods available to index this 
-file~\citep{li11}, but these have no semantic 
+file~\citep{li11} by genomic position, but these have no semantic 
 understanding of the structure of the file and so are limited in the 
 fields that can be indexed. One cannot, for example, build an index 
 to quickly obtain all records in which the quality field is greater
@@ -167,21 +173,26 @@ files, which discourages testing and checking for the effects of
 arbitrary thresholds in analyses.
 
 Wormtable is designed to make working with genome scale data more 
-efficient, and in this section we describe some examples to 
-illustrate the improvements over existing methods. To do this, 
-we converted a VCF file with XXX rows from the YYY project 
-into wormtable format using the included \texttt{vcf2wt} 
-conversion program.  The (uncompressed) VCF file was XX
-gigabytes, and the converted wormtable YY gigabytes, which required 
-X hours.
+efficient, and in this section we describe some examples of wormtable
+that illustrate the improvements over existing methods. We applied these 
+examples to a large, publicly available VCF file produced as part of the
+"Drosophila Genetic Reference Panel". This VCF ("freeze2.vcf.gz, available 
+here: ftp://ftp.hgsc.bcm.edu/DGRP/freeze2_Feb_2013/) contains variant calls 
+from a population consisting 192 inbred Drosophila lines and contains data 
+from the whole genome over a total of 6,146,611 rows). This VCF was converted to 
+wormtable format using the included \texttt{vcf2wt} conversion program.  
+The (uncompressed) VCF file was 15Gb, and the converted wormtable was 12Gb,
+which required X hours.
 
 Values are stored in wormtable in a binary format, so that no parsing is
-required when reading in rows. Methods using the VCF directly must parse 
-each row before it can be used, and this parsing is by far the most time 
+required when reading in rows whereas methods that use the VCF directly 
+must parse each row before it can be used, and is by far the most time 
 consuming part of processing VCF data. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset, using wormtable and using PyVCF[citation?]. Both of these
-methods proceeded row-by-row, checking the ALT and REF columns. The 
+in the dataset, using wormtable and using PyVCF[citation?], a module for
+python to parse VCF files. In both of these examples we proceed 
+row-by-row, checking the REF and ALT columns for the type of variant and
+summing transitions and transversions (ignoring indels). The 
 PyVCF method required X hours to complete, while the wormtable 
 based script needed only Y seconds. This stark difference is not a 
 criticism of the PyVCF library, which provides an efficient parser 
@@ -189,17 +200,18 @@ for VCF files; it is rather a measure of the inherent slowness of
 parsing text in large volumes.
 
 It is well known, of course, that plain text cannot be retrieved 
-efficiently at large scales. The BVCF format is an binary version 
+efficiently at large scales. The BVCF format is a binary version 
 of VCF which is intended to avoid this overhead [citation?]. 
 This binary format does alleviate the problem of parsing overhead,
 but does not solve the problem of indexing \emph{within} rows.
 
-To illustrate the use of indexes in wormtable, 
-we created an index on the ALT and REF columns, 
-This index required X MB of disc space Y minutes to build, respectively. 
-The ALT+REF index provides a much more efficient means of counting 
-the transitions and transversions, and another script to calculate 
-these required x seconds. 
+To illustrate the use of indexes in wormtable, we created an index 
+on the REF and ALT columns. This index required X MB of disc space 
+Y minutes to build, respectively. The REF+ALT index provides a much more 
+efficient means of counting the number of transitions and transversions 
+(we can just count the number of rows matching keys in the index 
+corresponding the SNPs of each type). A script to calculate these 
+counts by this method required x seconds. 
 
 The examples in this section are intended to illustrate the 
 magnitude of performance gains that wormtable can provide 
