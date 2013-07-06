@@ -14,7 +14,6 @@ Welcome! This is the documentation for Wormtable 0.1.
     introduction 
     tutorial 
     api
-    utilities 
     performance 
     data-storage
 
