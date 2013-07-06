@@ -100,7 +100,10 @@ column only contains only ``PASS``. We can simply delete these columns from the
 schema, to save another 14 bytes per row.
 
 This tweaking makes a considerable difference.
-This VCF 2.8 gigs compressed, and  15 gigs uncompressed.
+The source VCF file is 2.8GB when gzip compressed, and 15GB uncompressed. When we
+use the automatic schema from ``vcf2wt`` the resulting wormtable is 23.5GB.
+However, when we make the changes mentioned above, the wormtable requires only
+10.2GB. 
 
 .. warning:: It is very important that rows are less than approximately 16K. Over this 
    threshold, performance degrades considerably.
