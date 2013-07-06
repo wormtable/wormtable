@@ -16,8 +16,7 @@ Welcome! This is the documentation for Wormtable 0.1.
     api
     utilities 
     performance 
-    data-types
-    row-format
+    data-storage
 
 Indices and tables
 ==================
