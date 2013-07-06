@@ -11,7 +11,7 @@ import sys
 import wormtable as wt
 
 
-def count(homedir, index):
+def count_keys(homedir, index):
     with wt.open_table(homedir) as t, t.open_index(index) as i:
         table = [[k,v] for k,v in i.counter().items()]
         assert(len(t) == sum(r[1] for r in table))
@@ -19,7 +19,7 @@ def count(homedir, index):
 
 
 def main():
-    table = count(sys.argv[1], sys.argv[2])
+    table = count_keys(sys.argv[1], sys.argv[2])
     for r in table:
         print("\t".join(map(str, r)))
         
