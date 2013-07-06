@@ -18,6 +18,8 @@ information is not directly relevent to programmers using wormtable, it
 can help to understand the various tradeoffs when choosing a particular 
 type or choosing a variable versus a fixed length column.
 
+.. _data-types-index:
+
 ---------------
 Column types
 ---------------

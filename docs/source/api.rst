@@ -11,8 +11,7 @@ API Documentation
 This is the API documentation for wormtable. The documentation currently
 concentrates the read-API, since the initial release is intended 
 primarily for use with VCF data. For details on how to build a 
-wormtable from a VCF file see the :ref:`tutorial <tutorial-index>` or the 
-documentation for :ref:`vcf2wt-index`. 
+wormtable from a VCF file see the :ref:`tutorial <tutorial-index>`.
 
 In the :ref:`api-examples` section we take an informal tour of the API using
 a small example table. The :ref:`api-reference` section provides concrete 
@@ -174,8 +173,7 @@ An *index* in wormtable is a persistent sorting of a table with respect to a giv
 (or list of columns, as we see in the `Compound Indexes`_ section). Indexes are extremely useful, and 
 can be used to make many different operations more efficient. Each index has a *name*, which 
 is its unique identifier. Indexes are created using the
-:ref:`wtadmin-index` command line tool. See the documentation for details of how to 
-create indexes on a table.
+``wtadmin`` command line tool.
 
 To open an index on a table, we use the :meth:`Table.open_index`
 method. For example, to open an index called ``writer``, we might use::
