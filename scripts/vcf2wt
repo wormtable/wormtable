@@ -178,7 +178,8 @@ class VCFReader(object):
         Closes any open files on this Reader.
         """
         self.__input_file.close()
-        if self.__progress_file is not None: self.__progress_file.close()
+        if self.__progress_file is not None: 
+            self.__progress_file.close()
 
     def parse_version(self, s):
         """

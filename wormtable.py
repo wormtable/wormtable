@@ -44,7 +44,6 @@ INDEX_METADATA_VERSION = "0.1"
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
 
-
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
 WT_FLOAT = _wormtable.WT_FLOAT
@@ -1079,7 +1078,7 @@ class ProgressMonitor(object):
         self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
         elapsed = max(1, time.clock() - self.__start_time)
         rate = processed / elapsed
-        s = '\r[{0}{1}] {2:2.2f}% @{3:4.2G} {4}/s {5}'.format('#' * filled, 
+        s = '\r[{0}{1}] {2:5.1f}% @{3:8.1E} {4}/s {5}'.format('#' * filled, 
             ' ' * spaces, complete * 100, rate, self.__units, bar)
         sys.stdout.write(s)
         sys.stdout.flush()
