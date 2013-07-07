@@ -40,8 +40,6 @@ class ProgramRunner(object):
     def __init__(self, args):
         self._homedir = args.HOMEDIR 
         self._cache_size = wt.DEFAULT_CACHE_SIZE
-        if "cache_size" in args:
-            self._cache_size = args.cache_size
         self._table = wt.Table(self._homedir) 
        
     def init(self):
@@ -206,9 +204,9 @@ class AddRunner(ProgramRunner):
         self._index_name = args.name
         if args.name is None:
             self._index_name = self._colspec
-        self._progress = args.progress
+        self._quiet = args.quiet
         self._force = args.force
-        self._index_cache_size = args.index_cache_size
+        self._index_cache_size = args.cache_size
         self._index = None
 
     def init(self):
@@ -252,10 +250,11 @@ class AddRunner(ProgramRunner):
         # with index files being left behind from builds that 
         # were kill -9'd that Berkeley DB thinks are still held
         # open.
-        f = progress if self._progress else null
+        f = null if self._quiet else progress 
         self._index.build(f, max(1, int(n / 1000)))
-        if self._progress:
+        if not self._quiet:
             monitor.finish()
+            print("Flushing cache; this may take some time...")
 
     def cleanup(self):
         if self._index is not None:
@@ -269,6 +268,7 @@ class DumpRunner(ProgramRunner):
     """
     def __init__(self, args):
         super(DumpRunner, self).__init__(args)
+        self._cache_size = args.cache_size
         self._index = None 
         self._min_value = args.min 
         self._max_value = args.max 
@@ -352,7 +352,15 @@ def add_colspec_argument(parser):
     Adds a positional colspec argument to the specified parser.
     """
     parser.add_argument("COLSPEC", 
-        help="""Column specification for the index.""")   
+        help="""Column specification for the index. A colspec  
+        is of the form n_1[w_1]+n_2[w_2]+...+n_k[w_k], where n_j is the 
+        name of the j_th column in the index and w_j is the optional 
+        width of the bins in the index. If w_j is not provided or 
+        equal to 0.0, index keys are not binned. For example, 
+        a colspec CHROM+POS defines an index on the columns CHROM 
+        and POS without binning; a colspec INFO.AF[0.1] defines 
+        an index on the column INFO.AF with a bin width of 0.1.
+        """)   
 
 
 def main():
@@ -374,40 +382,40 @@ def main():
     
     # ls command
     ls_parser = subparsers.add_parser("ls", 
+            description="list details of the table and its indexes",
             help="list the indexes in the table")
     add_homedir_argument(ls_parser)
     ls_parser.set_defaults(runner=ListRunner)
 
     # index histogram command 
-    hist_parser = subparsers.add_parser("hist", help="""
-        Show the histogram for index NAME""")
+    hist_parser = subparsers.add_parser("hist", 
+        help="""show the histogram for index NAME""",
+        description="show the keys and counts from an index")
     add_homedir_argument(hist_parser)
     hist_parser.add_argument("NAME", help="name of the index")
     hist_parser.set_defaults(runner=HistRunner) 
 
     # rm index command
-    remove_parser = subparsers.add_parser("rm", help="delete an index")
+    remove_parser = subparsers.add_parser("rm", 
+        help="delete an index",
+        description="delete an index")
     add_homedir_argument(remove_parser)
     remove_parser.add_argument("NAME", help="name of the index")
     remove_parser.set_defaults(runner=DeleteRunner) 
 
     # add index command
     add_parser = subparsers.add_parser("add", 
-            help="add a new index to the table")
+            help="add a new index to the table",
+            description="add a new index to the table")
     add_homedir_argument(add_parser)
     add_colspec_argument(add_parser)
-    add_parser.add_argument("--progress", "-p", action="store_true", default=False,
-        help="show progress monitor")   
+    add_parser.add_argument("--quiet", "-q", action="store_true", default=False,
+        help="suppress progress monitor and messages")   
     add_parser.add_argument("--force", "-f", action="store_true", default=False,
         help="force over-writing of existing index")   
     add_parser.add_argument("--name", "-n", 
         help="name of the index (defaults to COLSPEC)")
     add_parser.add_argument("--cache-size", "-c", default="64M",
-            help="""table cache size in bytes; suffixes K, M and G also 
-                supported. Slight performace improvements may be found by 
-                making this larger, but it is much less imporant than 
-                the index cache size""")   
-    add_parser.add_argument("--index-cache-size", "-d", default="64M",
             help="""index cache size in bytes; suffixes K, M and G also supported.
                 This option is very important for index build performance and 
                 should be set as large as possible; ideally, the entire index 
@@ -416,7 +424,8 @@ def main():
 
     # dump command
     dump_parser = subparsers.add_parser("dump", 
-            help="dump the table to stdout")
+            help="dump the table to stdout",
+            description="dump data from the table to stdout.")
     add_homedir_argument(dump_parser)
     dump_parser.add_argument("columns", metavar="COLUMN", nargs="*", 
         help="Columns to dump - defaults to all columns")   
