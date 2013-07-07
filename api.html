@@ -26,8 +26,8 @@
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
     <link rel="top" title="wormtable 0.1.0 documentation" href="index.html" />
-    <link rel="next" title="Command line utilities" href="utilities.html" />
-    <link rel="prev" title="Data types" href="data-types.html" /> 
+    <link rel="next" title="Performance tuning" href="performance.html" />
+    <link rel="prev" title="Tutorial" href="tutorial.html" /> 
   </head>
   <body>
     <div class="related">
@@ -40,10 +40,10 @@
           <a href="py-modindex.html" title="Python Module Index"
              >modules</a> |</li>
         <li class="right" >
-          <a href="utilities.html" title="Command line utilities"
+          <a href="performance.html" title="Performance tuning"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="data-types.html" title="Data types"
+          <a href="tutorial.html" title="Tutorial"
              accesskey="P">previous</a> |</li>
         <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
@@ -62,17 +62,16 @@
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">June 27, 2013</td>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 07, 2013</td>
 </tr>
 </tbody>
 </table>
-<span class="target" id="module-wormtable"></span><p>This is the API documentation for wormtable. The documentation currently
+<p>This is the API documentation for wormtable. The documentation currently
 concentrates the read-API, since the initial release is intended
 primarily for use with VCF data. For details on how to build a
-wormtable from a VCF file see the <a class="reference internal" href="tutorial.html#tutorial-index"><em>tutorial</em></a> or the
-documentation for <a class="reference internal" href="utilities.html#vcf2wt-index"><em>vcf2wt</em></a>.</p>
+wormtable from a VCF file see the <a class="reference external" href="http://docs.python.org/tutorial/index.html#tutorial-index" title="(in Python v2.7)"><em class="xref std std-ref">tutorial</em></a>.</p>
 <p>In the <a class="reference internal" href="#api-examples"><em>Examples</em></a> section we take an informal tour of the API using
-a small example table. The <a class="reference internal" href="#api-reference"><em>Reference</em></a> section provides concrete
+a small example table. The <a class="reference internal" href="#api-reference"><em>Module reference</em></a> section provides concrete
 API documentation for the <a class="reference internal" href="#module-wormtable" title="wormtable: Write-once read-many table for large datasets. (Unix)"><tt class="xref py py-mod docutils literal"><span class="pre">wormtable</span></tt></a> module.</p>
 <div class="section" id="examples">
 <span id="api-examples"></span><h2>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
@@ -144,9 +143,11 @@ the following data:</p>
 <p>This table consists of six columns: the name of the Python, the year they were
 born and the number of entries in <a class="reference external" href="http://www.imdb.com">IMDB</a> they have under these
 headings as of 2013.</p>
+<div class="section" id="tables">
+<h3>Tables<a class="headerlink" href="#tables" title="Permalink to this headline">¶</a></h3>
 <p>The <a class="reference internal" href="#wormtable.open_table" title="wormtable.open_table"><tt class="xref py py-func docutils literal"><span class="pre">open_table()</span></tt></a> function returns a <a class="reference internal" href="#wormtable.Table" title="wormtable.Table"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> object
 opened for reading, and is analogous to the <a class="reference external" href="http://docs.python.org/library/functions.html#open" title="(in Python v2.7)"><tt class="xref py py-func docutils literal"><span class="pre">open()</span></tt></a> function
-from the Python standard library. So, to open our Pythons table
+from the Python standard library. So, to open our <cite>pythons.wt</cite> table
 for reading, we might do the following:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span> <span class="kn">as</span> <span class="nn">wt</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&quot;pythons.wt&quot;</span><span class="p">)</span>
@@ -175,13 +176,14 @@ protocol, so we can automatically close a table that has
 been opened:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="k">with</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&quot;pythons.wt&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">t</span><span class="p">:</span>
     <span class="k">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+<span class="c"># t is now closed and cannot be accessed</span>
 </pre></div>
 </div>
-<p>The <a class="reference external" href="http://docs.python.org/library/functions.html#len" title="(in Python v2.7)"><tt class="xref py py-func docutils literal"><span class="pre">len()</span></tt></a> function tells us that there are 6 rows in the <cite>pythons.wt</cite>
-table.  The <a class="reference internal" href="#wormtable.Table" title="wormtable.Table"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> class supports the read-only Python sequence
-protocol, and so tabless can be treated like a two-dimensional list in
+<p>The <a class="reference internal" href="#wormtable.Table" title="wormtable.Table"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> class supports the read-only Python sequence
+protocol, and so tables can be treated like a two-dimensional list in
 many ways. For example:</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&quot;pythons.wt&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 <span class="go">(0, b&#39;John Cleese&#39;, 1939, 60, 127, 0, 43)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 <span class="go">(5, b&#39;Graham Chapman&#39;, 1941, 46, 24, 0, 2)</span>
@@ -190,10 +192,33 @@ many ways. For example:</p>
 </pre></div>
 </div>
 <p>Rows are returned as tuples, with values for each column occupying
-the corresponding position. This is not the recommended interface
-for retrieving values from a table, however.
-A more efficient method of iterating over values in a table is
-to use a <a class="reference internal" href="#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a>.</p>
+the corresponding position. Each table consists of a fixed number of columns, which
+describe the size and type of the data in the column. The <a class="reference internal" href="#wormtable.Column" title="wormtable.Column"><tt class="xref py py-class docutils literal"><span class="pre">Column</span></tt></a> class
+has some methods to query these types and sizes, and these are accessed
+either via the <a class="reference internal" href="#wormtable.Table.columns" title="wormtable.Table.columns"><tt class="xref py py-meth docutils literal"><span class="pre">Table.columns()</span></tt></a> method, or the <a class="reference internal" href="#wormtable.Table.get_column" title="wormtable.Table.get_column"><tt class="xref py py-meth docutils literal"><span class="pre">Table.get_column()</span></tt></a>
+method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">columns</span><span class="p">()]</span>
+<span class="go">[&#39;row_id&#39;, &#39;name&#39;, &#39;born&#39;, &#39;writer&#39;, &#39;actor&#39;, &#39;director&#39;, &#39;producer&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s">&quot;born&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">get_type_name</span><span class="p">(),</span> <span class="n">c</span><span class="o">.</span><span class="n">get_element_size</span><span class="p">())</span>
+<span class="go">(&#39;uint&#39;, 2)</span>
+</pre></div>
+</div>
+<p>This tells us that the <tt class="docutils literal"><span class="pre">born</span></tt> column holds unsigned integer data with
+an element size of 2, and so it can store values from 0 to 65534. See
+<a class="reference internal" href="data-storage.html#data-types-index"><em>Column types</em></a> for details on the various data types
+and sizes supported by wormtable.</p>
+<p>The first column in every wormtable is an unsigned integer column,
+called <tt class="docutils literal"><span class="pre">row_id</span></tt>. This is the column used to index rows,
+and the size of this column determines the number of rows that can be
+stored in the table. As a result, we always have <tt class="docutils literal"><span class="pre">t[j][0]</span> <span class="pre">==</span> <span class="pre">j</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="n">t</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">))]</span>
+<span class="go">[0, 1, 2, 3, 4, 5]</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="cursors">
+<h3>Cursors<a class="headerlink" href="#cursors" title="Permalink to this headline">¶</a></h3>
 <p>Suppose we are only interested in the name and the birth year of the pythons. We could
 do something like:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&quot;pythons.wt&quot;</span><span class="p">)</span>
@@ -201,7 +226,7 @@ do something like:</p>
 <span class="go">[(b&#39;John Cleese&#39;, 1939), (b&#39;Terry Gilliam&#39;, 1940), (b&#39;Eric Idle&#39;, 1943), (b&#39;Terry Jones&#39;, 1942), (b&#39;Michael Palin&#39;, 1943), (b&#39;Graham Chapman&#39;, 1941)]</span>
 </pre></div>
 </div>
-<p>This is very inefficient, however, if we have a large number of columns, because <a class="reference internal" href="#module-wormtable" title="wormtable: Write-once read-many table for large datasets. (Unix)"><tt class="xref py py-mod docutils literal"><span class="pre">wormtable</span></tt></a>
+<p>This is very inefficient if we have a large number of columns, because <a class="reference internal" href="#module-wormtable" title="wormtable: Write-once read-many table for large datasets. (Unix)"><tt class="xref py py-mod docutils literal"><span class="pre">wormtable</span></tt></a>
 must build a tuple containing all of the columns in each row, even though most of this will
 not be used. It is also inconvenient: we must remember that the <cite>name</cite> column is in position
 1, and the <cite>born</cite> column is in position 2.</p>
@@ -227,8 +252,152 @@ do the following (rows are zero-indexed in wormtable):</p>
 </div>
 <p>Note here that <a class="reference internal" href="#wormtable.Cursor.set_min" title="wormtable.Cursor.set_min"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_min()</span></tt></a> is <em>inclusive</em> and <a class="reference internal" href="#wormtable.Cursor.set_max" title="wormtable.Cursor.set_max"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_max()</span></tt></a> is <em>exclusive</em>.</p>
 </div>
-<div class="section" id="reference">
-<span id="api-reference"></span><h2>Reference<a class="headerlink" href="#reference" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="simple-indexes">
+<h3>Simple Indexes<a class="headerlink" href="#simple-indexes" title="Permalink to this headline">¶</a></h3>
+<p>Suppose we wished to rank the Monty Python team in terms of writing credits from IMDB. We could
+simply retrieve the columns that we are interested in  and sort them in terms of the <tt class="docutils literal"><span class="pre">writer</span></tt>
+column using the built in <a class="reference external" href="http://docs.python.org/library/functions.html#sorted" title="(in Python v2.7)"><tt class="xref py py-func docutils literal"><span class="pre">sorted()</span></tt></a> function. This does not work very well, however, if we
+have millions of rows in our table. It is very slow, and may not even be possible if there are
+too many rows to fit in memory.</p>
+<p>An <em>index</em> in wormtable is a persistent sorting of a table with respect to a given column
+(or list of columns, as we see in the <a class="reference internal" href="#compound-indexes">Compound Indexes</a> section). Indexes are extremely useful, and
+can be used to make many different operations more efficient. Each index has a <em>name</em>, which
+is its unique identifier. Indexes are created using the
+<tt class="docutils literal"><span class="pre">wtadmin</span></tt> command line tool.</p>
+<p>To open an index on a table, we use the <a class="reference internal" href="#wormtable.Table.open_index" title="wormtable.Table.open_index"><tt class="xref py py-meth docutils literal"><span class="pre">Table.open_index()</span></tt></a>
+method. For example, to open an index called <tt class="docutils literal"><span class="pre">writer</span></tt>, we might use:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;writer&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="#wormtable.Table.open_index" title="wormtable.Table.open_index"><tt class="xref py py-meth docutils literal"><span class="pre">Table.open_index()</span></tt></a> method is directly analogous to the <a class="reference internal" href="#wormtable.open_table" title="wormtable.open_table"><tt class="xref py py-func docutils literal"><span class="pre">open_table()</span></tt></a> function
+used to open tables. Indexes should be closed after use, like tables, and also support
+the <a class="reference external" href="http://www.python.org/dev/peps/pep-0343/">context manager</a> protocol to
+automatically close indexes:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">with</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;writer&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">i</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">())</span>
+<span class="c"># Index i is now closed and cannot be accessed</span>
+</pre></div>
+</div>
+<p>Indexes sort the <em>keys</em> in the columns of interest, and map these keys to the rows
+of the table that they are found. To get the minumum and maximum keys from the
+index, we use the <a class="reference internal" href="#wormtable.Index.get_min" title="wormtable.Index.get_min"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_min()</span></tt></a> and <a class="reference internal" href="#wormtable.Index.get_max" title="wormtable.Index.get_max"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_max()</span></tt></a> methods:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;writer&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get_min</span><span class="p">(),</span> <span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">())</span>
+<span class="go">(25, 60)</span>
+</pre></div>
+</div>
+<p>This tells us that the least productive Python has 25 writing credits on
+IMDB, and the most has 60. This does not tell us <em>who</em> they are though. To
+get information about other columns, we must use a <a class="reference internal" href="#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;name&quot;</span><span class="p">,</span> <span class="s">&quot;writer&quot;</span><span class="p">],</span> <span class="n">i</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">(b&#39;Terry Gilliam&#39;, 25)</span>
+<span class="go">(b&#39;Eric Idle&#39;, 38)</span>
+<span class="go">(b&#39;Graham Chapman&#39;, 46)</span>
+<span class="go">(b&#39;Terry Jones&#39;, 50)</span>
+<span class="go">(b&#39;Michael Palin&#39;, 58)</span>
+<span class="go">(b&#39;John Cleese&#39;, 60)</span>
+</pre></div>
+</div>
+<p>When we provide an index as the second argument to the <a class="reference internal" href="#wormtable.Table.cursor" title="wormtable.Table.cursor"><tt class="xref py py-meth docutils literal"><span class="pre">Table.cursor()</span></tt></a> method,
+this defines the <em>order</em> in which the rows are returned by the <a class="reference internal" href="#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a>
+object.</p>
+<p>If we are only interested in the Pythons who have between 30 (inclusive) and 50 (exclusive)
+writing credits, we can write:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;name&quot;</span><span class="p">,</span> <span class="s">&quot;writer&quot;</span><span class="p">],</span> <span class="n">i</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="o">.</span><span class="n">set_max</span><span class="p">(</span><span class="mi">50</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">c</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">(b&#39;Eric Idle&#39;, 38)</span>
+<span class="go">(b&#39;Graham Chapman&#39;, 46)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="index-counters">
+<h3>Index Counters<a class="headerlink" href="#index-counters" title="Permalink to this headline">¶</a></h3>
+<p>To find out the number of rows in a table correspond to a given index key, we use
+a Counter object. This is closely modelled on a the <a class="reference external" href="http://docs.python.org/library/collections.html#collections.Counter" title="(in Python v2.7)"><tt class="xref py py-class docutils literal"><span class="pre">collections.Counter</span></tt></a>
+class; it is a mapping from keys to the number of rows in the table containing
+this key. For example, if we make an index on the <tt class="docutils literal"><span class="pre">director</span></tt> Column:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;director&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">i</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">c</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="s">&quot;-&gt;&quot;</span><span class="p">,</span>  <span class="n">v</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">0 -&gt; 3</span>
+<span class="go">7 -&gt; 1</span>
+<span class="go">16 -&gt; 1</span>
+<span class="go">18 -&gt; 1</span>
+</pre></div>
+</div>
+<p>This shows that there are 3 Pythons who have directed 0 films,
+and the three others have directed 7, 16 and 18 respectively.
+Counters implement the read-only Python mapping protocol, and so can be treated
+very much like a dictionary:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="go">3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="go">0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+<span class="go">4</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="compound-indexes">
+<h3>Compound Indexes<a class="headerlink" href="#compound-indexes" title="Permalink to this headline">¶</a></h3>
+<p>Wormtable also supports indexes over more than one column. These differ from simple
+indexes in that the keys for each index and constructed by concatenating the
+values from the constituent columns, in the order that they are specified. For example,
+we can make an index on the columns <tt class="docutils literal"><span class="pre">director</span></tt> and <tt class="docutils literal"><span class="pre">producer</span></tt>, which we call
+<tt class="docutils literal"><span class="pre">director+producer</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;director+producer&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;name&quot;</span><span class="p">,</span> <span class="s">&quot;director&quot;</span><span class="p">,</span> <span class="s">&quot;producer&quot;</span><span class="p">],</span> <span class="n">i</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">(b&#39;Michael Palin&#39;, 0, 1)</span>
+<span class="go">(b&#39;Graham Chapman&#39;, 0, 2)</span>
+<span class="go">(b&#39;John Cleese&#39;, 0, 43)</span>
+<span class="go">(b&#39;Eric Idle&#39;, 7, 5)</span>
+<span class="go">(b&#39;Terry Jones&#39;, 16, 1)</span>
+<span class="go">(b&#39;Terry Gilliam&#39;, 18, 8)</span>
+</pre></div>
+</div>
+<p>This lists the rows in the order defined by the index. Keys are sorted lexicographically,
+so that we sort on the first column first, and if there are duplicate values for the first
+column we then sort on the second column. Here, for example, we have Michael Palin, Graham
+Chapman and John Cleese have all directed 0 films. But since this is a compound index,
+we then sort on the producer column, giving the ordering that we see.</p>
+<p>Since keys now contain values from multiple columns, the <a class="reference internal" href="#wormtable.Index.get_min" title="wormtable.Index.get_min"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_min()</span></tt></a> and
+<a class="reference internal" href="#wormtable.Index.get_max" title="wormtable.Index.get_max"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_max()</span></tt></a> now return tuples:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span><span class="o">.</span><span class="n">get_min</span><span class="p">()</span>
+<span class="go">(0, 1)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">()</span>
+<span class="go">(18, 8)</span>
+</pre></div>
+</div>
+<p>These are also more flexible now, however, as we can get the minumum and maximum keys
+with a given prefix:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span><span class="o">.</span><span class="n">get_min</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+<span class="go">(7, 5)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="go">(0, 43)</span>
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="#wormtable.Cursor.set_min" title="wormtable.Cursor.set_min"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_min()</span></tt></a> and <a class="reference internal" href="#wormtable.Cursor.set_max" title="wormtable.Cursor.set_max"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_max()</span></tt></a> methods also support this
+flexible key prefixing:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;name&quot;</span><span class="p">,</span> <span class="s">&quot;director&quot;</span><span class="p">,</span> <span class="s">&quot;producer&quot;</span><span class="p">],</span> <span class="n">i</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">c</span><span class="p">]</span>
+<span class="go">[(b&#39;Eric Idle&#39;, 7, 5), (b&#39;Terry Jones&#39;, 16, 1), (b&#39;Terry Gilliam&#39;, 18, 8)]</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="module-wormtable">
+<span id="module-reference"></span><span id="api-reference"></span><h2>Module reference<a class="headerlink" href="#module-wormtable" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
 <dt id="wormtable.open_table">
 <tt class="descclassname">wormtable.</tt><tt class="descname">open_table</tt><big>(</big><em>homedir</em>, <em>cache_size='16M'</em><big>)</big><a class="headerlink" href="#wormtable.open_table" title="Permalink to this definition">¶</a></dt>
@@ -250,6 +419,8 @@ interface when opening tables for reading.</p>
 </table>
 </dd></dl>
 
+<div class="section" id="table-class">
+<h3><a class="reference internal" href="#wormtable.Table" title="wormtable.Table"><tt class="xref py py-class docutils literal"><span class="pre">Table</span></tt></a> class<a class="headerlink" href="#table-class" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="wormtable.Table">
 <em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Table</tt><a class="headerlink" href="#wormtable.Table" title="Permalink to this definition">¶</a></dt>
@@ -290,14 +461,16 @@ with the specified identifier is used. These may be mixed arbitrarily.</p>
 <tt class="descname">open_index</tt><big>(</big><em>index_name</em>, <em>cache_size='16M'</em><big>)</big><a class="headerlink" href="#wormtable.Table.open_index" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns an index with the specified name opened in read mode with 
 the specified cache_size.</p>
-<p>See <a class="reference internal" href="performance.html#performance-cache"><em>Cache tuning</em></a> for details on setting cache sizes.</p>
+<p>See <a class="reference internal" href="performance.html#performance-cache"><em>Cache tuning</em></a> for details on setting cache sizes. 
+The cache size may be either an integer specifying the size in 
+bytes or a string with the optional suffixes K, M or G.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
 <li><strong>index_name</strong> (<a class="reference external" href="http://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; the name of the index to open</li>
-<li><strong>cache_size</strong> (<em>str or int.</em>) &#8211; the size of the cache on the index</li>
+<li><strong>cache_size</strong> (str or int. See <a class="reference internal" href="#wormtable.Table.set_cache_size" title="wormtable.Table.set_cache_size"><tt class="xref py py-meth docutils literal"><span class="pre">Table.set_cache_size()</span></tt></a> for details.) &#8211; the size of the cache on the index</li>
 </ul>
 </td>
 </tr>
@@ -373,6 +546,9 @@ we return the column with the specified name.</p>
 
 </dd></dl>
 
+</div>
+<div class="section" id="cursor-class">
+<h3><a class="reference internal" href="#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a> class<a class="headerlink" href="#cursor-class" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="wormtable.Cursor">
 <em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Cursor</tt><a class="headerlink" href="#wormtable.Cursor" title="Permalink to this definition">¶</a></dt>
@@ -387,18 +563,21 @@ are interested in. Cursors also provide methods to set the
 maximum and minimum values of the row keys we wish to examine.</p>
 <dl class="method">
 <dt id="wormtable.Cursor.set_min">
-<tt class="descname">set_min</tt><big>(</big><em>v</em><big>)</big><a class="headerlink" href="#wormtable.Cursor.set_min" title="Permalink to this definition">¶</a></dt>
+<tt class="descname">set_min</tt><big>(</big><em>*v</em><big>)</big><a class="headerlink" href="#wormtable.Cursor.set_min" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the minimum row key to retrieve to the specified value.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="wormtable.Cursor.set_max">
-<tt class="descname">set_max</tt><big>(</big><em>v</em><big>)</big><a class="headerlink" href="#wormtable.Cursor.set_max" title="Permalink to this definition">¶</a></dt>
+<tt class="descname">set_max</tt><big>(</big><em>*v</em><big>)</big><a class="headerlink" href="#wormtable.Cursor.set_max" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the maximum row key to retrieve to the specified value.</p>
 </dd></dl>
 
 </dd></dl>
 
+</div>
+<div class="section" id="index-class">
+<h3><a class="reference internal" href="#wormtable.Index" title="wormtable.Index"><tt class="xref py py-class docutils literal"><span class="pre">Index</span></tt></a> class<a class="headerlink" href="#index-class" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="wormtable.Index">
 <em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Index</tt><a class="headerlink" href="#wormtable.Index" title="Permalink to this definition">¶</a></dt>
@@ -440,6 +619,9 @@ method of iterating over the keys in the index.</p>
 
 </dd></dl>
 
+</div>
+<div class="section" id="column-class">
+<h3><a class="reference internal" href="#wormtable.Column" title="wormtable.Column"><tt class="xref py py-class docutils literal"><span class="pre">Column</span></tt></a> class<a class="headerlink" href="#column-class" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="wormtable.Column">
 <em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Column</tt><a class="headerlink" href="#wormtable.Column" title="Permalink to this definition">¶</a></dt>
@@ -447,11 +629,48 @@ method of iterating over the keys in the index.</p>
 <dl class="method">
 <dt id="wormtable.Column.get_name">
 <tt class="descname">get_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_name" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the name of this column.</p>
+<dd><p>Returns the name of this column. This is the unique identifier for 
+a column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_description">
+<tt class="descname">get_description</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_description" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the description of this column. This is an optional string 
+describing the purpose of a column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_type">
+<tt class="descname">get_type</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the type code for this column. This is 
+one of WT_INT,  WT_UINT, WT_FLOAT or  WT_CHAR.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_type_name">
+<tt class="descname">get_type_name</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_type_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the string representation of the type of this Column.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_element_size">
+<tt class="descname">get_element_size</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_element_size" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the size of each element in the column in bytes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="wormtable.Column.get_num_elements">
+<tt class="descname">get_num_elements</tt><big>(</big><big>)</big><a class="headerlink" href="#wormtable.Column.get_num_elements" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the number of elements in this column. This is either a 
+positive integer &gt;= 1 or WT_VAR1. If the number of elements 
+is WT_VAR1, the number of elements in the column is variable,
+from 0 to 255.</p>
 </dd></dl>
 
 </dd></dl>
 
+</div>
 </div>
 </div>
 
@@ -464,18 +683,31 @@ method of iterating over the keys in the index.</p>
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">API Documentation</a><ul>
-<li><a class="reference internal" href="#examples">Examples</a></li>
-<li><a class="reference internal" href="#reference">Reference</a></li>
+<li><a class="reference internal" href="#examples">Examples</a><ul>
+<li><a class="reference internal" href="#tables">Tables</a></li>
+<li><a class="reference internal" href="#cursors">Cursors</a></li>
+<li><a class="reference internal" href="#simple-indexes">Simple Indexes</a></li>
+<li><a class="reference internal" href="#index-counters">Index Counters</a></li>
+<li><a class="reference internal" href="#compound-indexes">Compound Indexes</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-wormtable">Module reference</a><ul>
+<li><a class="reference internal" href="#table-class"><tt class="docutils literal"><span class="pre">Table</span></tt> class</a></li>
+<li><a class="reference internal" href="#cursor-class"><tt class="docutils literal"><span class="pre">Cursor</span></tt> class</a></li>
+<li><a class="reference internal" href="#index-class"><tt class="docutils literal"><span class="pre">Index</span></tt> class</a></li>
+<li><a class="reference internal" href="#column-class"><tt class="docutils literal"><span class="pre">Column</span></tt> class</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
-  <p class="topless"><a href="data-types.html"
-                        title="previous chapter">Data types</a></p>
+  <p class="topless"><a href="tutorial.html"
+                        title="previous chapter">Tutorial</a></p>
   <h4>Next topic</h4>
-  <p class="topless"><a href="utilities.html"
-                        title="next chapter">Command line utilities</a></p>
+  <p class="topless"><a href="performance.html"
+                        title="next chapter">Performance tuning</a></p>
   <h3>This Page</h3>
   <ul class="this-page-menu">
     <li><a href="_sources/api.txt"
@@ -508,16 +740,16 @@ method of iterating over the keys in the index.</p>
           <a href="py-modindex.html" title="Python Module Index"
              >modules</a> |</li>
         <li class="right" >
-          <a href="utilities.html" title="Command line utilities"
+          <a href="performance.html" title="Performance tuning"
              >next</a> |</li>
         <li class="right" >
-          <a href="data-types.html" title="Data types"
+          <a href="tutorial.html" title="Tutorial"
              >previous</a> |</li>
         <li><a href="index.html">wormtable 0.1.0 documentation</a> &raquo;</li> 
       </ul>
     </div>
     <div class="footer">
-        &copy; Copyright 2013, Jerome Kelleher.
+        &copy; Copyright 2013, the Wormtable team.
       Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
     </div>
   </body>

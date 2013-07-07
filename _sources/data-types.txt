@@ -32,6 +32,8 @@ by that column is always *num_elements* * *element_size*.
 In variable length columns, we can store
 from 0 to 255 elements.
 
+.. _int-types-index:
+
 ---------------
 Integer columns
 ---------------
@@ -53,6 +55,7 @@ Element size    Min                     Max
 8               -9223372036854775807    9223372036854775807
 ============    ====================    ===================
 
+.. _uint-types-index:
 
 ------------------------
 Unsigned integer columns
@@ -75,6 +78,7 @@ Element size    Min     Max
 ============    ====    ===================
 
 
+.. _float-types-index:
 
 ----------------------
 Floating point columns 
