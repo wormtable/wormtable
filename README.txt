@@ -106,8 +106,12 @@ Other Platforms
 On platforms that Berkeley DB is not available as part of the native packaging 
 system (or DB was installed locally because of non-root access)
 there can be issues with finding the correct headers and libraries
-when compiling ``wormtable``. For example, on FreeBSD we get something 
-like this::
+when compiling ``wormtable``. For example, 
+if we add the DB 4.8 package using:: 
+        
+        # pkg_add -r db48
+
+we get the following errors when we try to install wormtable::
 
         $ python setup.py build
         ... [Messages cut for brevity] ...
@@ -118,14 +122,17 @@ like this::
         _wormtablemodule.c:3740: error: 'DistinctValueIterator' has no member named 'cursor'
         error: command 'cc' failed with exit status 1
 
+This is because the compiler does not know where to find the headers and library 
+files for Berkeley DB.  
 To remedy this we must set the 
 ``LDFLAGS`` and ``CFLAGS`` environment variables to 
 their correct values. Unfortunately there is no simple method to do this 
 and some knowledge of where your system keeps headers and libraries 
-is needed.  On FreeBSD (after installing the ``db48`` package as above) we 
-might use::
+is needed. To complete the installation for the FreeBSD example above, 
+we can do the following::
         
          $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
+         $ sudo python setup.py install
 
 ********
 Mac OS X
@@ -147,18 +154,6 @@ and LDFLAGS environment variables to use the headers and libraries in /opt::
     $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python setup.py build
     $ sudo python setup.py install
 
-
-*****
-Unix
-*****
-
-Most Unix systems provide Berkeley DB packages. For example, on FreeBSD
-we have::
-
-    # pkg_add -r db48
-
-If necessary, Berkeley DB can be built from source and installed manually quite 
-easily.
 
 ----------
 Test suite
