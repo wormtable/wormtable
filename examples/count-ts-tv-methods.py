@@ -22,13 +22,13 @@ def count_Ts_Tv_pyvcf(vcf_file):
     """
     Ts, Tv = 0, 0
     for r in vcf.Reader(filename=vcf_file):
-        alt = r.ALT
-        ret = r.REF
-        if ref != alt and ref in bases and alt in bases:
-            if bases[ref] == bases[alt]:
+        if r.REF in bases and r.ALT[0] in bases and len(r.ALT) == 1 \
+                and r.ALT[0] != r.REF:
+            if bases[r.REF] == bases[r.ALT[0]]:
                 Ts +=1
             else:
                 Tv +=1
+
     return Ts, Tv
 
 
