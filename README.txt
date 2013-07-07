@@ -99,6 +99,27 @@ and on Red Hat/Fedora use::
 Other distributions and package managers should provide a similarly easy
 option to install the DB development files.
 
+********
+Mac OS X
+********
+
+Berkeley DB can be installed from source on a mac, via 
+`macports <https://www.macports.org/>`_ or 
+`homebrew <http://mxcl.github.io/homebrew/>`_.
+
+For MacPorts, to install e.g. v5.3 ::
+
+    $ sudo port install db53
+    
+for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
+
+Assuming Berkeley DB is installed with macports then we need to set the CFLAGS
+and LDFLAGS environment variables to use the headers and libraries in /opt::
+ 
+    $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python setup.py build
+    $ sudo python setup.py install
+
+
 ***************
 Other Platforms
 ***************
@@ -133,26 +154,6 @@ we can do the following::
         
          $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
          $ sudo python setup.py install
-
-********
-Mac OS X
-********
-
-Berkeley DB can be installed from source on a mac, via 
-`macports <https://www.macports.org/>`_ or 
-`homebrew <http://mxcl.github.io/homebrew/>`_.
-
-For MacPorts, to install e.g. v5.3 ::
-
-    $ sudo port install db53
-    
-for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
-
-Assuming Berkeley DB is installed with macports then we need to set the CFLAGS
-and LDFLAGS environment variables to use the headers and libraries in /opt::
- 
-    $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python setup.py build
-    $ sudo python setup.py install
 
 
 ----------
