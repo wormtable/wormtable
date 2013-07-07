@@ -371,7 +371,7 @@ Alternatively you can use the python script provided in the examples folder ::
 	GTCT    1
 	T       2
 
-Transition-Transversion ratio - *ts-tv.py*
+Transition-Transversion ratio - *count-ts-tv.py*
 ------------------------------------------
 This example uses a compound index of the reference nucleotide *REF* and the alternate 
 nucleotide *ALT* to count the number of transitions (changes A <-> G or C <-> T) and 
@@ -411,7 +411,7 @@ called form the commandline ::
 	$ python ts-tv.py sample_wt
 	ts: 1 tv: 1
 
-High Quality SNPs - *hq-snps.py*
+High Quality SNPs - *find-hq-snps.py*
 --------------------------------
 In this example we provide a script that will return all the sites in your VCF 
 that have a quality score over a particular minimum threshold. This script uses 
@@ -442,13 +442,4 @@ or using the provided python script ::
 	$ python hq-snps.py -q 30 sample_wt
 	20      1230237 T               47.0
 	20      1234567 GTCT    G,GTACT 50.0
-
-
-Sliding window analysis of Genetic Diversity - *sliding-window.py*
--------------------------------------------------------------------
-This script demonstrates how we can use the cursor feature of Wormtable to move 
-through a file in windows and perform calculations on those windows. In this 
-case we calculate the amount of genetic diversity that is present in each window 
-using the alternate allele frequency (*AF* column) or by calculating the 
-alternate allele frequency using the genotype calls in the sample columns.
 
