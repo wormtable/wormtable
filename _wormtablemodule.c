@@ -42,16 +42,6 @@
 
 static PyObject *WormtableError;
 
-/* TODO:
- * 1) We need much better error reporting for the parsers. These should have a
- * top level variadic function that takes arguments and set the Python exception
- * appropriately.
- * 3) The numerical types need a little cleaning up and thought put into. We
- * now have single and double floating point sizes and should export constants
- * to tell what they are. There should also be some constants telling range
- * of integers and so on.
- */
-
 typedef struct Column_t {
     PyObject_HEAD
     PyObject *name;
@@ -489,12 +479,6 @@ Column_unpack_elements_float(Column *self, void *source)
 static int 
 Column_unpack_elements_char(Column *self, void *source)
 {
-    /*
-    char v[1024];
-    memcpy(v, source, self->num_buffered_elements); 
-    v[self->num_buffered_elements] = 0;
-    printf("unpacked: '%s': %d\n", v, self->num_buffered_elements);
-    */
     memcpy(self->element_buffer, source, self->num_buffered_elements); 
     return  0; 
 }
@@ -543,7 +527,6 @@ Column_pack_elements_int(Column *self, void *dest)
     int64_t *elements = (int64_t *) self->element_buffer;
     int64_t u;
     for (j = 0; j < self->num_buffered_elements; j++) {
-        //printf("\npacking :%ld\n", elements[j]); 
         u = elements[j];
         /* flip the sign bit */
         u ^= 1LL << (self->element_size * 8 - 1);
@@ -587,12 +570,6 @@ static int
 Column_pack_elements_char(Column *self, void *dest)
 {
     int ret = -1;
-    /*
-    char v[1024];
-    memcpy(v, self->element_buffer, self->num_buffered_elements); 
-    v[self->num_buffered_elements] = 0;
-    printf("packed: '%s': %d\n", v, self->num_buffered_elements);
-    */
     memcpy(dest, self->element_buffer, self->num_buffered_elements); 
     ret = 0;
     return ret; 
@@ -750,7 +727,6 @@ Column_truncate_elements_float(Column *self, double bin_width)
         if (u != missing_value) {
             elements[j] = u - fmod(u, bin_width); 
         }
-        //printf("truncating :%f by %f = %f\n", u, bin_width, elements[j]);    
     }
     ret = 0;
 out:
@@ -1303,7 +1279,6 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
                 num_elements) < 0) {
             goto out;
         }
-        //printf("set to offset %d, with %d bytes\n", row_size, num_elements);
         dest = row + row_size; 
     }
     self->pack_elements(self, dest);
