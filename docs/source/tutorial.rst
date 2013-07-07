@@ -365,7 +365,7 @@ The idea of this script is to implement a simple counter for a named wormtable d
 
 Alternatively you can use the python script provided in the examples folder ::
 
-	$ python count-distinct.py sample_wt REF
+	$ python count-keys.py sample_wt REF
 	A       1
 	G       1
 	GTCT    1
@@ -439,7 +439,7 @@ a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1])
 or using the provided python script ::
 
 	$ wtadmin add sample_wt QUAL[1] # in case index does not already exist.
-	$ python hq-snps.py -q 30 sample_wt
+	$ python find-hq-snps.py -q 30 sample_wt
 	20      1230237 T               47.0
 	20      1234567 GTCT    G,GTACT 50.0
 
