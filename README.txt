@@ -128,7 +128,7 @@ On platforms that Berkeley DB is not available as part of the native packaging
 system (or DB was installed locally because of non-root access)
 there can be issues with finding the correct headers and libraries
 when compiling ``wormtable``. For example, 
-if we add the DB 4.8 package using:: 
+if we add the DB 4.8 package on FreeBSD using:: 
         
         # pkg_add -r db48
 
