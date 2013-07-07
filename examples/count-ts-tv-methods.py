@@ -20,11 +20,12 @@ def count_Ts_Tv_pyvcf(vcf_file):
     """ 
     Count number of transitions and transversions using pyVCF
     """
-    vcf_reader = vcf.Reader(filename=vcf_file)
     Ts, Tv = 0, 0
-    for r in vcf_reader:
-        if r.REF in bases and r.ALT[0] in bases and len(r.ALT) == 1:
-            if bases[r.REF] == bases[r.ALT[0]]:
+    for r in vcf.Reader(filename=vcf_file):
+        alt = r.ALT
+        ret = r.REF
+        if ref != alt and ref in bases and alt in bases:
+            if bases[ref] == bases[alt]:
                 Ts +=1
             else:
                 Tv +=1
@@ -39,7 +40,7 @@ def count_Ts_Tv_wtcursor(homedir):
     with wt.open_table(homedir) as t:
         Ts, Tv = 0, 0
         for ref, alt in t.cursor(["REF", "ALT"]):
-            if ref in bases and alt in bases:
+            if ref != alt and ref in bases and alt in bases:
                 if bases[ref] == bases[alt]:
                     Ts +=1
                 else:
@@ -52,12 +53,10 @@ def count_Ts_Tv_wtindex(homedir):
     Count number of of transitions and transversions using wormtable and 
     an index on REF+ALT
     """
-    subs = [p for p in permutations(bases.keys(), 2)]
-    print(subs)
     with wt.open_table(homedir) as t, t.open_index("REF+ALT") as i:
         Ts, Tv = 0, 0
         c = i.counter()
-        for s in subs:
+        for s in permutations(bases.keys(), 2):
             if bases[s[0]] == bases[s[1]]: 
                 Ts += c[s] 
             else: 
