@@ -445,7 +445,7 @@ or using the provided python script ::
 
 
 ---------
-VCF-UTILS
+VCF-Utils
 ---------
 We have also provided three utilities (in the directory vcf-utils.py) which 
 will allow a user to use wormtable with VCF format files immediately. These 
