@@ -176,28 +176,38 @@ Wormtable is designed to make working with genome scale data more
 efficient, and in this section we describe some examples of wormtable
 that illustrate the improvements over existing methods. We applied these 
 examples to a large, publicly available VCF file produced as part of the
-"Drosophila Genetic Reference Panel". This VCF ("freeze2.vcf.gz, available 
-here: ftp://ftp.hgsc.bcm.edu/DGRP/freeze2_Feb_2013/) contains variant calls 
+Drosophila genetic reference panel~\citep{mr+12}.
+This VCF\footnote{\href%
+{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}
+{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}}
+contains variant calls 
 from a population consisting 192 inbred Drosophila lines and contains data 
-from the whole genome over a total of 6,146,611 rows). This VCF was converted to 
-wormtable format using the included \texttt{vcf2wt} conversion program.  
-The (uncompressed) VCF file was 15GB, and the converted wormtable was 12GB 
-and took 30 minutes, 55 seconds to create.
+from the whole genome over a total of 6,146,611 rows and consists
+of 15GB of uncompressed text. The VCF was converted to 
+wormtable format using the included \texttt{vcf2wt} program
+on a standard workstation with a single hard disk. The
+conversion required approximately 70 minutes, and the size of the resulting  
+wormtable file was 10.1GB (using the smallest type required
+to represent the data in each column).
 
 Values are stored in wormtable in a binary format, so that no parsing is
-required when reading in rows whereas methods that use the VCF directly 
-must parse each row before it can be used, and is by far the most time 
-consuming part of processing VCF data. To illustrate this advantage, we
+required when reading in rows. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset, using wormtable and using PyVCF[http://pyvcf.readthedocs.org/?], a module for
-python to parse VCF files. In both of these examples we proceed 
+in the dataset, using wormtable, standard Unix tools and PyVCF\footnote{%
+\href{http://pyvcf.rtfd.org/}{http://pyvcf.rtfd.org/}}, 
+a Python VCF parser.
+In each examples we proceed 
 row-by-row, checking the REF and ALT columns for the type of variant and
-summing transitions and transversions (ignoring indels). The 
-PyVCF method required X hours to complete, while the wormtable 
-based script needed only Y seconds. This stark difference is not a 
-criticism of the PyVCF library, which provides an efficient parser 
-for VCF files; it is rather a measure of the inherent slowness of
-parsing text in large volumes.
+counting the transitions and transversions we encounter. 
+Using PyVCF this required approximately 130 minutes. The Unix tools 
+(\texttt{cut}, \texttt{grep} and \texttt{perl}) method required 
+1m17s, and wormtable required 55 seconds. Both the Unix tools 
+and wormtable were limited by the speed of the hard disk in the
+test machine, and therefore could be much faster using 
+modern solid state 
+storage. It should be noted, however, that this simple task represents 
+something of a best case scenario for the Unix tools pipeline.
+
 
 It is well known, of course, that plain text cannot be retrieved 
 efficiently at large scales. The BVCF format is a binary version 
@@ -206,12 +216,10 @@ This binary format does alleviate the problem of parsing overhead,
 but does not solve the problem of indexing \emph{within} rows.
 
 To illustrate the use of indexes in wormtable, we created an index 
-on the REF and ALT columns. This index required 66MB of disc space 
-3 minutes 50 seconds to build, respectively. The REF+ALT index provides a much more 
-efficient means of counting the number of transitions and transversions 
-(we can just count the number of rows matching keys in the index 
-corresponding the SNPs of each type). A script to calculate these 
-counts by this method required x seconds. 
+on the REF and ALT columns which required 3m42s to build and 
+consumed 66MB of storage space. Using this index we repeated the 
+example of counting transitions and transversions, which required 
+less than a second to complete.
 
 The examples in this section are intended to illustrate the 
 magnitude of performance gains that wormtable can provide 
