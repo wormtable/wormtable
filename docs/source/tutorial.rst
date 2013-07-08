@@ -443,3 +443,56 @@ or using the provided python script ::
 	20      1230237 T               47.0
 	20      1234567 GTCT    G,GTACT 50.0
 
+
+---------
+VCF-UTILS
+---------
+We have also provided three utilities (in the directory vcf-utils.py) which 
+will allow a user to use wormtable with VCF format files immediately. These 
+scripts demonstrate the efficiency of using wormtable with VCF files and are 
+described breifly below.
+
+snp-filter.py
+-------------
+This script runs through a VCF file (using a CHROM+POS compound index) and allows 
+the user to extract (a comma separated list of) specific VCF fields using an 
+arbitrary set of filters on numeric or text columns. For example, to 
+to find variants with a QUAL score > 500, depth of coverage (stored as DP in the 
+INFO column) > 20, a genotype in sample "S1" of "0/1" and print out CHROM and 
+POS for variants that pass from a wormtable stored in sample_wt, the user can 
+use the following call ::
+
+    snp-filter.py --f 'QUAL>500;INFO.DP>20;S1.GT==0/1' CHROM,POS sample_wt
+    
+The user can also optionally specifiy a particular region of the VCF using the
+CHROM:START-END syntax and either exclude, include or find indels.
+
+sliding-mean.py
+---------------
+This script takes a comma separated list of numeric columns and the home directory 
+containing the wormtable and will then calculate the mean of these 
+numeric columns within non-overlapping windows (using an optionally specified 
+window size and list of chromosomes). The output is in tab separated column 
+format allowing the results to be easily plotted. For example, to calculate the
+mean of QUAL and depth of coverage (INFO.DP) in window sizes of 1Mb for 
+chromsomes 1,2 and 3 from a wormtable stored in sample_wt, run ::
+
+    sliding-mean.py QUAL,INFO_DP 1,2,3 -w 1000000 sample_wt
+
+hq-snps-bygt.py
+---------------
+This script takes a sample name and a specific genotype code, then builds an
+compound index on the sample genotype columna and quality score allowing the
+user to find, for example, high quality heterozygotes for the first sample. For 
+example, to very efficiently obtain high quality heterozygots (QUAL>10000) from 
+sample S1, run ::
+
+    get-hq-gts.py -s S1 -g '0/1' -q 1000 sample.wt/ 
+
+By applying this function over samples, the user can, for example, efficiently 
+find all high quality heterozygotes.
+
+
+
+
+
