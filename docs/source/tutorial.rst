@@ -104,12 +104,12 @@ components. To alter the cache size while making your wormtable use the
 Using a cursor
 --------------
 Now that we have built our wormtable we can use the python 	wormtable module 
-(within an interactive python shell) to interact with our new wormtable::
+(within a python shell) to interact with our new wormtable::
 
 	>>> import wormtable
 	>>> table = wormtable.open_table('sample_wt') # open the wormtable
 
-A convenient feature provided by the wormtable python module is the "cursor", 
+A convenient feature of Wormtable is the "cursor", 
 which allows us to retrieve information from any column of our wormtable. In 
 our case, we will create a cursor to return the genome position column "CHROM" 
 and "POS". The curosor allows us to walk through the wormtable row by row ::
