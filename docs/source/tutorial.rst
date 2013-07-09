@@ -372,7 +372,7 @@ Alternatively you can use the python script provided in the examples folder ::
 	T       2
 
 Transition-Transversion ratio - *count-ts-tv.py*
-------------------------------------------
+-------------------------------------------------
 This example uses a compound index of the reference nucleotide *REF* and the alternate 
 nucleotide *ALT* to count the number of transitions (changes A <-> G or C <-> T) and 
 transversions (A or G <-> C or T). Using the counter feature this task can be very fast 
@@ -412,7 +412,7 @@ called form the commandline ::
 	ts: 1 tv: 1
 
 High Quality SNPs - *find-hq-snps.py*
---------------------------------
+-------------------------------------
 In this example we provide a script that will return all the sites in your VCF 
 that have a quality score over a particular minimum threshold. This script uses 
 a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1]) 
@@ -447,10 +447,11 @@ or using the provided python script ::
 ---------
 VCF-Utils
 ---------
-We have also provided three utilities (in the directory vcf-utils.py) which 
+We have also provided three utilities (in the directory 
+examples/vcf-utils) which 
 will allow a user to use wormtable with VCF format files immediately. These 
 scripts demonstrate the efficiency of using wormtable with VCF files and are 
-described breifly below.
+described briefly below.
 
 snp-filter.py
 -------------
