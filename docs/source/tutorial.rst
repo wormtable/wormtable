@@ -403,7 +403,7 @@ instances of each change in our data ::
 import wormtable
 from itertools import permutations
 def count_Ts_Tv(homedir):
-	""" 
+	"""
 	Count number of of transitions and transversions using an index on REF+ALT
 	"""
 	subs = [p for p in permutations([b'A',b'C',b'G',b'T'], 2)]
@@ -413,10 +413,10 @@ def count_Ts_Tv(homedir):
 	Ts, Tv = 0, 0
 	c = i.counter()
 	for s in subs:
-		if bases[s[0]] == bases[s[1]]: 
+		if bases[s[0]] == bases[s[1]]:
 			Ts += c[s] 
-		else: 
-			Tv += c[s] 
+		else:
+			Tv += c[s]
 	i.close()
 	t.close()
 	return Ts, Tv
