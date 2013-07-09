@@ -400,26 +400,26 @@ with Wormtable. First we use Python's itertools to generate a list of all possib
 single bases changes (ie all pairs of A,C,G and T). We then count the number of
 instances of each change in our data ::
 
-import wormtable
-from itertools import permutations
-def count_Ts_Tv(homedir):
-	"""
-	Count number of of transitions and transversions using an index on REF+ALT
-	"""
-	subs = [p for p in permutations([b'A',b'C',b'G',b'T'], 2)]
-	bases = {b'A':'purine', b'G':'purine', b'C':'pyrimidine', b'T':'pyrimidine'}
-	t = wormtable.open_table(homedir)
-	i = t.open_index("REF+ALT")
-	Ts, Tv = 0, 0
-	c = i.counter()
-	for s in subs:
-		if bases[s[0]] == bases[s[1]]:
-			Ts += c[s] 
-		else:
-			Tv += c[s]
-	i.close()
-	t.close()
-	return Ts, Tv
+	import wormtable
+	from itertools import permutations
+	def count_Ts_Tv(homedir):
+		"""
+		Count number of of transitions and transversions using an index on REF+ALT
+		"""
+		subs = [p for p in permutations([b'A',b'C',b'G',b'T'], 2)]
+		bases = {b'A':'purine', b'G':'purine', b'C':'pyrimidine', b'T':'pyrimidine'}
+		t = wormtable.open_table(homedir)
+		i = t.open_index("REF+ALT")
+		Ts, Tv = 0, 0
+		c = i.counter()
+		for s in subs:
+			if bases[s[0]] == bases[s[1]]:
+				Ts += c[s] 
+			else:
+				Tv += c[s]
+		i.close()
+		t.close()
+		return Ts, Tv
 
 we can then use this function ::
 
