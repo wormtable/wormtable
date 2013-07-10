@@ -10,11 +10,11 @@ Introduction
 
 Wormtable is a write-once-read-many data structure to hold large scale 
 tabular data. It is designed to provide an efficient means of storing,
-searching and retreiving static data.
+searching and retrieving static data.
 Tables are arranged in columns and rows: each row 
-consists of a set of typed values stored in a packed binary 
-format in columns which can be 
-indexed and retrieved individually or in groups.
+consists of a set of typed values stored 
+in columns. Columns can be  
+indexed individually or in groups.
 Wormtable uses Berkeley DB for row storage and indexing.
 
 Wormtable has several key goals:

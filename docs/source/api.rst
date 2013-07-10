@@ -58,7 +58,7 @@ for reading, we might do the following::
     6
 
 Tables that are opened should be closed when they are no longer needed. 
-This is done using the :func:`close` function, again analogous
+This is done using the :meth:`Table.close` method, again analogous
 to Python file handling. Trying to access a closed table results in 
 an error::
 
@@ -148,7 +148,7 @@ set of columns. Repeating the example above::
 The :meth:`Table.cursor` method returns a :class:`Cursor` object over the required columns. (Cursors are intended to
 be used over very large datasets, and so we would not usually construct a list of the rows.)
 Cursors also provide a way to restrict the rows that are retrieved from the table. This is done using the 
-:meth:`Cursor.set_min` and `Cursor.set_max` functions. For example, to only retrieve rows 1 to 3, we would
+:meth:`Cursor.set_min` and :meth:`Cursor.set_max` methods. For example, to only retrieve rows 1 to 3, we would
 do the following (rows are zero-indexed in wormtable)::
 
     >>> c = t.cursor(["name", "born"])
@@ -358,8 +358,8 @@ Module reference
 .. class:: Cursor
 
     Cursors provide an efficient means of iterating over the rows in a table, 
-    retreiving a subset of the columns in the row. This is much more efficient 
-    that iterating over the table directly and retreiving the values of 
+    retrieving a subset of the columns in the row. This is much more efficient 
+    that iterating over the table directly and retrieving the values of 
     interest from the tuples returned because only the values that we are 
     interested in are converted into Python values and passed back. 
 
@@ -381,7 +381,7 @@ Module reference
     Indexes define a *sorting order* of the rows in a table. An index over a set
     of columns creates a sorting order over the table by concatenating the values 
     from the columns in question together (the *keys*) and storing the mapping 
-    of these keys to the row in the table in which the key occurs.
+    of these keys to the rows in the table in which the key occurs.
 
     .. automethod:: Index.open
 

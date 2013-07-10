@@ -27,7 +27,7 @@ Column types
 The fundamental storage units of wormtable are *rows* and *columns*, 
 similar to relational databases. A row is split into a fixed number of
 columns, and within a column we store some number of *elements* of a 
-fixed *type* and size. The size of the elements determines the range 
+fixed *type* and *size*. The size of the elements determines the range 
 of the values that can be stored in a column; for example, an unsigned 
 integer column with element size 1 can store values from 0 up to 
 254 only.
