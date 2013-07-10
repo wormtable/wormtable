@@ -478,7 +478,6 @@ We can then use this function in to iterate over the rows of interest: ::
     (b'20', 1234567, b'GTC', b'G,GTCT', 50.0)
     (b'20', 1110696, b'A', b'G,T', 67.0)
 
-
 -------------
 VCF-Utilities
 -------------
