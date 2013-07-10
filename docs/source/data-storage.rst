@@ -14,7 +14,7 @@ also allowing us to efficiently retrieve values from the table.
 
 This page describes the type and sizes of data that may be stored in columns, 
 as well as some low-level details about this data storage format. While this 
-information is not directly relevent to programmers using wormtable, it
+information is not directly relevant to programmers using wormtable, it
 can help to understand the various tradeoffs when choosing a particular 
 type or choosing a variable versus a fixed length column.
 

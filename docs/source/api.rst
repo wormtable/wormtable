@@ -190,7 +190,7 @@ automatically close indexes::
     # Index i is now closed and cannot be accessed
 
 Indexes sort the *keys* in the columns of interest, and map these keys to the rows
-of the table that they are found. To get the minumum and maximum keys from the
+of the table that they are found. To get the minimum and maximum keys from the
 index, we use the :meth:`Index.get_min` and :meth:`Index.get_max` methods::
 
     >>> i = t.open_index("writer")
@@ -294,7 +294,7 @@ Since keys now contain values from multiple columns, the :meth:`Index.get_min` a
     >>> i.get_max()
     (18, 8)
 
-These are also more flexible now, however, as we can get the minumum and maximum keys 
+These are also more flexible now, however, as we can get the minimum and maximum keys 
 with a given prefix::
 
     >>> i.get_min(7)

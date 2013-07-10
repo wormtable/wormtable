@@ -403,7 +403,7 @@ Transition-Transversion ratio
 This example uses a compound index of the reference nucleotide (*REF*) and the alternate 
 nucleotide (*ALT*) to count the number of transitions (changes A <-> G or C <-> T) and 
 transversions (A or G <-> C or T). Using the counter feature this task can be very fast 
-with Wormtable. First we use Python's itertools to generate a list of all possible 
+with Wormtable. First we use Python's :mod:`itertools` to generate a list of all possible 
 single bases changes (ie all pairs of A,C,G and T). We then count the number of
 instances of each change in our data ::
 
@@ -498,7 +498,7 @@ use the following call ::
 
     snp-filter.py --f 'QUAL>500;INFO.DP>20;S1.GT==0/1' CHROM,POS sample_wt
     
-The user can also optionally specifiy a particular region of the VCF using the
+The user can also optionally specify a particular region of the VCF using the
 CHROM:START-END syntax and either exclude, include or find indels.
 
 ***************
@@ -511,7 +511,7 @@ numeric columns within non-overlapping windows (using an optionally specified
 window size and list of chromosomes). The output is in tab separated column 
 format allowing the results to be easily plotted. For example, to calculate the
 mean of QUAL and depth of coverage (INFO.DP) in window sizes of 1Mb for 
-chromsomes 1,2 and 3 from a wormtable stored in sample_wt, run ::
+chromosomes 1,2 and 3 from a wormtable stored in sample_wt, run ::
 
     sliding-mean.py QUAL,INFO_DP 1,2,3 -w 1000000 sample_wt
 
