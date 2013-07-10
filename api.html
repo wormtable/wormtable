@@ -62,14 +62,14 @@
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 07, 2013</td>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 10, 2013</td>
 </tr>
 </tbody>
 </table>
 <p>This is the API documentation for wormtable. The documentation currently
 concentrates the read-API, since the initial release is intended
 primarily for use with VCF data. For details on how to build a
-wormtable from a VCF file see the <a class="reference external" href="http://docs.python.org/tutorial/index.html#tutorial-index" title="(in Python v2.7)"><em class="xref std std-ref">tutorial</em></a>.</p>
+wormtable from a VCF file see the <a class="reference internal" href="tutorial.html#tutorial-index"><em>tutorial</em></a>.</p>
 <p>In the <a class="reference internal" href="#api-examples"><em>Examples</em></a> section we take an informal tour of the API using
 a small example table. The <a class="reference internal" href="#api-reference"><em>Module reference</em></a> section provides concrete
 API documentation for the <a class="reference internal" href="#module-wormtable" title="wormtable: Write-once read-many table for large datasets. (Unix)"><tt class="xref py py-mod docutils literal"><span class="pre">wormtable</span></tt></a> module.</p>
@@ -156,7 +156,7 @@ for reading, we might do the following:</p>
 </pre></div>
 </div>
 <p>Tables that are opened should be closed when they are no longer needed.
-This is done using the <tt class="xref py py-func docutils literal"><span class="pre">close()</span></tt> function, again analogous
+This is done using the <a class="reference internal" href="#wormtable.Table.close" title="wormtable.Table.close"><tt class="xref py py-meth docutils literal"><span class="pre">Table.close()</span></tt></a> method, again analogous
 to Python file handling. Trying to access a closed table results in
 an error:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
@@ -241,7 +241,7 @@ set of columns. Repeating the example above:</p>
 <p>The <a class="reference internal" href="#wormtable.Table.cursor" title="wormtable.Table.cursor"><tt class="xref py py-meth docutils literal"><span class="pre">Table.cursor()</span></tt></a> method returns a <a class="reference internal" href="#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a> object over the required columns. (Cursors are intended to
 be used over very large datasets, and so we would not usually construct a list of the rows.)
 Cursors also provide a way to restrict the rows that are retrieved from the table. This is done using the
-<a class="reference internal" href="#wormtable.Cursor.set_min" title="wormtable.Cursor.set_min"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_min()</span></tt></a> and <cite>Cursor.set_max</cite> functions. For example, to only retrieve rows 1 to 3, we would
+<a class="reference internal" href="#wormtable.Cursor.set_min" title="wormtable.Cursor.set_min"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_min()</span></tt></a> and <a class="reference internal" href="#wormtable.Cursor.set_max" title="wormtable.Cursor.set_max"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_max()</span></tt></a> methods. For example, to only retrieve rows 1 to 3, we would
 do the following (rows are zero-indexed in wormtable):</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;name&quot;</span><span class="p">,</span> <span class="s">&quot;born&quot;</span><span class="p">])</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
@@ -279,7 +279,7 @@ automatically close indexes:</p>
 </pre></div>
 </div>
 <p>Indexes sort the <em>keys</em> in the columns of interest, and map these keys to the rows
-of the table that they are found. To get the minumum and maximum keys from the
+of the table that they are found. To get the minimum and maximum keys from the
 index, we use the <a class="reference internal" href="#wormtable.Index.get_min" title="wormtable.Index.get_min"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_min()</span></tt></a> and <a class="reference internal" href="#wormtable.Index.get_max" title="wormtable.Index.get_max"><tt class="xref py py-meth docutils literal"><span class="pre">Index.get_max()</span></tt></a> methods:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;writer&quot;</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get_min</span><span class="p">(),</span> <span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">())</span>
@@ -378,7 +378,7 @@ we then sort on the producer column, giving the ordering that we see.</p>
 <span class="go">(18, 8)</span>
 </pre></div>
 </div>
-<p>These are also more flexible now, however, as we can get the minumum and maximum keys
+<p>These are also more flexible now, however, as we can get the minimum and maximum keys
 with a given prefix:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">i</span><span class="o">.</span><span class="n">get_min</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
 <span class="go">(7, 5)</span>
@@ -553,8 +553,8 @@ we return the column with the specified name.</p>
 <dt id="wormtable.Cursor">
 <em class="property">class </em><tt class="descclassname">wormtable.</tt><tt class="descname">Cursor</tt><a class="headerlink" href="#wormtable.Cursor" title="Permalink to this definition">¶</a></dt>
 <dd><p>Cursors provide an efficient means of iterating over the rows in a table,
-retreiving a subset of the columns in the row. This is much more efficient
-that iterating over the table directly and retreiving the values of
+retrieving a subset of the columns in the row. This is much more efficient
+that iterating over the table directly and retrieving the values of
 interest from the tuples returned because only the values that we are
 interested in are converted into Python values and passed back.</p>
 <p>Cursors are instantiated using the <a class="reference internal" href="#wormtable.Table.cursor" title="wormtable.Table.cursor"><tt class="xref py py-meth docutils literal"><span class="pre">Table.cursor()</span></tt></a> method
@@ -584,7 +584,7 @@ maximum and minimum values of the row keys we wish to examine.</p>
 <dd><p>Indexes define a <em>sorting order</em> of the rows in a table. An index over a set
 of columns creates a sorting order over the table by concatenating the values
 from the columns in question together (the <em>keys</em>) and storing the mapping
-of these keys to the row in the table in which the key occurs.</p>
+of these keys to the rows in the table in which the key occurs.</p>
 <dl class="method">
 <dt id="wormtable.Index.open">
 <tt class="descname">open</tt><big>(</big><em>mode</em><big>)</big><a class="headerlink" href="#wormtable.Index.open" title="Permalink to this definition">¶</a></dt>

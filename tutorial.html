@@ -55,23 +55,33 @@
           <div class="body">
             
   <div class="section" id="tutorial">
-<h1>Tutorial<a class="headerlink" href="#tutorial" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="introduction">
-<h2>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h2>
+<span id="tutorial-index"></span><h1>Tutorial<a class="headerlink" href="#tutorial" title="Permalink to this headline">¶</a></h1>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 10, 2013</td>
+</tr>
+</tbody>
+</table>
 <p>Wormtable is a method for storing and interacting with large scale tabular
 datasets. It provides those familiar with python the necessary tools to
 efficiently store, process and search datasets of essentially unlimited size. It
-is designed for tablular data with many rows each with a fixed number of
+is designed for tabular data with many rows each with a fixed number of
 columns. Wormtable can generate indexes of the information in these rows which
 allows the user to quickly access the information. Since the indexes are stored
 on the disk they can be used repeatedly.</p>
 <p>In this tutorial we will be taking you through the steps to convert a file to a
 wormtable, index columns and perform some basic operations on the data by using
 a few examples.</p>
+<p>Before you get started make sure you have installed Berkeley DB and then
+Wormtable. For more details see the <a class="reference external" href="https://pypi.python.org/pypi/wormtable">installation instructions</a>.</p>
 <p>Throughout this tutorial, code lines beginning <tt class="docutils literal"><span class="pre">$</span></tt> imply a bash shell and
 <tt class="docutils literal"><span class="pre">&gt;&gt;&gt;</span></tt> imply a python shell.</p>
 <div class="section" id="the-vcf-format">
-<h3>The VCF format<a class="headerlink" href="#the-vcf-format" title="Permalink to this headline">¶</a></h3>
+<h2>The VCF format<a class="headerlink" href="#the-vcf-format" title="Permalink to this headline">¶</a></h2>
 <p>Throughout this tutorial we will be using a <em>Variant Call
 Format</em> (VCF) table.  This is a common format for storing DNA sequence and
 polymorphism data from high throughput genome sequencing projects. In this
@@ -80,7 +90,7 @@ chromosome they occur on and the position on that chromosome. A variety of other
 pieces of information are stored as metadata in the proceeding columns. We will
 explain the relevant columns as they arise. For more information please consult
 the full specifications of a VCF file on the <a class="reference external" href="http://www.1000genomes.org/wiki/analysis/vcf4.0/">1000 genomes website</a>.</p>
-<p>In the following examples we will be working with the following example vcf file with
+<p>In the following examples we will be working with the following example VCF file with
 only 5 genomic positions taken from the <a class="reference external" href="http://www.1000genomes.org/wiki/analysis/vcf4.0/">1000 genomes website</a>.</p>
 <div class="highlight-python"><pre>##fileformat=VCFv4.0
 ##fileDate=20090805
@@ -107,18 +117,11 @@ only 5 genomic positions taken from the <a class="reference external" href="http
 20     1234567 microsat1 GTCT   G,GTACT 50   PASS   NS=3;DP=9;AA=G                    GT:GQ:DP    0/1:35:4       0/2:17:2       1/1:40:3</pre>
 </div>
 </div>
-</div>
-<div class="section" id="installation">
-<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
-<p>Before you get started make sure you have installed Berkeley DB and then
-Wormtable. For more details see the <a class="reference external" href="https://pypi.python.org/pypi/wormtable">installation instructions</a>.</p>
-</div>
 <div class="section" id="convert-a-vcf-to-wormtable-format">
 <h2>Convert a VCF to Wormtable format<a class="headerlink" href="#convert-a-vcf-to-wormtable-format" title="Permalink to this headline">¶</a></h2>
 <p>To convert a standard VCF file to Wormtable format use the provided utility
-&#8220;vcf2wt&#8221;. Like other utilities provided with Wormtable the description of
-command line options and arguments can be displayed by adding the &#8220;&#8211;help&#8221; flag
-after the utility:</p>
+<tt class="docutils literal"><span class="pre">vcf2wt</span></tt>. Like other utilities provided with Wormtable the description of
+command line options and arguments can be displayed using &#8220;&#8211;help&#8221; flag</p>
 <div class="highlight-python"><pre>$ vcf2wt --help</pre>
 </div>
 <p>Building a wormtable from a vcf file is easy:</p>
@@ -129,10 +132,9 @@ the directory sample_wt. If the directory already exists you will have to use
 the &#8220;&#8211;force&#8221; (or -f) argument to tell vcf2wt to overwrite the old wormtable:</p>
 <div class="highlight-python"><pre>$ vcf2wt -f sample.vcf sample_wt</pre>
 </div>
-<div class="section" id="setting-the-cache-size">
-<h3>Setting the cache size<a class="headerlink" href="#setting-the-cache-size" title="Permalink to this headline">¶</a></h3>
-<p>You can greatly increase the performance of Wormtable by tweaking the cache size
-parameter. The cache size determines how much of the table is held in memory. In
+<p>For large tables, it is very important to set cache size parameter in <tt class="docutils literal"><span class="pre">vcf2wt</span></tt>.
+The cache size determines how much of the table is held in memory,
+and a large cache can make building a table much faster. In
 general the more RAM you give the process the better it will perform. As as a
 rule of thumb try to give it half the available RAM. Later in this tutorial we
 will return to the issue of cache size as it can affect a number of performance
@@ -141,27 +143,58 @@ components. To alter the cache size while making your wormtable use the
 <div class="highlight-python"><pre>$ vcf2wt -f -c 4G sample.vcf sample_wt</pre>
 </div>
 </div>
+<div class="section" id="using-a-cursor">
+<h2>Using a cursor<a class="headerlink" href="#using-a-cursor" title="Permalink to this headline">¶</a></h2>
+<p>Now that we have built our wormtable we can use the Python <a class="reference internal" href="api.html#module-wormtable" title="wormtable: Write-once read-many table for large datasets. (Unix)"><tt class="xref py py-mod docutils literal"><span class="pre">wormtable</span></tt></a> module
+(within a python shell) to interact with it:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">)</span> <span class="c"># open the wormtable</span>
+</pre></div>
+</div>
+<p>A convenient feature of Wormtable is the <a class="reference internal" href="api.html#wormtable.Cursor" title="wormtable.Cursor"><tt class="xref py py-class docutils literal"><span class="pre">Cursor</span></tt></a>,
+which allows us to retrieve information from any column in the table. In
+our case, we will create a cursor to return the genome position column &#8220;CHROM&#8221;
+and &#8220;POS&#8221;. The cursor allows us to walk through the wormtable row by row</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&#39;CHROM&#39;</span><span class="p">,</span> <span class="s">&#39;POS&#39;</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">c</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">(b&#39;20&#39;, 14370)</span>
+<span class="go">(b&#39;20&#39;, 17330)</span>
+<span class="go">(b&#39;20&#39;, 1110696)</span>
+<span class="go">(b&#39;20&#39;, 1230237)</span>
+<span class="go">(b&#39;20&#39;, 1234567)</span>
+</pre></div>
+</div>
+<p>Note that since we can retrieve information from multiple columns, the names
+of the columns we want to retrieve are passed to the cursor as a list.</p>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">All character data in wormtable is returned as <em>bytes</em>
+values. For Python 3 users, this means they are not the same as strings,
+but must be <em>decoded</em>. For Python 2 users, there is no distinction
+between bytes and strings.</p>
+</div>
 </div>
 <div class="section" id="building-an-index">
 <h2>Building an index<a class="headerlink" href="#building-an-index" title="Permalink to this headline">¶</a></h2>
-<p>At this point the vcf has been converted into a wormtable but in order to work
-with it, it is necessary to &#8216;index&#8217; the columns that you are interested in.
-Indexes provide a way to quickly and efficiently access information
-from the wormtable based on the values in a column.</p>
+<p>To fully exploit a wormtable, it is necessary to <em>index</em> the columns
+that you are interested in. Indexes provide a way to quickly and efficiently
+access information from the wormtable based on the values in the indexed column.</p>
 <p>In the following example, we&#8217;ll demonstrate how it is possible to access the
 DNA sequence of the reference genome (which is stored in the &#8220;<em>REF</em>&#8221; column)
-for different positions in the genome by creating an index on genomic position.
-Adding an index for a column can be accomlished with the wtadmin utility. In
-our example, to index the position column called &#8220;<em>POS</em>&#8221; we use:</p>
+for any position in the genome by creating an index on genomic position. Adding
+an index for a column can be accomplished with the <tt class="docutils literal"><span class="pre">wtadmin</span></tt> utility. In this
+example, to index the position column called &#8220;<em>POS</em>&#8221; we use:</p>
 <div class="highlight-python"><pre>$ wtadmin add sample_wt POS</pre>
 </div>
 <p>Here, sample_wt is the &#8220;home directory&#8221; which contains our wormtable and POS
 is the name of the column to be indexed. This utility also allows us to remove
-indexes (wtadmin rm) or list the columns already indexed (wtadmin ls).
+indexes (<tt class="docutils literal"><span class="pre">wtadmin</span> <span class="pre">rm</span></tt>) or list the columns already indexed (<tt class="docutils literal"><span class="pre">wtadmin</span> <span class="pre">ls</span></tt>).
 If you want to list the columns that are available to index use</p>
 <div class="highlight-python"><pre>$ wtadmin show sample_wt
 ==============================================================
-           name         type     size   n        |   description
+       name         type     size   n        |   description
 ==============================================================
    0   row_id       uint        5   1        |   Primary key column
    1   CHROM        char        1   var(1)   |   chromosome: an identifier from the reference genome or an angle-bracketed ID String ("&lt;ID&gt;") pointing to a contig in the assembly file
@@ -191,7 +224,7 @@ If you want to list the columns that are available to index use</p>
   25   NA00003.HQ   int         4   2        |   Haplotype Quality</pre>
 </div>
 <p>Note that fields within the INFO column and the columns corresponding for
-indivudal samples have been represented as separate columns and named as
+individual samples have been represented as separate columns and named as
 [COLUMN].[FIELD]. This allows the user to create indexes on individual fields from these
 compound columns.</p>
 <p>Similar to the cache size when building our wormtable, we can set the cache size
@@ -202,29 +235,29 @@ build an index</p>
 </div>
 <div class="section" id="using-an-index">
 <h2>Using an index<a class="headerlink" href="#using-an-index" title="Permalink to this headline">¶</a></h2>
-<p>Now that we have built our wormtable and indexed on POS we can use the python
-wormtable module (within an interactive python shell) to interact with our new
-wormtable and index:</p>
+<p>Now that we have built our wormtable and indexed on POS we can retrieve information
+from any position in the genome</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">)</span> <span class="c"># open the wormtable</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">position_index</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&#39;POS&#39;</span><span class="p">)</span>  <span class="c"># open the index on POS</span>
 </pre></div>
 </div>
-<p>Note that if you have not already added the index using wtadmin add you will not
-be able to open the index in python. Also, worth noting is that, like cache sizes,
-when building tables or adding indexes we can assign memory to both the table
-and index when we open them by including the cache size as a second argument in
-opentable() or open_index(). For more details see
-<a class="reference external" href="http://jeromekelleher.github.io/wormtable/performance.html">Performance tuning</a>.</p>
-<p>The Wormtable python module offers a number of methods to interact with an index:</p>
+<p>Note that if you have not already added the index using <tt class="docutils literal"><span class="pre">wtadmin</span> <span class="pre">add</span></tt> you will not
+be able to open the index in python. Also, worth noting is that, like cache sizes
+when building tables or adding indexes, we can assign memory to both the table
+and index when we open them by including the <tt class="docutils literal"><span class="pre">cache_size</span></tt> as a second argument in
+<a class="reference internal" href="api.html#wormtable.open_table" title="wormtable.open_table"><tt class="xref py py-func docutils literal"><span class="pre">open_table()</span></tt></a> or <a class="reference internal" href="api.html#wormtable.Table.open_index" title="wormtable.Table.open_index"><tt class="xref py py-meth docutils literal"><span class="pre">Table.open_index()</span></tt></a>. For more details see
+the sections on <a class="reference internal" href="performance.html#performance-index"><em>performance tuning</em></a>.
+The wormtable module offers a number of methods to interact with an
+<a class="reference internal" href="api.html#wormtable.Index" title="wormtable.Index"><tt class="xref py py-class docutils literal"><span class="pre">Index</span></tt></a></p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="c"># Print the minimum and maximum value of an index</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">position_index</span><span class="o">.</span><span class="n">get_min</span><span class="p">()</span>
-<span class="go">14370L</span>
+<span class="go">14370</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">position_index</span><span class="o">.</span><span class="n">get_max</span><span class="p">()</span>
-<span class="go">1234567L</span>
+<span class="go">1234567</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="c"># Use keys() to iterate through sorted value in the index</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">position_index</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">position_index</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
 <span class="gp">...</span>
 <span class="go">14370</span>
 <span class="go">17330</span>
@@ -233,18 +266,16 @@ opentable() or open_index(). For more details see
 <span class="go">1234567</span>
 </pre></div>
 </div>
-</div>
-<div class="section" id="using-a-cursor">
-<h2>Using a cursor<a class="headerlink" href="#using-a-cursor" title="Permalink to this headline">¶</a></h2>
-<p>Another convenient feature provided by the wormtable python module is the
-&#8220;cursor&#8221;, which allows us to retrieve information from any column of our
-wormtable for ranges of values from our indexed column. In our case, we will
-create a cursor to return the REF column for specific genomic positions</p>
+<p>Cursors can be used to iterate through the rows in a table in the order
+defined by an index by providing an index as the second argument
+to the <a class="reference internal" href="api.html#wormtable.Table.cursor" title="wormtable.Table.cursor"><tt class="xref py py-meth docutils literal"><span class="pre">Table.cursor()</span></tt></a> method. We can also use a cursor to
+set the range of the keys we are interested in using the
+<a class="reference internal" href="api.html#wormtable.Cursor.set_min" title="wormtable.Cursor.set_min"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_min()</span></tt></a> and <a class="reference internal" href="api.html#wormtable.Cursor.set_max" title="wormtable.Cursor.set_max"><tt class="xref py py-meth docutils literal"><span class="pre">Cursor.set_max()</span></tt></a> method. For
+example, to retrieve the reference nucleotides we can use a cursor to return the REF
+column for specific genomic positions</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">cursor</span><span class="p">([</span><span class="s">&quot;REF&quot;</span><span class="p">],</span> <span class="n">position_index</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Note that since we can retrieve information from multiple columns, the names
-of the columns we want to retrieve are passed to the cursor as a list.</p>
 <p>We can set the minimum and maximum values for which the cursor will return
 columns:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">c</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
@@ -256,9 +287,9 @@ the <em>REF</em> column for each row of the table:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">c</span><span class="p">:</span>
 <span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 <span class="gp">...</span>
-<span class="go">G</span>
-<span class="go">T</span>
-<span class="go">A</span>
+<span class="go">b&#39;G&#39;</span>
+<span class="go">b&#39;T&#39;</span>
+<span class="go">b&#39;A&#39;</span>
 </pre></div>
 </div>
 <p>Note that by default the cursor will return a tuple and we just
@@ -268,18 +299,18 @@ ranges in Python, the maximum value is not included. For example,
 </div>
 <div class="section" id="creating-compound-indexes">
 <h2>Creating compound indexes<a class="headerlink" href="#creating-compound-indexes" title="Permalink to this headline">¶</a></h2>
-<p>With multiple chromsomes, the example above could give multiple values for each position
+<p>With multiple chromosomes, the example above could give multiple values for each position
 because the <em>POS</em> column is not normally a unique identifier of genomic position and our
 cursor will iterate over positions matching the range specified from multiple
 chromosomes. To deal with this we can can make compound indexes. Compound
 indexes allow the user identify all combinations of multiple columns from the
-wormtable. For example we can make a compound index of chromosome (<em>CHROM</em>) and
+wormtable. For example, we can make a compound index of chromosome (<em>CHROM</em>) and
 position (<em>POS</em>) to retrieve unique genomic positions. To add a compound column
-we can again use the wtadmin utility</p>
+we can again use the <tt class="docutils literal"><span class="pre">wtadmin</span></tt> utility</p>
 <div class="highlight-python"><pre>$ wtadmin add sample_wt CHROM+POS</pre>
 </div>
-<p>Note that in this case the names of multiple columns are joined using &#8220;+&#8221; which
-indicates to wtadmin to make a compound index. It is important to realise that
+<p>The names of multiple columns in a compound index are joined using &#8220;+&#8221; which
+indicates to <tt class="docutils literal"><span class="pre">wtadmin</span></tt> to make a compound index. It is important to realise that
 the order that the columns are listed matters (CHROM+POS does not equal
 POS+CHROM). With this new compound column we can specify a region of the genome
 (chromosome 1, positions 1 to 1150000) unambiguously and iterate
@@ -293,18 +324,18 @@ through rows in this region, printing CHROM, POS and REF for each:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">c</span><span class="p">:</span>
 <span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 <span class="gp">...</span>
-<span class="go">G</span>
-<span class="go">T</span>
-<span class="go">A</span>
+<span class="go">b&#39;G&#39;</span>
+<span class="go">b&#39;T&#39;</span>
+<span class="go">b&#39;A&#39;</span>
 </pre></div>
 </div>
 </div>
-<div class="section" id="using-the-counter">
-<h2>Using the counter<a class="headerlink" href="#using-the-counter" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="using-a-counter">
+<h2>Using a counter<a class="headerlink" href="#using-a-counter" title="Permalink to this headline">¶</a></h2>
 <p>Another useful feature of Wormtable is the ability to count the number of items
-matching unique keys in an index. The counter is a dictionary-like
+matching unique keys in an index. A <tt class="xref py py-class docutils literal"><span class="pre">Counter</span></tt> is a dictionary-like
 object where the keys are index values which refer to the number of times that
-index occurs. For example, we can quickly and efficiently calculate the
+key occurs in the table. For example, we can quickly and efficiently calculate the
 fraction of reference sites that are G or C (the GC content) by first creating
 an index on the <em>REF</em> column:</p>
 <div class="highlight-python"><pre>$ wtadmin add sample_wt REF</pre>
@@ -314,9 +345,9 @@ an index on the <em>REF</em> column:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ref_index</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&#39;REF&#39;</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ref_counts</span> <span class="o">=</span> <span class="n">ref_index</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">gc</span> <span class="o">=</span> <span class="n">ref_counts</span><span class="p">[</span><span class="s">&#39;G&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="s">&#39;C&#39;</span><span class="p">]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">tot</span> <span class="o">=</span> <span class="n">gc</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="s">&#39;T&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="s">&#39;A&#39;</span><span class="p">]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">gc</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">tot</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gc</span> <span class="o">=</span> <span class="n">ref_counts</span><span class="p">[</span><span class="n">b</span><span class="s">&#39;G&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="n">b</span><span class="s">&#39;C&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tot</span> <span class="o">=</span> <span class="n">gc</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="n">b</span><span class="s">&#39;T&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">ref_counts</span><span class="p">[</span><span class="n">b</span><span class="s">&#39;A&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gc</span> <span class="o">/</span> <span class="n">tot</span>
 <span class="go">0.25</span>
 </pre></div>
 </div>
@@ -326,156 +357,191 @@ an index on the <em>REF</em> column:</p>
 <p>Some columns in a VCF contain floats and can therefore have a huge number of
 distinct values. In these cases it is useful to condense similar values into
 &#8216;binned&#8217; indexes. For example, in a VCF the column which records the quality of
-row (QUAL column) is a float which may range from 0 to 10,000 (or more). For the
+a row (QUAL column) is a float which may range from 0 to 10,000 (or more). For the
 purposes of filtering on this column (i.e. creating an index) it may not be
 necessary to discern between sites with quality of 50.1 from sites with quality
-of 50.2. Using wtadmin you can index a column binning indexes into equal sized
-bins of size n like this</p>
+of 50.2. Using <tt class="docutils literal"><span class="pre">wtadmin</span></tt> you can index a column binning indexes into equal sized
+bins of size <tt class="docutils literal"><span class="pre">n</span></tt> like this</p>
 <div class="highlight-python"><pre>$ wtadmin add sample_wt QUAL[n]</pre>
 </div>
-<p>where n is an integer. This will make a new index on QUAL where all the QUAL
+<p>where n is an integer or float. This will make a new index on QUAL where all the QUAL
 values are grouped into bins of size n. We can then use this binned index
 to interact with our wormtable and print the number of rows matching QUAL scores
-in bins between 0 and 70 using the counted function (e.g. for a bin size of 5):</p>
-<div class="highlight-python"><pre>$ wtadmin add sample_wt QUAL[5]
-
-&gt;&gt;&gt; qual_5_index = table.open_index('QUAL[5]')
-&gt;&gt;&gt; qual_5_counter = qual_5_index.counter()
-&gt;&gt;&gt; for q in range(0,70,5):
-...     print("%i\t%i" %(q, qual_5_counter[q]))
-...
-0       1
-5       0
-10      0
-15      0
-20      0
-25      1
-30      0
-35      0
-40      0
-45      1
-50      1
-55      0
-60      0
-65      1</pre>
+in bins between 0 and 70 using the <a class="reference internal" href="api.html#wormtable.Index.counter" title="wormtable.Index.counter"><tt class="xref py py-meth docutils literal"><span class="pre">Index.counter()</span></tt></a> function.
+For example, to create an index with bin size 5, we use:</p>
+<div class="highlight-python"><pre>$ wtadmin add sample_wt QUAL[5]</pre>
 </div>
-<p>Note, as above the upper bound (70) is exclusive.</p>
+<p>Then, we can quickly count the number of rows falling into each bin:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">qual_5_index</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&#39;QUAL[5]&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">qual_5_counter</span> <span class="o">=</span> <span class="n">qual_5_index</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">qual_5_counter</span><span class="p">[</span><span class="n">q</span><span class="p">])</span>
+<span class="gp">...</span>
+<span class="go">0    1</span>
+<span class="go">5    0</span>
+<span class="go">10   0</span>
+<span class="go">15   0</span>
+<span class="go">20   0</span>
+<span class="go">25   1</span>
+<span class="go">30   0</span>
+<span class="go">35   0</span>
+<span class="go">40   0</span>
+<span class="go">45   1</span>
+<span class="go">50   1</span>
+<span class="go">55   0</span>
+<span class="go">60   0</span>
+<span class="go">65   1</span>
+</pre></div>
+</div>
 </div>
 <div class="section" id="examples">
 <h2>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
 <p>Along with the main program we have included a number of example scripts which
-will help you get started with using Wormtable. In the next few examples we will
-demonstrate the concepts in these examples. The full scripts are available should
-you want to use or modify the example scripts for your own purposes
-If you want write your own scripts for Wormtable, full documentation can be found
-<a class="reference external" href="http://jeromekelleher.github.io/wormtable/">here</a>.</p>
-<div class="section" id="count-the-keys-in-an-index-count-keys-py">
-<h3>Count the keys in an index - <em>count-keys.py</em><a class="headerlink" href="#count-the-keys-in-an-index-count-keys-py" title="Permalink to this headline">¶</a></h3>
-<p>The idea of this script is to implement a simple counter for a named wormtable directory
-(homedir) and an existing index (index) and prints out counts for each key in the index</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span> <span class="kn">as</span> <span class="nn">wt</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">count_distinct</span><span class="p">(</span><span class="n">homedir</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="k">with</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span> <span class="k">as</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="n">index</span><span class="p">)</span> <span class="k">as</span> <span class="n">i</span><span class="p">:</span>
-<span class="gp">... </span>            <span class="n">table</span> <span class="o">=</span> <span class="p">[[</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">i</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()]</span>
-<span class="gp">... </span>                    <span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">==</span> <span class="nb">sum</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">table</span><span class="p">))</span> <span class="c"># the sum of the counts should match the number of rows</span>
-<span class="gp">... </span>    <span class="k">return</span> <span class="n">table</span>
-<span class="gp">...</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">ref_table</span> <span class="o">=</span> <span class="n">count_distinct</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">,</span> <span class="s">&#39;REF&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">ref_table</span><span class="p">:</span>
-<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%s</span><span class="se">\t</span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
-<span class="gp">...</span>
-<span class="go">A       1</span>
-<span class="go">G       1</span>
-<span class="go">GTCT    1</span>
-<span class="go">T       2</span>
+will help you get started with using Wormtable. The full scripts are available should
+you want to use or modify the example scripts for your own purposes.</p>
+<div class="section" id="counting-index-keys">
+<h3>Counting index keys<a class="headerlink" href="#counting-index-keys" title="Permalink to this headline">¶</a></h3>
+<p>In this example we use an index counter to get an iterator over the keys
+and their counts in an index. We use the
+<a class="reference external" href="http://www.python.org/dev/peps/pep-0343/">context manager</a> protocol
+(the <tt class="docutils literal"><span class="pre">with</span></tt> statement) to ensure that the table and index
+are closed when we finish.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">wormtable</span> <span class="kn">as</span> <span class="nn">wt</span>
+
+<span class="k">def</span> <span class="nf">count_distinct</span><span class="p">(</span><span class="n">homedir</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+    <span class="k">with</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span> <span class="k">as</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="n">index</span><span class="p">)</span> <span class="k">as</span> <span class="n">i</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">i</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">yield</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span>
 </pre></div>
 </div>
-<p>Alternatively you can use the python script provided in the examples folder</p>
-<div class="highlight-python"><pre>$ python count-distinct.py sample_wt REF
-A       1
-G       1
-GTCT    1
-T       2</pre>
+<p>Using this function we can easily print out all of the values in the
+REF column and their counts:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">count_distinct</span><span class="p">(</span><span class="s">&quot;sample_wt&quot;</span><span class="p">,</span> <span class="s">&quot;REF&quot;</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">b&#39;A&#39;     1</span>
+<span class="go">b&#39;G&#39;     1</span>
+<span class="go">b&#39;GTC&#39;   1</span>
+<span class="go">b&#39;T&#39;     2</span>
+</pre></div>
+</div>
+<p>This functionality is also provided by the <tt class="docutils literal"><span class="pre">wtadmin</span> <span class="pre">hist</span></tt> command:</p>
+<div class="highlight-python"><pre>$ wtadmin hist sample_wt REF
+# n REF
+1    A
+1    G
+1    GTC
+2    T</pre>
 </div>
 </div>
-<div class="section" id="transition-transversion-ratio-ts-tv-py">
-<h3>Transition-Transversion ratio - <em>ts-tv.py</em><a class="headerlink" href="#transition-transversion-ratio-ts-tv-py" title="Permalink to this headline">¶</a></h3>
-<p>This example uses a compound index of the reference nucleotide <em>REF</em> and the alternate
-nucleotide <em>ALT</em> to count the number of transitions (changes A &lt;-&gt; G or C &lt;-&gt; T) and
+<div class="section" id="transition-transversion-ratio">
+<h3>Transition-Transversion ratio<a class="headerlink" href="#transition-transversion-ratio" title="Permalink to this headline">¶</a></h3>
+<p>This example uses a compound index of the reference nucleotide (<em>REF</em>) and the alternate
+nucleotide (<em>ALT</em>) to count the number of transitions (changes A &lt;-&gt; G or C &lt;-&gt; T) and
 transversions (A or G &lt;-&gt; C or T). Using the counter feature this task can be very fast
-with Wormtable. First we use Python&#8217;s itertools to generate a list of all possible
+with Wormtable. First we use Python&#8217;s <a class="reference external" href="http://docs.python.org/library/itertools.html#itertools" title="(in Python v2.7)"><tt class="xref py py-mod docutils literal"><span class="pre">itertools</span></tt></a> to generate a list of all possible
 single bases changes (ie all pairs of A,C,G and T). We then count the number of
 instances of each change in our data</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">permutations</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">count_Ts_Tv</span><span class="p">(</span><span class="n">homedir</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="sd">&quot;&quot;&quot;</span>
-<span class="gp">... </span><span class="sd">    Count number of of transitions and transversions using an index on REF+ALT</span>
-<span class="gp">... </span><span class="sd">    &quot;&quot;&quot;</span>
-<span class="gp">... </span>    <span class="n">subs</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">permutations</span><span class="p">([</span><span class="n">b</span><span class="s">&#39;A&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;C&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;G&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;T&#39;</span><span class="p">],</span> <span class="mi">2</span><span class="p">)]</span>
-<span class="gp">... </span>    <span class="n">bases</span> <span class="o">=</span> <span class="p">{</span><span class="n">b</span><span class="s">&#39;A&#39;</span><span class="p">:</span><span class="s">&#39;purine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;G&#39;</span><span class="p">:</span><span class="s">&#39;purine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;C&#39;</span><span class="p">:</span><span class="s">&#39;pyrimidine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;T&#39;</span><span class="p">:</span><span class="s">&#39;pyrimidine&#39;</span><span class="p">}</span>
-<span class="gp">... </span>    <span class="n">t</span> <span class="o">=</span> <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;REF+ALT&quot;</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">Ts</span><span class="p">,</span> <span class="n">Tv</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
-<span class="gp">... </span>    <span class="n">c</span> <span class="o">=</span> <span class="n">i</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span>
-<span class="gp">... </span>    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">subs</span><span class="p">:</span>
-<span class="gp">... </span>            <span class="k">if</span> <span class="n">bases</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">==</span> <span class="n">bases</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]]:</span>
-<span class="gp">... </span>                    <span class="n">Ts</span> <span class="o">+=</span> <span class="n">c</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
-<span class="gp">... </span>            <span class="k">else</span><span class="p">:</span>
-<span class="gp">... </span>                    <span class="n">Tv</span> <span class="o">+=</span> <span class="n">c</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
-<span class="gp">... </span>    <span class="n">i</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-<span class="gp">... </span>    <span class="n">t</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-<span class="gp">... </span>    <span class="k">return</span> <span class="n">Ts</span><span class="p">,</span> <span class="n">Tv</span>
-<span class="gp">...</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">count_Ts_Tv</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">)</span>
-<span class="go">(1L, 1L)</span>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">wormtable</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">permutations</span>
+<span class="k">def</span> <span class="nf">count_Ts_Tv</span><span class="p">(</span><span class="n">homedir</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Count number of of transitions and transversions using an index on REF+ALT</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">subs</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">permutations</span><span class="p">([</span><span class="n">b</span><span class="s">&#39;A&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;C&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;G&#39;</span><span class="p">,</span><span class="n">b</span><span class="s">&#39;T&#39;</span><span class="p">],</span> <span class="mi">2</span><span class="p">)]</span>
+    <span class="n">bases</span> <span class="o">=</span> <span class="p">{</span><span class="n">b</span><span class="s">&#39;A&#39;</span><span class="p">:</span><span class="s">&#39;purine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;G&#39;</span><span class="p">:</span><span class="s">&#39;purine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;C&#39;</span><span class="p">:</span><span class="s">&#39;pyrimidine&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;T&#39;</span><span class="p">:</span><span class="s">&#39;pyrimidine&#39;</span><span class="p">}</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;REF+ALT&quot;</span><span class="p">)</span>
+    <span class="n">Ts</span><span class="p">,</span> <span class="n">Tv</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">i</span><span class="o">.</span><span class="n">counter</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">subs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">bases</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">==</span> <span class="n">bases</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]]:</span>
+            <span class="n">Ts</span> <span class="o">+=</span> <span class="n">c</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">Tv</span> <span class="o">+=</span> <span class="n">c</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+    <span class="n">i</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">Ts</span><span class="p">,</span> <span class="n">Tv</span>
 </pre></div>
 </div>
-<p>Similar to the previous example we have provided a script for doing this that can be
-called form the commandline</p>
-<div class="highlight-python"><pre>$ wtadmin add sample_wt REF+ALT # in case index does not already exist.
-$ python ts-tv.py sample_wt
-ts: 1 tv: 1</pre>
-</div>
-</div>
-<div class="section" id="high-quality-snps-hq-snps-py">
-<h3>High Quality SNPs - <em>hq-snps.py</em><a class="headerlink" href="#high-quality-snps-hq-snps-py" title="Permalink to this headline">¶</a></h3>
-<p>In this example we provide a script that will return all the sites in your VCF
-that have a quality score over a particular minimum threshold. This script uses
-a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1])</p>
-<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">wormtable</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">hq_snps</span><span class="p">(</span><span class="n">homedir</span><span class="p">,</span> <span class="n">minq</span><span class="p">,</span> <span class="n">cols</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="sd">&quot;&quot;&quot;</span>
-<span class="gp">... </span><span class="sd">    minq is the minimum quality that determines a high quality site</span>
-<span class="gp">... </span><span class="sd">    cols is a list of the columns from the VCF that you want to return</span>
-<span class="gp">... </span><span class="sd">    &quot;&quot;&quot;</span>
-<span class="gp">... </span>    <span class="n">t</span> <span class="o">=</span>  <span class="n">wormtable</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">i</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;QUAL[1]&quot;</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">cursor</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">cursor</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="n">minq</span><span class="p">)</span>
-<span class="gp">... </span>    <span class="n">cursor</span><span class="o">.</span><span class="n">set_max</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get_max</span><span class="p">())</span>
-<span class="gp">... </span>    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="p">:</span>
-<span class="gp">... </span>            <span class="k">print</span> <span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">row</span><span class="p">])</span>
-<span class="gp">...</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">hq_snps</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">,</span><span class="mi">30</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;CHROM&#39;</span><span class="p">,</span> <span class="s">&#39;POS&#39;</span><span class="p">,</span> <span class="s">&#39;REF&#39;</span><span class="p">,</span> <span class="s">&#39;ALT&#39;</span><span class="p">,</span> <span class="s">&#39;QUAL&#39;</span><span class="p">])</span>
-<span class="go">20      1230237 T               47.0</span>
-<span class="go">20      1234567 GTCT    G,GTACT 50.0</span>
+<p>we can then use this function to very quickly count the number of
+transitions and transversions:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">count_Ts_Tv</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">)</span>
+<span class="go">(1, 1)</span>
 </pre></div>
 </div>
-<p>or using the provided python script</p>
-<div class="highlight-python"><pre>$ wtadmin add sample_wt QUAL[1] # in case index does not already exist.
-$ python hq-snps.py -q 30 sample_wt
-20      1230237 T               47.0
-20      1234567 GTCT    G,GTACT 50.0</pre>
+</div>
+<div class="section" id="high-quality-snps">
+<h3>High Quality SNPs<a class="headerlink" href="#high-quality-snps" title="Permalink to this headline">¶</a></h3>
+<p>In this example we wish to examine the sites in a VCF
+that have a quality score over a particular minimum threshold. The function
+uses a QUAL index where QUAL scores have been grouped into bins of
+width 1 (QUAL[1]), and returns an iterator over all of the rows
+that fulfil the given quality requirements.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">wormtable</span> <span class="kn">as</span> <span class="nn">wt</span>
+<span class="k">def</span> <span class="nf">hq_snps</span><span class="p">(</span><span class="n">homedir</span><span class="p">,</span> <span class="n">minq</span><span class="p">,</span> <span class="n">cols</span><span class="p">):</span>
+    <span class="k">with</span> <span class="n">wt</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">homedir</span><span class="p">)</span> <span class="k">as</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">open_index</span><span class="p">(</span><span class="s">&quot;QUAL[1]&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">i</span><span class="p">:</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">set_min</span><span class="p">(</span><span class="n">minq</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">row</span>
+</pre></div>
+</div>
+<p>First we must create the required index:</p>
+<div class="highlight-python"><pre>$ wtadmin add sample_wt QUAL[1]</pre>
+</div>
+<p>We can then use this function in to iterate over the rows of interest:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">hq_snps</span><span class="p">(</span><span class="s">&#39;sample_wt&#39;</span><span class="p">,</span><span class="mi">30</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;CHROM&#39;</span><span class="p">,</span> <span class="s">&#39;POS&#39;</span><span class="p">,</span> <span class="s">&#39;REF&#39;</span><span class="p">,</span> <span class="s">&#39;ALT&#39;</span><span class="p">,</span> <span class="s">&#39;QUAL&#39;</span><span class="p">]):</span>
+<span class="gp">... </span>    <span class="k">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="go">(b&#39;20&#39;, 1230237, b&#39;T&#39;, b&#39;&#39;, 47.0)</span>
+<span class="go">(b&#39;20&#39;, 1234567, b&#39;GTC&#39;, b&#39;G,GTCT&#39;, 50.0)</span>
+<span class="go">(b&#39;20&#39;, 1110696, b&#39;A&#39;, b&#39;G,T&#39;, 67.0)</span>
+</pre></div>
 </div>
 </div>
-<div class="section" id="sliding-window-analysis-of-genetic-diversity-sliding-window-py">
-<h3>Sliding window analysis of Genetic Diversity - <em>sliding-window.py</em><a class="headerlink" href="#sliding-window-analysis-of-genetic-diversity-sliding-window-py" title="Permalink to this headline">¶</a></h3>
-<p>This script demonstrates how we can use the cursor feature of Wormtable to move
-through a file in windows and perform calculations on those windows. In this
-case we calculate the amount of genetic diversity that is present in each window
-using the alternate allele frequency (<em>AF</em> column) or by calculating the
-alternate allele frequency using the genotype calls in the sample columns.</p>
+</div>
+<div class="section" id="vcf-utilities">
+<h2>VCF-Utilities<a class="headerlink" href="#vcf-utilities" title="Permalink to this headline">¶</a></h2>
+<p>We have also provided three utilities (in the directory
+examples/vcf-utils) which will allow a user to use wormtable with VCF format
+files immediately. These scripts demonstrate the efficiency of using Wormtable
+with VCF files and are described briefly below.</p>
+<div class="section" id="snp-filter-py">
+<h3>snp-filter.py<a class="headerlink" href="#snp-filter-py" title="Permalink to this headline">¶</a></h3>
+<p>This script runs through a VCF file (using a CHROM+POS compound index) and allows
+the user to extract (a comma separated list of) specific VCF fields using an
+arbitrary set of filters on numeric or text columns. For example, to
+find variants with a QUAL score &gt; 500, depth of coverage (stored as DP in the
+INFO column) &gt; 20, a genotype in sample &#8220;S1&#8221; of &#8220;0/1&#8221; and print out CHROM and
+POS for variants in a wormtable stored in sample_wt, the user can
+use the following call</p>
+<div class="highlight-python"><pre>snp-filter.py --f 'QUAL&gt;500;INFO.DP&gt;20;S1.GT==0/1' CHROM,POS sample_wt</pre>
+</div>
+<p>The user can also optionally specify a particular region of the VCF using the
+CHROM:START-END syntax and either exclude, include or find indels.</p>
+</div>
+<div class="section" id="sliding-mean-py">
+<h3>sliding-mean.py<a class="headerlink" href="#sliding-mean-py" title="Permalink to this headline">¶</a></h3>
+<p>This script takes a comma separated list of numeric columns and the home directory
+containing the wormtable and will then calculate the mean of these
+numeric columns within non-overlapping windows (using an optionally specified
+window size and list of chromosomes). The output is in tab separated column
+format allowing the results to be easily plotted. For example, to calculate the
+mean of QUAL and depth of coverage (INFO.DP) in window sizes of 1Mb for
+chromosomes 1,2 and 3 from a wormtable stored in sample_wt, run</p>
+<div class="highlight-python"><pre>sliding-mean.py QUAL,INFO_DP 1,2,3 -w 1000000 sample_wt</pre>
+</div>
+</div>
+<div class="section" id="hq-snps-bygt-py">
+<h3>hq-snps-bygt.py<a class="headerlink" href="#hq-snps-bygt-py" title="Permalink to this headline">¶</a></h3>
+<p>This script takes a sample name and a specific genotype code, then builds a
+compound index on the sample genotype columns and quality score allowing the
+user to find, for example, high quality heterozygotes for the first sample. For
+example, to very efficiently obtain high quality heterozygotes (QUAL&gt;10000) from
+sample S1, run</p>
+<div class="highlight-python"><pre>get-hq-gts.py -s S1 -g '0/1' -q 1000 sample.wt/</pre>
+</div>
 </div>
 </div>
 </div>
@@ -489,26 +555,24 @@ alternate allele frequency using the genotype calls in the sample columns.</p>
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Tutorial</a><ul>
-<li><a class="reference internal" href="#introduction">Introduction</a><ul>
 <li><a class="reference internal" href="#the-vcf-format">The VCF format</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#installation">Installation</a></li>
-<li><a class="reference internal" href="#convert-a-vcf-to-wormtable-format">Convert a VCF to Wormtable format</a><ul>
-<li><a class="reference internal" href="#setting-the-cache-size">Setting the cache size</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#convert-a-vcf-to-wormtable-format">Convert a VCF to Wormtable format</a></li>
+<li><a class="reference internal" href="#using-a-cursor">Using a cursor</a></li>
 <li><a class="reference internal" href="#building-an-index">Building an index</a></li>
 <li><a class="reference internal" href="#using-an-index">Using an index</a></li>
-<li><a class="reference internal" href="#using-a-cursor">Using a cursor</a></li>
 <li><a class="reference internal" href="#creating-compound-indexes">Creating compound indexes</a></li>
-<li><a class="reference internal" href="#using-the-counter">Using the counter</a></li>
+<li><a class="reference internal" href="#using-a-counter">Using a counter</a></li>
 <li><a class="reference internal" href="#using-binned-indexes">Using binned indexes</a></li>
 <li><a class="reference internal" href="#examples">Examples</a><ul>
-<li><a class="reference internal" href="#count-the-keys-in-an-index-count-keys-py">Count the keys in an index - <em>count-keys.py</em></a></li>
-<li><a class="reference internal" href="#transition-transversion-ratio-ts-tv-py">Transition-Transversion ratio - <em>ts-tv.py</em></a></li>
-<li><a class="reference internal" href="#high-quality-snps-hq-snps-py">High Quality SNPs - <em>hq-snps.py</em></a></li>
-<li><a class="reference internal" href="#sliding-window-analysis-of-genetic-diversity-sliding-window-py">Sliding window analysis of Genetic Diversity - <em>sliding-window.py</em></a></li>
+<li><a class="reference internal" href="#counting-index-keys">Counting index keys</a></li>
+<li><a class="reference internal" href="#transition-transversion-ratio">Transition-Transversion ratio</a></li>
+<li><a class="reference internal" href="#high-quality-snps">High Quality SNPs</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#vcf-utilities">VCF-Utilities</a><ul>
+<li><a class="reference internal" href="#snp-filter-py">snp-filter.py</a></li>
+<li><a class="reference internal" href="#sliding-mean-py">sliding-mean.py</a></li>
+<li><a class="reference internal" href="#hq-snps-bygt-py">hq-snps-bygt.py</a></li>
 </ul>
 </li>
 </ul>

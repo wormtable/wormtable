@@ -1,12 +1,17 @@
+.. _performance-index:
+
 ==========================
 Performance tuning 
 ==========================
 
+:Release: |version|
+:Date: |today|
+
 One of the main goals of wormtable is to 
-provide a high performance platform for processing tables, 
-but while also keeping things as simple as possible.
+provide a high performance platform for processing tables 
+that is easy to use.
 While wormtable should be quite efficient 
-in most cases, there are a few simple things to do which can 
+in most cases, there are a few things which can 
 improve performance considerably when working with very large 
 tables.
 
@@ -16,7 +21,7 @@ Schema tuning
 
 To get the best performance possible from wormtable, it is important that 
 the rows are as small as possible. This is done by either using the smallest
-possible type for a given column, or discarding the column entirely if
+possible type for each column, or discarding the column entirely if
 it is not needed. Schemas generated using ``vcf2wt`` for VCF files are 
 conservative, and can often be improved on considerably by some hand tuning. By 
 shaving a few tens of bytes off each row we can sometimes make the table
@@ -30,7 +35,7 @@ To tune the schema of a VCF file, we must first use the ``--generate`` option in
     $ vcf2wt -g data.vcf schema.xml
 
 The ``schema.xml`` file then contains the automatically generated (conservative) 
-schema. We can then edit this schema as we see fit, chaning and deleting columns 
+schema. We can then edit this schema, changing and deleting columns 
 as we see fit. Once we're happy with the schema, we can then build the table 
 using this new schema using the ``--schema`` option::
 
@@ -88,7 +93,7 @@ integer suffices to store the values in this VCF:
 
 We have saved a total of 8 bytes over the default schema by making these 
 changes. This hardly seems worth the effort, but is in fact quite significant 
-for two reasons. Firstly, every byte save per row really does count when we 
+for two reasons. Firstly, every byte we save per row really does count when we 
 are storing millions of rows. Secondly, there are 205 genotypes in this VCF
 so we can make a saving of 1640 bytes by applying these changes to all 
 of the relevant columns.

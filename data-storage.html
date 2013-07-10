@@ -58,7 +58,7 @@
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Release:</th><td class="field-body">0.1</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 06, 2013</td>
+<tr class="field-even field"><th class="field-name">Date:</th><td class="field-body">July 10, 2013</td>
 </tr>
 </tbody>
 </table>
@@ -68,7 +68,7 @@ is that data is stored in a compact binary format, minimising the space used and
 also allowing us to efficiently retrieve values from the table.</p>
 <p>This page describes the type and sizes of data that may be stored in columns,
 as well as some low-level details about this data storage format. While this
-information is not directly relevent to programmers using wormtable, it
+information is not directly relevant to programmers using wormtable, it
 can help to understand the various tradeoffs when choosing a particular
 type or choosing a variable versus a fixed length column.</p>
 <div class="section" id="column-types">
@@ -76,7 +76,7 @@ type or choosing a variable versus a fixed length column.</p>
 <p>The fundamental storage units of wormtable are <em>rows</em> and <em>columns</em>,
 similar to relational databases. A row is split into a fixed number of
 columns, and within a column we store some number of <em>elements</em> of a
-fixed <em>type</em> and size. The size of the elements determines the range
+fixed <em>type</em> and <em>size</em>. The size of the elements determines the range
 of the values that can be stored in a column; for example, an unsigned
 integer column with element size 1 can store values from 0 up to
 254 only.</p>
