@@ -3,6 +3,8 @@
 """
 Get a list of high quality SNP calls (in order of lowest->highest quality).
 """
+from __future__ import print_function
+from __future__ import division
 
 import sys
 import wormtable as wt
@@ -10,13 +12,11 @@ import os.path
 import argparse
 
 def hq_snps(homedir, minq, cols):
-    t =  wt.open_table(homedir)
-    i = t.open_index("QUAL[5]")
-    cursor = t.cursor(cols, i)
-    cursor.set_min(minq)
-    cursor.set_max(i.get_max())
-    for row in cursor:
-        print "\t".join([str(i) for i in row])
+    with wt.open_table(homedir) as t, t.open_index("QUAL[1]") as i:
+        cursor = t.cursor(cols, i)
+        cursor.set_min(minq)
+        for row in cursor:
+            yield row 
 
 def main():
     parser = argparse.ArgumentParser(description=globals()['__doc__'])
@@ -35,10 +35,10 @@ def main():
     cols = ["CHROM", "POS", "REF", "ALT", "QUAL"]
     
     if(args['H']):
-        print "\t".join(cols)
+        print("\t".join(cols))
     
-    hq_snps(args['homedir'], args['q'], cols)
-
+    for row in hq_snps(args['homedir'], args['q'], cols):
+        print(row)
 
 if __name__ == "__main__":
     main()

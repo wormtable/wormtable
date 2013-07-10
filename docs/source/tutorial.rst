@@ -116,16 +116,21 @@ and "POS". The cursor allows us to walk through the wormtable row by row ::
 
     >>> c = table.cursor(['CHROM', 'POS'])
     >>> for row in c:
-    ...     print row
+    ...     print(row)
     ... 
-    ('20', 14370L)
-    ('20', 17330L)
-    ('20', 1110696L)
-    ('20', 1230237L)
-    ('20', 1234567L)    
+    (b'20', 14370)
+    (b'20', 17330)
+    (b'20', 1110696)
+    (b'20', 1230237)
+    (b'20', 1234567)
 
 Note that since we can retrieve information from multiple columns, the names 
 of the columns we want to retrieve are passed to the cursor as a list. 
+
+.. warning:: All character data in wormtable is returned as *bytes*
+   values. For Python 3 users, this means they are not the same as strings, 
+   but must be *decoded*. For Python 2 users, there is no distinction 
+   between bytes and strings.
 
 -----------------
 Building an index
@@ -210,12 +215,12 @@ The wormtable module offers a number of methods to interact with an
 
     >>> # Print the minimum and maximum value of an index
     >>> position_index.get_min()
-    14370L
+    14370
     >>> position_index.get_max()
-    1234567L
+    1234567
     >>> # Use keys() to iterate through sorted value in the index
-    >>> for i in position_index.keys():
-    ...     print(i) 
+    >>> for k in position_index.keys():
+    ...     print(k)
     ... 
     14370
     17330
@@ -245,9 +250,9 @@ the *REF* column for each row of the table::
     >>> for p in c: 
     ...     print(p[0]) 
     ... 
-    G
-    T
-    A
+    b'G'
+    b'T'
+    b'A'
 
 Note that by default the cursor will return a tuple and we just 
 print the first element here. It is also worth noting that like other 
@@ -284,13 +289,14 @@ through rows in this region, printing CHROM, POS and REF for each::
     >>> for p in c:
     ...     print(p[0])
     ... 
-    G
-    T
-    A
+    b'G'
+    b'T'
+    b'A'
 
------------------
-Using the counter
------------------
+
+---------------
+Using a counter
+---------------
 Another useful feature of Wormtable is the ability to count the number of items 
 matching unique keys in an index. A :class:`Counter` is a dictionary-like 
 object where the keys are index values which refer to the number of times that 
@@ -306,9 +312,9 @@ Then in python: ::
     >>> table = wormtable.open_table('sample_wt')
     >>> ref_index = table.open_index('REF')
     >>> ref_counts = ref_index.counter()
-    >>> gc = ref_counts['G'] + ref_counts['C']
-    >>> tot = gc + ref_counts['T'] + ref_counts['A']
-    >>> float(gc) / float(tot)
+    >>> gc = ref_counts[b'G'] + ref_counts[b'C']
+    >>> tot = gc + ref_counts[b'T'] + ref_counts[b'A']
+    >>> gc / tot
     0.25
 
 --------------------
@@ -337,23 +343,24 @@ Then, we can quickly count the number of rows falling into each bin::
 
     >>> qual_5_index = table.open_index('QUAL[5]')
     >>> qual_5_counter = qual_5_index.counter()
-    >>> for q in range(0,70,5):
-    ...     print("%i\t%i" %(q, qual_5_counter[q]))
+    >>> for q in range(0, 70, 5):
+    ...     print(q, "\t", qual_5_counter[q])
     ... 
-    0   1
-    5   0
-    10  0
-    15  0
-    20  0
-    25  1
-    30  0
-    35  0
-    40  0
-    45  1
-    50  1
-    55  0
-    60  0
-    65  1
+    0    1
+    5    0
+    10   0
+    15   0
+    20   0
+    25   1
+    30   0
+    35   0
+    40   0
+    45   1
+    50   1
+    55   0
+    60   0
+    65   1
+
 
 --------
 Examples
@@ -365,36 +372,42 @@ you want to use or modify the example scripts for your own purposes.
 *******************
 Counting index keys
 *******************
-The idea of this script is to implement a simple counter for a named wormtable directory 
-(homedir) and an existing index (index) and prints out counts for each key in the index ::
 
-    import wormtable
+In this example we use an index counter to get an iterator over the keys 
+and their counts in an index. We use the 
+`context manager <http://www.python.org/dev/peps/pep-0343/>`_ protocol
+(the ``with`` statement) to ensure that the table and index 
+are closed when we finish.
+
+.. code-block:: python 
+    
+    import wormtable as wt
+    
     def count_distinct(homedir, index):
-        t = wormtable.open_table(homedir) 
-        i = t.open_index(index)
-        table = [[k,v] for k,v in i.counter().items()]
-        return table
+        with wt.open_table(homedir) as t, t.open_index(index) as i: 
+            for k,v in i.counter().items():
+                yield k, v
 
-Then in python we can use the variable ref_table to store the instances of each index value ::
+Using this function we can easily print out all of the values in the 
+REF column and their counts::
 
-    >>> ref_table = count_distinct('sample_wt', 'REF')
-    >>> for r in ref_table:
-    ...     print("%s\t%i" %(r[0], r[1]))
+    >>> for k, v in count_distinct("sample_wt", "REF"): 
+    ...     print(k, "\t", v)
     ... 
-    A       1
-    G       1
-    GTCT    1
-    T       2
+    b'A'     1
+    b'G'     1
+    b'GTC'   1
+    b'T'     2
 
-Alternatively you can use the python script provided in the examples folder ::
+This functionality is also provided by the ``wtadmin hist`` command::
 
-    $ python count-distinct.py sample_wt REF
-    A       1
-    G       1
-    GTCT    1
-    T       2
+    $ wtadmin hist sample_wt REF
+    # n REF
+    1    A
+    1    G
+    1    GTC
+    2    T
 
-This functionality is also provided by the ``wtadmin hist`` command.
 
 *****************************
 Transition-Transversion ratio
@@ -428,57 +441,48 @@ instances of each change in our data ::
         t.close()
         return Ts, Tv
 
-we can then use this function ::
+we can then use this function to very quickly count the number of 
+transitions and transversions: ::
 
-    >>> Ts, Tv = count_Ts_Tv('sample_wt')
-    >>> print("ts: %i tv:%i" %(Ts, Tv)) 
-    ts: 1 tv:1
-
-Similar to the previous example we have provided a script for doing this that can be 
-called form the command line ::
-
-    $ wtadmin add sample_wt REF+ALT # in case index does not already exist.
-    $ python ts-tv.py sample_wt
-    ts: 1 tv: 1
+    >>> count_Ts_Tv('sample_wt')
+    (1, 1)
 
 *****************
 High Quality SNPs 
 *****************
 
-In this example we wist to examine the sites in a VCF 
-that have a quality score over a particular minimum threshold. This script uses 
-a QUAL index where QUAL scores have been grouped into bins of width 1 (QUAL[1])::
+In this example we wish to examine the sites in a VCF 
+that have a quality score over a particular minimum threshold. The function 
+uses a QUAL index where QUAL scores have been grouped into bins of 
+width 1 (QUAL[1]), and returns an iterator over all of the rows
+that fulfil the given quality requirements. ::
 
-    import wormtable
+    import wormtable as wt
     def hq_snps(homedir, minq, cols):
-        """
-        minq is the minimum quality that determines a high quality site
-        cols is a list of the columns from the VCF that you want to return
-        """
-        t =  wormtable.open_table(homedir)
-        i = t.open_index("QUAL[1]")
-        cursor = t.cursor(cols, i)
-        cursor.set_min(minq)
-        cursor.set_max(i.get_max())
-        for row in cursor:
-            print "\t".join([str(i) for i in row])
+        with wt.open_table(homedir) as t, t.open_index("QUAL[1]") as i:
+            cursor = t.cursor(cols, i)
+            cursor.set_min(minq)
+            for row in cursor:
+                yield row 
 
-We can then use this function in python ::
- 
-    >>> hq_snps('sample_wt',30, ['CHROM', 'POS', 'REF', 'ALT', 'QUAL'])
-    20      1230237 T               47.0
-    20      1234567 GTCT    G,GTACT 50.0
+First we must create the required index::
 
-or using the provided python script ::
+    $ wtadmin add sample_wt QUAL[1] 
 
-    $ wtadmin add sample_wt QUAL[1] # in case index does not already exist.
-    $ python hq-snps.py -q 30 sample_wt
-    20      1230237 T               47.0
-    20      1234567 GTCT    G,GTACT 50.0
+We can then use this function in to iterate over the rows of interest: ::
+
+    >>> for row in hq_snps('sample_wt',30, ['CHROM', 'POS', 'REF', 'ALT', 'QUAL']):
+    ...     print(row)
+    ... 
+    (b'20', 1230237, b'T', b'', 47.0)
+    (b'20', 1234567, b'GTC', b'G,GTCT', 50.0)
+    (b'20', 1110696, b'A', b'G,T', 67.0)
+
 
 -------------
 VCF-Utilities
 -------------
+
 We have also provided three utilities (in the directory 
 examples/vcf-utils) which will allow a user to use wormtable with VCF format 
 files immediately. These scripts demonstrate the efficiency of using Wormtable 
@@ -519,7 +523,7 @@ chromosomes 1,2 and 3 from a wormtable stored in sample_wt, run ::
 hq-snps-bygt.py
 ***************
 
-This script takes a sample name and a specific genotype code, then builds an
+This script takes a sample name and a specific genotype code, then builds a
 compound index on the sample genotype columns and quality score allowing the
 user to find, for example, high quality heterozygotes for the first sample. For 
 example, to very efficiently obtain high quality heterozygotes (QUAL>10000) from 
