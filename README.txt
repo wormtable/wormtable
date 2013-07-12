@@ -186,7 +186,6 @@ Debian squeeze          x86-64          3.1.3           gcc 4.4.5
 Debian squeeze          x86-64          3.1.3           clang 1.1 
 Debian squeeze          ppc64           2.6.6           gcc 4.4.5	    
 Debian squeeze          ppc64           3.1.3           gcc 4.4.5	
-Debian squeeze          ppc64           3.1.3           clang 1.1 
 Debian wheezy           armv6l          2.7.3           gcc 4.6.3
 Fedora 17               i386            2.7.3           gcc 4.7.2
 Fedora 17               i386            3.2.3           gcc 4.7.2
