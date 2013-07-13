@@ -49,7 +49,7 @@ Package available at
 \section{Introduction}
 Despite the ever increasing volumes of data being processed in bioinformatics,
 the methods used are almost entirely based on plain text files. Data is 
-usually encoded in rows, with each row consisting of a series of tab-delimited 
+usually encoded in lines of text, with each row consisting of a series of tab-delimited 
 values.
 These files are easy to view and interpret and can be processed on 
 any platform with the minimum of library dependencies. Using compression,
@@ -59,13 +59,14 @@ fast retrieval of rows from arbitrary locations in the table.
 It is not sufficient, however, to simply store and retrieve data. To use data
 it must be \emph{processed}. This is the major flaw in 
 using text files as a data format: before we can perform calculations, we 
-must first parse the encoded information into a native 
-machine value. Compression adds another substantial overhead. The result 
+must first parse the encoded information into native 
+machine values. This is an expensive process, and 
+compression (if it is used) adds another substantial overhead. The result 
 of this is that simple calculations over a large dataset may take 
 many hours to complete.
 
-Another problem with tabular text files is that it is difficult 
-to index the information within partiular columns. 
+Another problem with tables stored text files is that it is difficult 
+to index the information within particular columns. 
 This means that most operations on the table require a complete scan 
 through the file. As a result, the only viable means of 
 working with a subset of the data
@@ -79,10 +80,10 @@ not required, and support efficient retrieval and indexing. There
 are many problems with this approach, however. Relational databases are 
 extremely complex systems, each supporting different features and SQL 
 dialects. It is not a straightforward task to design a schema for a 
-particular data set, particularly not if portability accross different 
-databases is required. Similiarly, accessing the data requires a knowledge
+particular data set, particularly not if portability across different 
+databases is required. Similarly, accessing the data requires a knowledge
 of SQL. In the most common case, a database server must also be maintained
-and so storage and user permissons must be carefully managed. All of 
+and so storage and user permissions must be carefully managed. All of 
 these aspects require significant expertise.
 
 A relational database server, however, is far more than we require in the 
@@ -122,7 +123,6 @@ $1$ to $8$ bytes. The standard single and double precision
 floating point values are also supported, along with fixed and 
 variable length strings.
 
-
 % why do we use Berkeley DB?
 To take advantage of the data processing capabilities of database
 technologies without the overheads and disadvantages of relational databases,
@@ -134,14 +134,13 @@ world~\citep{sb12}. Berkeley DB is a highly modular library, providing the
 means to define a very lightweight read-only database, without the 
 overheads and complexity of a relational database system.
 
-Combining wormtable's custom row format with Berkeley DB gives us a 
-powerful platform for data storage and processing.
-An important advantage
-of this combination is the ability to index data. Wormtable supports
-indexes over arbitary combinations of columns, along with a flexibile
-system of `binning' of values in an index.
-Indexes can often be used to avoid the cost of a full table scan, and 
-can therefore make many operations much faster.
+In wormtable, each table corresponds to a directory in the file system
+which is used to store the table, indexes and metadata.
+Indexes over arbitrary combinations of columns are supported, 
+and these are managed using the \texttt{wtadmin} program, which 
+provides several other administration utilities.
+Wormtable files are portable across operating systems 
+and processor architectures.
 
 \section{Examples}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
@@ -184,7 +183,7 @@ It should be noted, however, that this simple task represents
 something of a best case scenario for the Unix tools pipeline.
 
 Another major advantage of wormtable is the ability to create 
-an index over arbitary combinations of columns within a table.
+an index over arbitrary combinations of columns within a table.
 Indexes make many operations much more efficient, as they provide 
 a way to quickly find particular rows and avoid the 
 heavy cost of a full table scan.
@@ -215,7 +214,7 @@ unsustainable.
 Wormtable alleviates the need for these different formats and libraries,
 as it is flexible enough to store many different types of data. Python 
 is currently the only programming language supported, but a C library
-and bindings for other languages are planned. Wormtable is very portable,
+and bindings for other languages are planned. Wormtable is portable,
 and has been tested on big- and little-endian platforms with 32 and 64
 bit word sizes, along with many operating system combinations. To 
 take advantage of the advanced data processing features of wormtable
@@ -228,8 +227,8 @@ It is intended to provide a persistent data structure
 that can be efficiently processed 
 and searched. Using this data structure, researchers with no knowledge of 
 database systems can take full advantage of sophisticated 
-data management techniques, and write simple code that processes this 
-data in a very high performance manner. 
+data management techniques, and write simple code to process 
+data in a high performance manner. 
 Different file formats can be handled consistently 
 in wormtable, reducing the need for third party libraries 
 to parse complex files and simplifying the code required 
