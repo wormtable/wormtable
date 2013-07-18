@@ -400,6 +400,7 @@ unpack_float(void *src)
 static void 
 pack_double(double value, void *dest)
 {
+    
     int64_t double_bits;
     memcpy(&double_bits, &value, sizeof(double));
     double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
@@ -496,22 +497,44 @@ Column_unpack_elements_int(Column *self, void *source)
 }
 
 static int 
-Column_unpack_elements_float(Column *self, void *source)
+Column_unpack_elements_float_2(Column *self, void *source)
 {
     int j;
     int ret = -1;
     void *v = source;
     double *elements = (double *) self->element_buffer;
-    /* TODO Tidy this up and make it consistent with the pack definition 
-     * Again, these decisions should be made at instantiation time.*/
     for (j = 0; j < self->num_buffered_elements; j++) {
-        if (self->element_size == 2) {
-            elements[j] = unpack_half(v); 
-        } else if (self->element_size == 4) {
-            elements[j] = unpack_float(v); 
-        } else {
-            elements[j] = unpack_double(v); 
-        }
+        elements[j] = unpack_half(v); 
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+static int 
+Column_unpack_elements_float_4(Column *self, void *source)
+{
+    int j;
+    int ret = -1;
+    void *v = source;
+    double *elements = (double *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        elements[j] = unpack_float(v); 
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+static int 
+Column_unpack_elements_float_8(Column *self, void *source)
+{
+    int j;
+    int ret = -1;
+    void *v = source;
+    double *elements = (double *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        elements[j] = unpack_double(v); 
         v += self->element_size;
     }
     ret = 0;
@@ -585,22 +608,44 @@ Column_pack_elements_int(Column *self, void *dest)
 }
 
 static int 
-Column_pack_elements_float(Column *self, void *dest)
+Column_pack_elements_float_2(Column *self, void *dest)
 {
     int j;
     int ret = -1;
     void *v = dest;
     double *elements = (double *) self->element_buffer;
-    /* TODO tidy this up - this decision should be made at 
-     * instantiation time. */
     for (j = 0; j < self->num_buffered_elements; j++) {
-        if (self->element_size == 2) {
-            pack_half(elements[j], v);
-        } else if (self->element_size == 4) {
-            pack_float(elements[j], v);
-        } else if (self->element_size == 8) {
-            pack_double(elements[j], v);
-        }         
+        pack_half(elements[j], v);
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+static int 
+Column_pack_elements_float_4(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    double *elements = (double *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        pack_float(elements[j], v);
+        v += self->element_size;
+    }
+    ret = 0;
+    return ret; 
+}
+
+static int 
+Column_pack_elements_float_8(Column *self, void *dest)
+{
+    int j;
+    int ret = -1;
+    void *v = dest;
+    double *elements = (double *) self->element_buffer;
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        pack_double(elements[j], v);
         v += self->element_size;
     }
     ret = 0;
@@ -1599,8 +1644,16 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->string_to_native = Column_string_to_native_float;
         self->verify_elements = Column_verify_elements_float;
         self->truncate_elements = Column_truncate_elements_float;
-        self->pack_elements = Column_pack_elements_float;
-        self->unpack_elements = Column_unpack_elements_float;
+        if (self->element_size == 2) {
+            self->pack_elements = Column_pack_elements_float_2;
+            self->unpack_elements = Column_unpack_elements_float_2;
+        } else if (self->element_size == 4) {
+            self->pack_elements = Column_pack_elements_float_4;
+            self->unpack_elements = Column_unpack_elements_float_4;
+        } else {
+            self->pack_elements = Column_pack_elements_float_8;
+            self->unpack_elements = Column_unpack_elements_float_8;
+        }
         self->native_to_python = Column_native_to_python_float; 
         native_element_size = sizeof(double);
         self->min_element = Py_None; 

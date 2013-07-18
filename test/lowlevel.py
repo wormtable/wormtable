@@ -588,12 +588,12 @@ class TestDatabaseFloat(TestDatabase):
     def get_columns(self):
         q = _wormtable.WT_VAR_1
         columns = [
-                get_float_column(4, q), get_float_column(8, q), 
-                get_float_column(4, 1), get_float_column(8, 1), 
-                get_float_column(4, 2), get_float_column(8, 2), 
-                get_float_column(4, 3), get_float_column(8, 3), 
-                get_float_column(4, 4), get_float_column(8, 4), 
-                get_float_column(4, 5), get_float_column(8, 5), 
+                get_float_column(2, q), get_float_column(4, q), get_float_column(8, q), 
+                get_float_column(2, 1), get_float_column(4, 1), get_float_column(8, 1), 
+                get_float_column(2, 2), get_float_column(4, 2), get_float_column(8, 2), 
+                get_float_column(2, 3), get_float_column(4, 3), get_float_column(8, 3), 
+                get_float_column(2, 4), get_float_column(4, 4), get_float_column(8, 4), 
+                get_float_column(2, 5), get_float_column(4, 5), get_float_column(8, 5), 
                 ]
         # randomise the columns so we don't have all the variable 
         # columns at the start.
@@ -654,11 +654,12 @@ class TestDatabaseFloatIntegrity(TestDatabaseFloat):
                     self.assertEqual(self.rows[j][k], r[k])
                 else:
                     #print(rows[j][k])
+                    p = 2 if c.element_size == 2 else 6
                     if c.num_elements == 1:
-                        self.assertAlmostEqual(self.rows[j][k], r[k], places=6)
+                        self.assertAlmostEqual(self.rows[j][k], r[k], places=p)
                     else:
                         for u, v in zip(self.rows[j][k], r[k]):
-                            self.assertAlmostEqual(u, v, places=6)
+                            self.assertAlmostEqual(u, v, places=p)
 
 
 
@@ -834,8 +835,8 @@ class TestIndexIntegrity(object):
             # get the list from the original rows
             l3 = [row[j] for row in self.rows]
             l3.sort()
-            # TODO: push the comparison up into the superclass
-            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size == 4):
+            # these tests don't make sense for inexact types. 
+            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size != 8):
                 self.assertEqual(l, l3)
             index.close()
             del row_iter
@@ -865,8 +866,8 @@ class TestIndexIntegrity(object):
             l2 = sorted([v for v in original if min_val[0] <= v and v < max_val[0]])
             ri2 = _wormtable.IndexRowIterator(index, [j])
             l3 = [row[0] for row in ri2 if min_val[0] <= row[0] and row[0] < max_val[0]]
-            # TODO: push the comparison up into the superclass
-            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size == 4):
+            # these tests don't make sense for inexact types. 
+            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size != 8):
                 self.assertRowListsEqual(l3, l2)
                 self.assertRowListsEqual(l, l2)
                 self.assertEqual(l, l3)
@@ -920,7 +921,7 @@ class TestIndexIntegrity(object):
             row_iter = _wormtable.IndexRowIterator(index, cols)
             l = [row for row in row_iter]
             l2 = sorted(original) 
-            o = [col.element_type == _wormtable.WT_FLOAT and col.element_size == 4
+            o = [col.element_type == _wormtable.WT_FLOAT and col.element_size != 8 
                 for col in columns]
             if not any(o):
                 self.assertEqual(l, l2)
