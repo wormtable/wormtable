@@ -20,6 +20,7 @@
 #include <Python.h>
 #include <structmember.h>
 #include <db.h>
+#include "half.h"
 
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
@@ -330,11 +331,49 @@ Column_native_to_python_char(Column *self, int index)
  *
  *************************************/
 
+/* TODO we should define a union for each of the floating point types
+ * that allows us to get at their values as integers without a memcpy.
+ */
+
 static void 
-pack_float(float value, void *dest)
+pack_half(double value, void *dest)
 {
+    float v = (float) value;
     int32_t float_bits;
-    memcpy(&float_bits, &value, sizeof(float));
+    int16_t half_bits;
+    memcpy(&float_bits, &v, sizeof(float));
+    half_bits = half_from_float(float_bits);
+    half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &half_bits, 2); 
+#else    
+    byteswap_copy(dest, &half_bits, 2); 
+#endif
+}
+
+static double  
+unpack_half(void *src)
+{
+    int16_t half_bits;
+    int32_t float_bits;
+    float value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&half_bits, src, 2);
+#else
+    byteswap_copy(&half_bits, src, 2);
+#endif
+    half_bits ^= (half_bits < 0) ? 0x8000: 0xffff;
+    float_bits = half_to_float(half_bits); 
+    memcpy(&value, &float_bits, sizeof(float));
+    return (double) value;
+}
+
+static void 
+pack_float(double value, void *dest)
+{
+    float v = (float) value;
+    int32_t float_bits;
+    memcpy(&float_bits, &v, sizeof(float));
     float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &float_bits, sizeof(float)); 
@@ -463,9 +502,12 @@ Column_unpack_elements_float(Column *self, void *source)
     int ret = -1;
     void *v = source;
     double *elements = (double *) self->element_buffer;
-    /* TODO Tidy this up and make it consistent with the pack definition */
+    /* TODO Tidy this up and make it consistent with the pack definition 
+     * Again, these decisions should be made at instantiation time.*/
     for (j = 0; j < self->num_buffered_elements; j++) {
-        if (self->element_size == 4) {
+        if (self->element_size == 2) {
+            elements[j] = unpack_half(v); 
+        } else if (self->element_size == 4) {
             elements[j] = unpack_float(v); 
         } else {
             elements[j] = unpack_double(v); 
@@ -549,17 +591,16 @@ Column_pack_elements_float(Column *self, void *dest)
     int ret = -1;
     void *v = dest;
     double *elements = (double *) self->element_buffer;
-    /* TODO tidy this up */
+    /* TODO tidy this up - this decision should be made at 
+     * instantiation time. */
     for (j = 0; j < self->num_buffered_elements; j++) {
-        if (self->element_size == 4) {
-            pack_float((float) elements[j], v);
+        if (self->element_size == 2) {
+            pack_half(elements[j], v);
+        } else if (self->element_size == 4) {
+            pack_float(elements[j], v);
         } else if (self->element_size == 8) {
             pack_double(elements[j], v);
-        } else {
-            assert(0);
-        }
-        
-        
+        }         
         v += self->element_size;
     }
     ret = 0;
@@ -1549,7 +1590,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
             goto out;
         }
     } else if (self->element_type == WT_FLOAT) {
-        if (self->element_size != sizeof(float)
+        if (self->element_size != 2 && self->element_size != sizeof(float)
                 && self->element_size != sizeof(double)) {
             PyErr_SetString(PyExc_ValueError, "bad element size");
             goto out;
