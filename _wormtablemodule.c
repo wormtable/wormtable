@@ -341,6 +341,16 @@ pack_half(double value, void *dest)
     float v = (float) value;
     int32_t float_bits;
     int16_t half_bits;
+    float max_representable = 65504.0;
+    /* There is a bug in half.c that doesn't correctly map values greater than 
+     * the maximum representable value to inf. To work around this, we test
+     * for this condition here and make sure that inf is triggered 
+     */
+    if (v > max_representable) {
+        v = 1e100;
+    } else if (v < -max_representable) {
+        v = -1e100;
+    }
     memcpy(&float_bits, &v, sizeof(float));
     half_bits = half_from_float(float_bits);
     half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;

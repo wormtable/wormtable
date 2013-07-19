@@ -487,7 +487,9 @@ class FloatTest(WormtableTest):
     Tests the limits of the floating point types to see if they are correct
     under IEEE rules.
     """
-        
+    max_half = (2 - 2**-10) * 2**15
+    max_float = (2 - 2**-23) * 2**127
+    max_double = (1 + (1 - 2**-52)) * 2**1023
     def assert_tables_equal(self, in_values, out_values):
         t = wt.Table(self._homedir)
         t.add_id_column()
@@ -524,8 +526,7 @@ class FloatTest(WormtableTest):
             for j in v:
                 x.append(s * 2**j)
             in_values.append(x)
-        # These are the maximum representable values 
-        v = [(2 - 2**-10) * 2**15, (2 - 2**-23) * 2**127, (1 + (1 - 2**-52)) * 2**1023]
+        v = [self.max_half, self.max_float, self.max_double]
         in_values.append(v) 
         in_values.append([-1 * x for x in v]) 
         self.assert_tables_equal(in_values, in_values)
@@ -540,6 +541,7 @@ class FloatTest(WormtableTest):
             [inf, inf, inf],
             [1e6, 1e300, 1e500],
             [2**1000, 2**1000, inf],
+            [self.max_half * 10 , self.max_float * 10 , self.max_double * 10],
             [(1 + 2 - 2**-10) * 2**15, (1 + 2 - 2**-23) * 2**127, (1 + 1 + (1 - 2**-52)) * 2**1023],
         ]
         result = [[inf for j in range(3)] for x in values]
@@ -548,6 +550,19 @@ class FloatTest(WormtableTest):
         neg_inf = [[-inf for v in x] for x in values]
         self.assert_tables_equal(neg, neg_inf)
 
+    
+    def test_half_infinity(self):
+        """
+        There is a bug in the underlying library dealing with half overflows,
+        so we test this particularly here.
+        """
+        inf = 1e1000
+        x = self.max_half
+        values = [x + 0.1, x + 1, x + 10, x + 100, x + 1000]
+        self.assert_tables_equal([[v] for v in values],
+                [[inf, None, None] for v in values])
+        self.assert_tables_equal([[-v] for v in values],
+                [[-inf, None, None] for v in values])
         
 
 
