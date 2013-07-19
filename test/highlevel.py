@@ -481,3 +481,73 @@ class TableCursorTest(WormtableTest):
         # TODO more tests - permute the columns, etc.
 
 
+
+class FloatTest(WormtableTest):
+    """
+    Tests the limits of the floating point types to see if they are correct
+    under IEEE rules.
+    """
+        
+    def assert_tables_equal(self, in_values, out_values):
+        t = wt.Table(self._homedir)
+        t.add_id_column()
+        t.add_float_column("half", size=2)
+        t.add_float_column("single", size=4)
+        t.add_float_column("double", size=8)
+        t.open("w")
+        for r in in_values:
+            t.append([None] + list(r)) 
+        t.close()
+        t.open("r")
+        for r1, r2 in zip(out_values, t):
+            self.assertEqual(tuple(r1), r2[1:])
+        t.close() 
+        
+
+
+    def test_exact_values(self):
+        """
+        Checks that exact values are added stored correctly.
+        """
+        # Get a bunch of small integers
+        in_values = []
+        for j in range(64):
+            x = (j, j, j)
+            in_values.append(x)
+            x = (-j, -j, -j)
+            in_values.append(x)
+        # We can also represent values up to 2*v exactly
+        v = (11, 24, 53)
+        for s in [1, -1]:
+            x = []
+            y = []
+            for j in v:
+                x.append(s * 2**j)
+            in_values.append(x)
+        # These are the maximum representable values 
+        v = [(2 - 2**-10) * 2**15, (2 - 2**-23) * 2**127, (1 + (1 - 2**-52)) * 2**1023]
+        in_values.append(v) 
+        in_values.append([-1 * x for x in v]) 
+        self.assert_tables_equal(in_values, in_values)
+      
+    
+    def test_infinity(self):
+        """
+        Checks to see if overflow values are deteted correctly.
+        """
+        inf = 1e1000 
+        values = [
+            [inf, inf, inf],
+            [1e6, 1e300, 1e500],
+            [2**1000, 2**1000, inf],
+            [(1 + 2 - 2**-10) * 2**15, (1 + 2 - 2**-23) * 2**127, (1 + 1 + (1 - 2**-52)) * 2**1023],
+        ]
+        result = [[inf for j in range(3)] for x in values]
+        self.assert_tables_equal(values, result)
+        neg = [[-1 * v for v in x] for x in values]
+        neg_inf = [[-inf for v in x] for x in values]
+        self.assert_tables_equal(neg, neg_inf)
+
+        
+
+
