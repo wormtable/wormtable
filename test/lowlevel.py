@@ -184,7 +184,8 @@ class TestElementParsers(TestDatabase):
         for j in range(1, 9):
             self._int_columns[j] = get_int_column(j, 1)
             self._uint_columns[j] = get_uint_column(j, 1)
-        self._float_columns = {4: get_float_column(4, 1)}
+        self._float_columns = {2: get_float_column(2, 1), 4: get_float_column(4, 1),
+                8: get_float_column(8, 1)}
         cols = list(self._int_columns.values()) + list(self._float_columns.values()) 
         return cols
 
@@ -198,32 +199,46 @@ class TestElementParsers(TestDatabase):
             for v in values:
                 self.assertRaises(TypeError, f, c, v)
     
-    def FIX_test_good_float_values(self):
+    def test_good_float_values(self):
         rb = self._row_buffer
         values = ["-1", "-2", "0", "4", "14", "100",
             "0.01", "-5.224234345235", "1E12"]
         for c in self._float_columns.values():
             for v in values:
-                self.assertEqual(rb.insert_encoded_elements(c, v.encode()), None)
-                self.assertEqual(rb.insert_elements(c, float(v)), None)
+                self.assertEqual(rb.insert_encoded_elements(c.position, v.encode()), None)
+                self.assertEqual(rb.insert_elements(c.position, float(v)), None)
             for k in range(10):
                 v = random.uniform(-100, 100)
                 b = str(v).encode()
-                self.assertEqual(rb.insert_encoded_elements(c, b), None)
-                self.assertEqual(rb.insert_elements(c, v), None)
+                self.assertEqual(rb.insert_encoded_elements(c.position, b), None)
+                self.assertEqual(rb.insert_elements(c.position, v), None)
      
-    def FIX_test_bad_float_values(self):
+    def test_bad_float_values(self):
         rb = self._row_buffer
         values = ["", "--1", "sdasd", "[]", "3qsd", "1Q0.023"]
         for c in self._float_columns.values():
             for v in values:
                 e = v.encode()
-                self.assertRaises(ValueError, rb.insert_encoded_elements, c, e)
-        values = [None, [], 234, "1.23"]
+                self.assertRaises(ValueError, rb.insert_encoded_elements, c.position, e)
+        values = [[], {}, "", b"", ValueError]
         for c in self._float_columns.values():
             for v in values:
-                self.assertRaises(TypeError, rb.insert_elements, c, v)
+                self.assertRaises(TypeError, rb.insert_elements, c.position, v)
         
+
+    def test_nan(self):
+        """
+        We don't allow NaNs to be inserted.
+        """
+        rb = self._row_buffer
+        nan = float("Nan")
+        nans = [b"NaN", b"nan", b"NAN "]
+        for c in self._float_columns.values():
+            self.assertRaises(ValueError, rb.insert_elements, c.position, nan)
+            for n in nans:
+                self.assertRaises(ValueError, rb.insert_encoded_elements, 
+                        c.position, n)
+    
 
 class TestListParsers(TestDatabase):
     """

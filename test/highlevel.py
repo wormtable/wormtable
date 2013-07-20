@@ -490,6 +490,7 @@ class FloatTest(WormtableTest):
     max_half = (2 - 2**-10) * 2**15
     max_float = (2 - 2**-23) * 2**127
     max_double = (1 + (1 - 2**-52)) * 2**1023
+    
     def assert_tables_equal(self, in_values, out_values):
         t = wt.Table(self._homedir)
         t.add_id_column()
@@ -505,6 +506,13 @@ class FloatTest(WormtableTest):
             self.assertEqual(tuple(r1), r2[1:])
         t.close() 
         
+    def test_missing_values(self):
+        """
+        Checks to ensure missing values are correctly handled.
+        """
+        values = [[None, None, None], []]
+        results = [[None, None, None] for v in values]
+        self.assert_tables_equal(values, results)
 
 
     def test_exact_values(self):
@@ -557,12 +565,50 @@ class FloatTest(WormtableTest):
         so we test this particularly here.
         """
         inf = 1e1000
-        x = self.max_half
+        x = self.max_half + 32
         values = [x + 0.1, x + 1, x + 10, x + 100, x + 1000]
         self.assert_tables_equal([[v] for v in values],
                 [[inf, None, None] for v in values])
         self.assert_tables_equal([[-v] for v in values],
                 [[-inf, None, None] for v in values])
-        
+    
+    def test_compare_numpy(self):
+        """
+        Compare with numpy arrays for some critical values.
+        """
+        import numpy as np
+        inf = float("Inf") 
+        values = [
+            [inf, inf, inf],
+            [-inf, -inf, -inf],
+            [self.max_half, self.max_float, self.max_double],
+            [2 * self.max_half, 2 * self.max_float, 2 * self.max_double],
+        ]
+        for j in range(1, 64):
+            # try some fractions
+            x = 1 / j
+            v = (x, x, x)
+            values.append(v)
+            values.append([-x for x in v])
+            # random numbers in (0, 1) 
+            x = random.random()
+            v = (x, x, x)
+            values.append(v)
+            values.append([-x for x in v])
+            # random numbers in (0, max_half) 
+            x = self.max_half * random.random()
+            v = (x, x, x)
+            values.append(v)
+            values.append([-x for x in v])
+            v = (self.max_half + j, self.max_float + j, self.max_double + j)
+            values.append(v)
+            values.append([-x for x in v])
+        results = []
+        for h, s, d in values:
+            ha = np.array([h], dtype=np.float16)
+            sa = np.array([s], dtype=np.float32)
+            da = np.array([d], dtype=np.float64)
+            results.append((ha[0], sa[0], da[0]))
+        self.assert_tables_equal(values, results)
 
 

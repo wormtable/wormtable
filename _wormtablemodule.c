@@ -157,6 +157,157 @@ byteswap_copy(void* dest, void *source, size_t n)
 }
 #endif
 
+/**************************************
+ *
+ * Floating point packing and unpacking. This is based on the implementation 
+ * of SortedFloat and SortedDouble from Berkeley DB Java edition. See 
+ * com.sleepycat.bind.tuple.TupleInput for the source of the bit
+ * manipulations below.
+ *
+ *************************************/
+
+/* TODO we should define a union for each of the floating point types
+ * that allows us to get at their values as integers without a memcpy.
+ */
+
+static void 
+pack_half(double value, void *dest)
+{
+    float v = (float) value;
+    int32_t float_bits;
+    int16_t half_bits;
+    float min_inf = 65520.0;
+    /* There is a bug in half.c that doesn't correctly map values greater than 
+     * the maximum representable value to inf. To work around this, we test
+     * for this condition here and make sure that inf is triggered. If
+     * the value is greater than the smallest infinite value we map to a very 
+     * large number to force infinity.
+     */
+    if (v > min_inf) {
+        v = 1e100;
+    } else if (v < -min_inf) {
+        v = -1e100;
+    }
+    memcpy(&float_bits, &v, sizeof(float));
+    half_bits = half_from_float(float_bits);
+    half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &half_bits, 2); 
+#else    
+    byteswap_copy(dest, &half_bits, 2); 
+#endif
+}
+
+static double  
+unpack_half(void *src)
+{
+    int16_t half_bits;
+    int32_t float_bits;
+    float value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&half_bits, src, 2);
+#else
+    byteswap_copy(&half_bits, src, 2);
+#endif
+    half_bits ^= (half_bits < 0) ? 0x8000: 0xffff;
+    float_bits = half_to_float(half_bits); 
+    memcpy(&value, &float_bits, sizeof(float));
+    return (double) value;
+}
+
+static void 
+pack_float(double value, void *dest)
+{
+    float v = (float) value;
+    int32_t float_bits;
+    memcpy(&float_bits, &v, sizeof(float));
+    float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &float_bits, sizeof(float)); 
+#else    
+    byteswap_copy(dest, &float_bits, sizeof(float)); 
+#endif
+}
+
+static double  
+unpack_float(void *src)
+{
+    int32_t float_bits;
+    float value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&float_bits, src, sizeof(float));
+#else
+    byteswap_copy(&float_bits, src, sizeof(float));
+#endif
+    float_bits ^= (float_bits < 0) ? 0x80000000L: 0xffffffffL;
+    memcpy(&value, &float_bits, sizeof(float));
+    return (double) value;
+}
+
+static void 
+pack_double(double value, void *dest)
+{
+    
+    int64_t double_bits;
+    memcpy(&double_bits, &value, sizeof(double));
+    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, &double_bits, sizeof(double)); 
+#else
+    byteswap_copy(dest, &double_bits, sizeof(double)); 
+#endif
+}
+
+static double  
+unpack_double(void *src)
+{
+    int64_t double_bits;
+    double value;
+#ifdef WORDS_BIGENDIAN
+    memcpy(&double_bits, src, sizeof(double));
+#else
+    byteswap_copy(&double_bits, src, sizeof(double));
+#endif
+    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
+    memcpy(&value, &double_bits, sizeof(double));
+    return value;
+}
+
+
+static u_int64_t
+unpack_uint(void *src, u_int8_t size) 
+{
+    u_int64_t dest = 0;
+    void *v = &dest;
+#ifdef WORDS_BIGENDIAN
+    memcpy(v + 8 - size, src, size);
+#else
+    byteswap_copy(v, src, size);
+#endif
+    /* decrement and return */
+    dest -= 1;
+    return dest; 
+}
+
+static int64_t
+unpack_int(void *src, u_int8_t size) 
+{
+    int64_t dest = 0;
+    void *v = &dest;
+    const int64_t m = 1LL << (size * 8 - 1);
+#ifdef WORDS_BIGENDIAN
+    memcpy(v + 8 - size, src, size);
+#else
+    byteswap_copy(v, src, size);
+#endif
+    /* flip the sign bit */
+    dest ^= m;
+    /* sign extend and return */
+    dest = (dest ^ m) - m;
+    return dest; 
+}
+
+
 /* 
  * Returns the missing value for a k byte integer.
  */
@@ -221,17 +372,24 @@ min_uint(u_int32_t k)
 
 
 /* 
- * Returns the missing value for a k byte float.
+ * Returns the missing value for a k byte float. 
  *
  */
 static double 
 missing_float(u_int32_t k) 
 {
     double v;
-    u_int64_t u = 0xffffffffffffffffLL;
-    memcpy(&v, &u, sizeof(double));
+    u_int64_t zero = 0LL;
+    if (k == 2) {
+        v = unpack_half(&zero);
+    } else if (k == 4) {
+        v = unpack_float(&zero);
+    } else {
+        v = unpack_double(&zero);
+    }
     return v;
 }
+
 
 
 /*==========================================================
@@ -286,9 +444,9 @@ Column_native_to_python_float(Column *self, int index)
 {
     PyObject *ret = NULL;
     double *elements = (double *) self->element_buffer;
-    /* We cannot compare directly to missing value here because NaN is not 
-     * equal to itself. Therefore we test against NaN and assume that 
-     * this is equal to the missing value. This may cause problems!
+    /*
+     * We do not allow NaNs to be inserted, so any NaN we detect must be 
+     * the missing value.
      */
     if (isnan(elements[index])) {
         Py_INCREF(Py_None);
@@ -324,140 +482,9 @@ Column_native_to_python_char(Column *self, int index)
 
 /**************************************
  *
- * Floating point packing and unpacking. This is based on the implementation 
- * of SortedFloat and SortedDouble from Berkeley DB Java edition. See 
- * com.sleepycat.bind.tuple.TupleInput for the source of the bit
- * manipulations below.
- *
- *************************************/
-
-/* TODO we should define a union for each of the floating point types
- * that allows us to get at their values as integers without a memcpy.
- */
-
-static void 
-pack_half(double value, void *dest)
-{
-    float v = (float) value;
-    int32_t float_bits;
-    int16_t half_bits;
-    float max_representable = 65504.0;
-    /* There is a bug in half.c that doesn't correctly map values greater than 
-     * the maximum representable value to inf. To work around this, we test
-     * for this condition here and make sure that inf is triggered 
-     */
-    if (v > max_representable) {
-        v = 1e100;
-    } else if (v < -max_representable) {
-        v = -1e100;
-    }
-    memcpy(&float_bits, &v, sizeof(float));
-    half_bits = half_from_float(float_bits);
-    half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;
-#ifdef WORDS_BIGENDIAN
-    memcpy(dest, &half_bits, 2); 
-#else    
-    byteswap_copy(dest, &half_bits, 2); 
-#endif
-}
-
-static double  
-unpack_half(void *src)
-{
-    int16_t half_bits;
-    int32_t float_bits;
-    float value;
-#ifdef WORDS_BIGENDIAN
-    memcpy(&half_bits, src, 2);
-#else
-    byteswap_copy(&half_bits, src, 2);
-#endif
-    half_bits ^= (half_bits < 0) ? 0x8000: 0xffff;
-    float_bits = half_to_float(half_bits); 
-    memcpy(&value, &float_bits, sizeof(float));
-    return (double) value;
-}
-
-static void 
-pack_float(double value, void *dest)
-{
-    float v = (float) value;
-    int32_t float_bits;
-    memcpy(&float_bits, &v, sizeof(float));
-    float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
-#ifdef WORDS_BIGENDIAN
-    memcpy(dest, &float_bits, sizeof(float)); 
-#else    
-    byteswap_copy(dest, &float_bits, sizeof(float)); 
-#endif
-}
-
-static double  
-unpack_float(void *src)
-{
-    int32_t float_bits;
-    float value;
-#ifdef WORDS_BIGENDIAN
-    memcpy(&float_bits, src, sizeof(float));
-#else
-    byteswap_copy(&float_bits, src, sizeof(float));
-#endif
-    float_bits ^= (float_bits < 0) ? 0x80000000: 0xffffffff;
-    memcpy(&value, &float_bits, sizeof(float));
-    return (double) value;
-}
-
-static void 
-pack_double(double value, void *dest)
-{
-    
-    int64_t double_bits;
-    memcpy(&double_bits, &value, sizeof(double));
-    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
-#ifdef WORDS_BIGENDIAN
-    memcpy(dest, &double_bits, sizeof(double)); 
-#else
-    byteswap_copy(dest, &double_bits, sizeof(double)); 
-#endif
-}
-
-static double  
-unpack_double(void *src)
-{
-    int64_t double_bits;
-    double value;
-#ifdef WORDS_BIGENDIAN
-    memcpy(&double_bits, src, sizeof(double));
-#else
-    byteswap_copy(&double_bits, src, sizeof(double));
-#endif
-    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
-    memcpy(&value, &double_bits, sizeof(double));
-    return value;
-}
-
-
-/**************************************
- *
  * Unpacking from a row to the element buffer. 
  *
  *************************************/
-
-static u_int64_t
-unpack_uint(void *src, u_int8_t size) 
-{
-    u_int64_t dest = 0;
-    void *v = &dest;
-#ifdef WORDS_BIGENDIAN
-    memcpy(v + 8 - size, src, size);
-#else
-    byteswap_copy(v, src, size);
-#endif
-    /* decrement and return */
-    dest -= 1;
-    return dest; 
-}
-
 
 static int 
 Column_unpack_elements_uint(Column *self, void *source)
@@ -471,24 +498,6 @@ Column_unpack_elements_uint(Column *self, void *source)
     }
     ret = 0;
     return ret; 
-}
-
-static int64_t
-unpack_int(void *src, u_int8_t size) 
-{
-    int64_t dest = 0;
-    void *v = &dest;
-    const int64_t m = 1LL << (size * 8 - 1);
-#ifdef WORDS_BIGENDIAN
-    memcpy(v + 8 - size, src, size);
-#else
-    byteswap_copy(v, src, size);
-#endif
-    /* flip the sign bit */
-    dest ^= m;
-    /* sign extend and return */
-    dest = (dest ^ m) - m;
-    return dest; 
 }
 
 
@@ -810,7 +819,6 @@ Column_truncate_elements_float(Column *self, double bin_width)
 {
     int ret = -1;
     unsigned int j;
-    double missing_value = missing_float(self->element_size);
     double *elements = (double *) self->element_buffer;
     double u; 
     if (bin_width <= 0.0) {
@@ -820,7 +828,7 @@ Column_truncate_elements_float(Column *self, double bin_width)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         u = elements[j];
-        if (u != missing_value) {
+        if (!isnan(u)) {
             elements[j] = u - fmod(u, bin_width); 
         }
     }
@@ -1010,12 +1018,12 @@ out:
     return ret;
 }
 
+
 static int 
 Column_python_to_native_float(Column *self, PyObject *elements)
 {
     int ret = -1;
     double *native = (double *) self->element_buffer; 
-    double missing_value = missing_float(self->element_size);
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
@@ -1024,7 +1032,7 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
         if (v == Py_None) {
-            native[j] = missing_value;
+            native[j] = missing_float(self->element_size);
         } else {
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
@@ -1033,6 +1041,12 @@ Column_python_to_native_float(Column *self, PyObject *elements)
                 goto out;
             }
             native[j] = (double) PyFloat_AsDouble(v);
+            if (isnan(native[j])) {
+                PyErr_Format(PyExc_ValueError, 
+                        "Values for column '%s' cannot be NaN",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
         }
     }
     ret = 0;
@@ -1235,6 +1249,12 @@ Column_string_to_native_float(Column *self, char *string)
         v = (char *) self->input_elements[j];
         errno = 0;
         native[j] = (double) strtod(v, &tail);
+        if (isnan(native[j])) {
+            PyErr_Format(PyExc_ValueError, 
+                    "Values for column '%s' cannot be NaN",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
         if (errno) {
             Column_encoded_elements_parse_error(self, "element overflow", 
                     string); 
