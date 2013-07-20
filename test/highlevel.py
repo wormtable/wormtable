@@ -491,6 +491,14 @@ class FloatTest(WormtableTest):
     max_float = (2 - 2**-23) * 2**127
     max_double = (1 + (1 - 2**-52)) * 2**1023
     
+    min_half_normal = 2**-24 
+    min_half_denormal = 2**-14
+    min_float_normal = 2**-126
+    min_float_denormal = 2**-149
+    min_double_normal = 2**-1022
+    min_double_denormal = 2**-1074
+
+
     def assert_tables_equal(self, in_values, out_values):
         t = wt.Table(self._homedir)
         t.add_id_column()
@@ -526,6 +534,12 @@ class FloatTest(WormtableTest):
             in_values.append(x)
             x = (-j, -j, -j)
             in_values.append(x)
+        # And some easy fractions 
+        in_values = []
+        for j in range(10):
+            x = (2**-j, 2**-j, 2**-j)
+            in_values.append(x)
+            in_values.append([-v for v in x])
         # We can also represent values up to 2*v exactly
         v = (11, 24, 53)
         for s in [1, -1]:
@@ -537,12 +551,17 @@ class FloatTest(WormtableTest):
         v = [self.max_half, self.max_float, self.max_double]
         in_values.append(v) 
         in_values.append([-1 * x for x in v]) 
+        v = [[self.min_half_normal, self.min_float_normal, 
+                    self.min_double_normal],
+            [self.min_half_denormal, self.min_float_denormal, 
+                    self.min_double_denormal]]
+        in_values.extend(v) 
         self.assert_tables_equal(in_values, in_values)
       
     
     def test_infinity(self):
         """
-        Checks to see if overflow values are deteted correctly.
+        Checks to see if overflow values are detected correctly.
         """
         inf = 1e1000 
         values = [
@@ -565,13 +584,25 @@ class FloatTest(WormtableTest):
         so we test this particularly here.
         """
         inf = 1e1000
-        x = self.max_half + 32
+        x = self.max_half + 16 
         values = [x + 0.1, x + 1, x + 10, x + 100, x + 1000]
         self.assert_tables_equal([[v] for v in values],
                 [[inf, None, None] for v in values])
         self.assert_tables_equal([[-v] for v in values],
                 [[-inf, None, None] for v in values])
-    
+        values = [self.max_half + j for j in range(16)]
+        self.assert_tables_equal([(v, None, None) for v in values], 
+                [(self.max_half, None, None) for v in values])
+        self.assert_tables_equal([(-v, None, None) for v in values], 
+                [[-self.max_half, None, None] for v in values])
+        # Below this we can exactly represent values % 32.
+        values = [self.max_half - j * 32 for j in range(16)]
+        y = [(v, None, None) for v in values]
+        self.assert_tables_equal(y, y)
+        y = [(-v, None, None) for v in values]
+        self.assert_tables_equal(y, y)
+
+
     def test_compare_numpy(self):
         """
         Compare with numpy arrays for some critical values.
@@ -579,10 +610,18 @@ class FloatTest(WormtableTest):
         import numpy as np
         inf = float("Inf") 
         values = [
-            [inf, inf, inf],
-            [-inf, -inf, -inf],
+            [inf, inf, inf], [-inf, -inf, -inf],
+            [0.0, 0.0, 0.0], [-0.0, -0.0, -0.0], 
             [self.max_half, self.max_float, self.max_double],
             [2 * self.max_half, 2 * self.max_float, 2 * self.max_double],
+            [self.min_half_normal, self.min_float_normal, 
+                    self.min_double_normal],
+            [self.min_half_denormal, self.min_float_denormal, 
+                    self.min_double_denormal],
+            [2* self.min_half_normal, 2 * self.min_float_normal, 
+                    2* self.min_double_normal],
+            [2 * self.min_half_denormal, 2 * self.min_float_denormal, 
+                    2* self.min_double_denormal],
         ]
         for j in range(1, 64):
             # try some fractions
@@ -603,12 +642,25 @@ class FloatTest(WormtableTest):
             v = (self.max_half + j, self.max_float + j, self.max_double + j)
             values.append(v)
             values.append([-x for x in v])
+            v = (self.min_half_normal + 2**-j, self.min_float_normal + 2**-j,
+                    self.min_float_normal + 2**-j)
+            values.append(v)
+            values.append([-x for x in v])
+            v = (self.min_half_denormal + 2**-j, self.min_float_denormal + 2**-j,
+                    self.min_float_denormal + 2**-j)
+            values.append(v)
+            values.append([-x for x in v])
+
         results = []
         for h, s, d in values:
-            ha = np.array([h], dtype=np.float16)
             sa = np.array([s], dtype=np.float32)
+            #ha = np.array([float(sa[0]]), dtype=np.float16)
+            ha = np.array([h], dtype=np.float16)
+            #print(h, "->", float(ha))
             da = np.array([d], dtype=np.float64)
-            results.append((ha[0], sa[0], da[0]))
+            results.append((float(ha[0]), float(sa[0]), float(da[0])))
+        #for u,v in zip(values, results):
+        #    print(u, v)
         self.assert_tables_equal(values, results)
 
 
