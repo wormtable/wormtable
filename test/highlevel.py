@@ -600,6 +600,29 @@ class FloatTest(WormtableTest):
         self.assert_tables_equal(y, y)
 
 
+    def test_nan(self):
+        """
+        Test to see if NaNs inserted are recovered correctly.
+        NaN does not equal itself, so we must do things 
+        differently.
+        """
+        nan = float("NaN")
+        t = wt.Table(self._homedir)
+        t.add_id_column()
+        t.add_float_column("half", size=2)
+        t.add_float_column("single", size=4)
+        t.add_float_column("double", size=8)
+        t.open("w")
+        t.append([None, nan, nan, nan])
+        t.append_encoded([None, b"nan", b"NaN", b"NAN"])
+        t.close()
+        t.open("r")
+        for r in t:
+            for v in r[1:]:
+                self.assertTrue(math.isnan(v))
+        t.close() 
+        
+
     def test_compare_numpy(self):
         """
         Compare with numpy arrays for some critical values.

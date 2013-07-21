@@ -163,7 +163,7 @@ class TestEmptyDatabase(TestDatabase):
     """
     Tests to see if an empty database is correctly handled.
     """
-   
+    
     def get_columns(self):
         return [get_uint_column(1, 1)]
 
@@ -202,7 +202,7 @@ class TestElementParsers(TestDatabase):
     def test_good_float_values(self):
         rb = self._row_buffer
         values = ["-1", "-2", "0", "4", "14", "100",
-            "0.01", "-5.224234345235", "1E12"]
+            "0.01", "-5.224234345235", "1E12", "Inf", "NaN"]
         for c in self._float_columns.values():
             for v in values:
                 self.assertEqual(rb.insert_encoded_elements(c.position, v.encode()), None)
@@ -226,19 +226,7 @@ class TestElementParsers(TestDatabase):
                 self.assertRaises(TypeError, rb.insert_elements, c.position, v)
         
 
-    def test_nan(self):
-        """
-        We don't allow NaNs to be inserted.
-        """
-        rb = self._row_buffer
-        nan = float("Nan")
-        nans = [b"NaN", b"nan", b"NAN "]
-        for c in self._float_columns.values():
-            self.assertRaises(ValueError, rb.insert_elements, c.position, nan)
-            for n in nans:
-                self.assertRaises(ValueError, rb.insert_encoded_elements, 
-                        c.position, n)
-    
+   
 
 class TestListParsers(TestDatabase):
     """

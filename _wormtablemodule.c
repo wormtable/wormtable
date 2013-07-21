@@ -345,24 +345,27 @@ min_uint(u_int32_t k)
 
 
 /* 
- * Returns the missing value for a k byte float. 
- *
+ * Returns the missing value for a k byte float. This 
+ * is returned as an unsigned integer since we cannot 
+ * compare NaN values as doubles.
  */
-static double 
+static uint64_t 
 missing_float(u_int32_t k) 
 {
-    double v;
-    u_int64_t zero = 0LL;
-    if (k == 2) {
-        v = unpack_half(&zero);
-    } else if (k == 4) {
-        v = unpack_float(&zero);
-    } else {
-        v = unpack_double(&zero);
+    uint64_t ret = 0;
+    switch (k) {
+        case 2:
+            ret = 0xfffffc0000000000uLL;
+            break;
+        case 4:
+            ret = 0xffffffffe0000000uLL;
+            break;
+        case 8:
+            ret = 0xffffffffffffffffuLL;
+            break;
     }
-    return v;
+    return ret;
 }
-
 
 
 /*==========================================================
@@ -416,12 +419,11 @@ static PyObject *
 Column_native_to_python_float(Column *self, int index)
 {
     PyObject *ret = NULL;
+    union { double value; uint64_t bits; } conv;
     double *elements = (double *) self->element_buffer;
-    /*
-     * We do not allow NaNs to be inserted, so any NaN we detect must be 
-     * the missing value.
-     */
-    if (isnan(elements[index])) {
+    uint64_t missing_bits = missing_float(self->element_size);
+    conv.value = elements[index];
+    if (conv.bits == missing_bits) {
         Py_INCREF(Py_None);
         ret = Py_None;
     } else {
@@ -792,6 +794,8 @@ Column_truncate_elements_float(Column *self, double bin_width)
 {
     int ret = -1;
     unsigned int j;
+    union { double value; u_int64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     double *elements = (double *) self->element_buffer;
     double u; 
     if (bin_width <= 0.0) {
@@ -801,7 +805,8 @@ Column_truncate_elements_float(Column *self, double bin_width)
     }
     for (j = 0; j < self->num_buffered_elements; j++) {
         u = elements[j];
-        if (!isnan(u)) {
+        conv.value = u;
+        if (conv.bits != missing_bits) {
             elements[j] = u - fmod(u, bin_width); 
         }
     }
@@ -997,6 +1002,7 @@ Column_python_to_native_float(Column *self, PyObject *elements)
 {
     int ret = -1;
     double *native = (double *) self->element_buffer; 
+    union { double value; uint64_t bits; } conv;
     PyObject *v;
     int j;
     if (Column_parse_python_sequence(self, elements) < 0) {
@@ -1005,7 +1011,8 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (PyObject *) self->input_elements[j];
         if (v == Py_None) {
-            native[j] = missing_float(self->element_size);
+            conv.bits = missing_float(self->element_size);
+            native[j] = conv.value; 
         } else {
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
@@ -1014,12 +1021,6 @@ Column_python_to_native_float(Column *self, PyObject *elements)
                 goto out;
             }
             native[j] = (double) PyFloat_AsDouble(v);
-            if (isnan(native[j])) {
-                PyErr_Format(PyExc_ValueError, 
-                        "Values for column '%s' cannot be NaN",
-                        PyBytes_AsString(self->name));
-                goto out;
-            }
         }
     }
     ret = 0;
@@ -1222,12 +1223,6 @@ Column_string_to_native_float(Column *self, char *string)
         v = (char *) self->input_elements[j];
         errno = 0;
         native[j] = (double) strtod(v, &tail);
-        if (isnan(native[j])) {
-            PyErr_Format(PyExc_ValueError, 
-                    "Values for column '%s' cannot be NaN",
-                    PyBytes_AsString(self->name));
-            goto out;
-        }
         if (errno) {
             Column_encoded_elements_parse_error(self, "element overflow", 
                     string); 
