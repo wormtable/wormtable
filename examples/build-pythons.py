@@ -15,12 +15,12 @@ def make_pythons():
     t.add_uint_column("producer")   
     t.open("w")
     rows = [
-        ["John Cleese", 1939, 60, 127, 0, 43],
-        ["Terry Gilliam", 1940, 25, 24, 18, 8], 
-        ["Eric Idle", 1943, 38, 74, 7, 5], 
-        ["Terry Jones", 1942, 50, 49, 16, 1], 
-        ["Michael Palin", 1943, 58, 56, 0, 1], 
-        ["Graham Chapman", 1941, 46, 24, 0, 2] 
+        [b"John Cleese", 1939, 60, 127, 0, 43],
+        [b"Terry Gilliam", 1940, 25, 24, 18, 8], 
+        [b"Eric Idle", 1943, 38, 74, 7, 5], 
+        [b"Terry Jones", 1942, 50, 49, 16, 1], 
+        [b"Michael Palin", 1943, 58, 56, 0, 1], 
+        [b"Graham Chapman", 1941, 46, 24, 0, 2] 
     ]
     for r in rows:
         t.append([None] + r)
