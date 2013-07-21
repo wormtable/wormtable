@@ -157,103 +157,93 @@ byteswap_copy(void* dest, void *source, size_t n)
 }
 #endif
 
-/**************************************
- *
- * Floating point packing and unpacking. This is based on the implementation 
- * of SortedFloat and SortedDouble from Berkeley DB Java edition. See 
- * com.sleepycat.bind.tuple.TupleInput for the source of the bit
- * manipulations below.
- *
- *************************************/
-
 static void 
 pack_half(double value, void *dest)
 {
     union { uint16_t value; int16_t bits; } conv;
-    int16_t half_bits;
+    int16_t bits;
     conv.value = npy_double_to_half(value);
-    half_bits = conv.bits;
-    half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;
+    bits = conv.bits;
+    bits ^= (bits < 0) ? 0xffff: 0x8000;
 #ifdef WORDS_BIGENDIAN
-    memcpy(dest, &half_bits, 2); 
+    memcpy(dest, &bits, 2); 
 #else    
-    byteswap_copy(dest, &half_bits, 2); 
+    byteswap_copy(dest, &bits, 2); 
 #endif
 }
 
 static double  
 unpack_half(void *src)
 {
-    int16_t half_bits;
+    int16_t bits;
     double v;
 #ifdef WORDS_BIGENDIAN
-    memcpy(&half_bits, src, 2);
+    memcpy(&bits, src, 2);
 #else
-    byteswap_copy(&half_bits, src, 2);
+    byteswap_copy(&bits, src, 2);
 #endif
-    half_bits ^= (half_bits < 0) ? 0x8000: 0xffff;
-    v = npy_half_to_double(half_bits);
+    bits ^= (bits < 0) ? 0x8000: 0xffff;
+    v = npy_half_to_double(bits);
     return v;
 }
 
 static void 
 pack_float(double value, void *dest)
 {
-    float v = (float) value;
-    int32_t float_bits;
-    memcpy(&float_bits, &v, sizeof(float));
-    float_bits ^= (float_bits < 0) ? 0xffffffffL: 0x80000000L;
+    union { float value; int32_t bits; } conv;
+    conv.value = (float) value;
+    int32_t bits = conv.bits;
+    bits ^= (bits < 0) ? 0xffffffffL: 0x80000000L;
 #ifdef WORDS_BIGENDIAN
-    memcpy(dest, &float_bits, sizeof(float)); 
+    memcpy(dest, &bits, sizeof(float)); 
 #else    
-    byteswap_copy(dest, &float_bits, sizeof(float)); 
+    byteswap_copy(dest, &bits, sizeof(float)); 
 #endif
 }
 
 static double  
 unpack_float(void *src)
 {
-    int32_t float_bits;
-    float value;
+    union { float value; int32_t bits; } conv;
+    int32_t bits;
 #ifdef WORDS_BIGENDIAN
-    memcpy(&float_bits, src, sizeof(float));
+    memcpy(&bits, src, sizeof(float));
 #else
-    byteswap_copy(&float_bits, src, sizeof(float));
+    byteswap_copy(&bits, src, sizeof(float));
 #endif
-    float_bits ^= (float_bits < 0) ? 0x80000000L: 0xffffffffL;
-    memcpy(&value, &float_bits, sizeof(float));
-    return (double) value;
+    bits ^= (bits < 0) ? 0x80000000L: 0xffffffffL;
+    conv.bits = bits;
+    return (double) conv.value;
 }
 
 static void 
 pack_double(double value, void *dest)
 {
-    
-    int64_t double_bits;
-    memcpy(&double_bits, &value, sizeof(double));
-    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 
-            0x8000000000000000LL;
+    union { double value; int64_t bits; } conv;
+    int64_t bits;
+    conv.value = value;
+    bits = conv.bits;
+    bits ^= (bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
 #ifdef WORDS_BIGENDIAN
-    memcpy(dest, &double_bits, sizeof(double)); 
+    memcpy(dest, &bits, sizeof(double)); 
 #else
-    byteswap_copy(dest, &double_bits, sizeof(double)); 
+    byteswap_copy(dest, &bits, sizeof(double)); 
 #endif
 }
 
 static double  
 unpack_double(void *src)
 {
-    int64_t double_bits;
-    double value;
+    union { double value; int64_t bits; } conv;
+    int64_t bits;
 #ifdef WORDS_BIGENDIAN
-    memcpy(&double_bits, src, sizeof(double));
+    memcpy(&bits, src, sizeof(double));
 #else
-    byteswap_copy(&double_bits, src, sizeof(double));
+    byteswap_copy(&bits, src, sizeof(double));
 #endif
-    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 
-            0xffffffffffffffffLL;
-    memcpy(&value, &double_bits, sizeof(double));
-    return value;
+    bits ^= (bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
+    conv.bits = bits;
+    return conv.value;
 }
 
 
