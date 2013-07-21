@@ -77,10 +77,8 @@ This is not necessary for recent versions of Python.
 Installing Berkeley DB
 ----------------------
 
-Wormtable requires Berkeley DB, which is available for all major platforms.  
-Any recent version of Berkeley DB should work, but the various versions 
-have not been tested extensively. Development and testing have been 
-carried out primarily on the DB 4.x series.
+Wormtable requires Berkeley DB (version 4.8 or later),
+which is available for all major platforms.  
 
 *****
 Linux
