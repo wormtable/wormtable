@@ -20,7 +20,7 @@
 #include <Python.h>
 #include <structmember.h>
 #include <db.h>
-#include "half.h"
+#include "halffloat.h"
 
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
@@ -166,30 +166,13 @@ byteswap_copy(void* dest, void *source, size_t n)
  *
  *************************************/
 
-/* TODO we should define a union for each of the floating point types
- * that allows us to get at their values as integers without a memcpy.
- */
-
 static void 
 pack_half(double value, void *dest)
 {
-    float v = (float) value;
-    int32_t float_bits;
+    union { uint16_t value; int16_t bits; } conv;
     int16_t half_bits;
-    float min_inf = 65520.0;
-    /* There is a bug in half.c that doesn't correctly map values greater than 
-     * the maximum representable value to inf. To work around this, we test
-     * for this condition here and make sure that inf is triggered. If
-     * the value is greater than the smallest infinite value we map to a very 
-     * large number to force infinity.
-     */
-    if (v > min_inf) {
-        v = 1e100;
-    } else if (v < -min_inf) {
-        v = -1e100;
-    }
-    memcpy(&float_bits, &v, sizeof(float));
-    half_bits = half_from_float(float_bits);
+    conv.value = npy_double_to_half(value);
+    half_bits = conv.bits;
     half_bits ^= (half_bits < 0) ? 0xffff: 0x8000;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &half_bits, 2); 
@@ -202,17 +185,15 @@ static double
 unpack_half(void *src)
 {
     int16_t half_bits;
-    int32_t float_bits;
-    float value;
+    double v;
 #ifdef WORDS_BIGENDIAN
     memcpy(&half_bits, src, 2);
 #else
     byteswap_copy(&half_bits, src, 2);
 #endif
     half_bits ^= (half_bits < 0) ? 0x8000: 0xffff;
-    float_bits = half_to_float(half_bits); 
-    memcpy(&value, &float_bits, sizeof(float));
-    return (double) value;
+    v = npy_half_to_double(half_bits);
+    return v;
 }
 
 static void 
@@ -221,7 +202,7 @@ pack_float(double value, void *dest)
     float v = (float) value;
     int32_t float_bits;
     memcpy(&float_bits, &v, sizeof(float));
-    float_bits ^= (float_bits < 0) ? 0xffffffff: 0x80000000;
+    float_bits ^= (float_bits < 0) ? 0xffffffffL: 0x80000000L;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &float_bits, sizeof(float)); 
 #else    
@@ -250,7 +231,8 @@ pack_double(double value, void *dest)
     
     int64_t double_bits;
     memcpy(&double_bits, &value, sizeof(double));
-    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 0x8000000000000000LL;
+    double_bits ^= (double_bits < 0) ? 0xffffffffffffffffLL: 
+            0x8000000000000000LL;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &double_bits, sizeof(double)); 
 #else
@@ -268,7 +250,8 @@ unpack_double(void *src)
 #else
     byteswap_copy(&double_bits, src, sizeof(double));
 #endif
-    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 0xffffffffffffffffLL;
+    double_bits ^= (double_bits < 0) ? 0x8000000000000000LL: 
+            0xffffffffffffffffLL;
     memcpy(&value, &double_bits, sizeof(double));
     return value;
 }

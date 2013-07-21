@@ -1,5 +1,39 @@
+/*
+    Copyright (c) 2005-2011, NumPy Developers.
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+        * Redistributions of source code must retain the above copyright
+           notice, this list of conditions and the following disclaimer.
+
+        * Redistributions in binary form must reproduce the above
+           copyright notice, this list of conditions and the following
+           disclaimer in the documentation and/or other materials provided
+           with the distribution.
+
+        * Neither the name of the NumPy Developers nor the names of any
+           contributors may be used to endorse or promote products derived
+           from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION
-#include "numpy/halffloat.h"
+#include "halffloat.h"
 
 /*
  * This chooses between 'ties to even' and 'ties away from zero'.
@@ -9,9 +43,9 @@
  * If these are 1, the conversions try to trigger underflow,
  * overflow, and invalid exceptions in the FP system when needed.
  */
-#define NPY_HALF_GENERATE_OVERFLOW 1
-#define NPY_HALF_GENERATE_UNDERFLOW 1
-#define NPY_HALF_GENERATE_INVALID 1
+#define NPY_HALF_GENERATE_OVERFLOW 0
+#define NPY_HALF_GENERATE_UNDERFLOW 0
+#define NPY_HALF_GENERATE_INVALID 0
 
 /*
  ********************************************************************
@@ -137,7 +171,7 @@ npy_half npy_half_nextafter(npy_half x, npy_half y)
             ret = x+1;
         }
     }
-#ifdef NPY_HALF_GENERATE_OVERFLOW
+#if NPY_HALF_GENERATE_OVERFLOW
     if (npy_half_isinf(ret)) {
         npy_set_floatstatus_overflow();
     }

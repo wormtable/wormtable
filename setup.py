@@ -26,7 +26,7 @@ f.close()
 wormtable_version = parse_version("wormtable.py") 
 
 _wormtable_module = Extension('_wormtable', 
-    sources = ["_wormtablemodule.c", "half.c"],
+    sources = ["_wormtablemodule.c", "halffloat.c"],
     libraries = ["db"])
 
 requirements = []

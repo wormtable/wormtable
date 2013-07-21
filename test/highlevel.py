@@ -512,6 +512,7 @@ class FloatTest(WormtableTest):
         t.open("r")
         for r1, r2 in zip(out_values, t):
             self.assertEqual(tuple(r1), r2[1:])
+            #print(r1, "->", r2)
         t.close() 
         
     def test_missing_values(self):
@@ -579,10 +580,6 @@ class FloatTest(WormtableTest):
 
     
     def test_half_infinity(self):
-        """
-        There is a bug in the underlying library dealing with half overflows,
-        so we test this particularly here.
-        """
         inf = 1e1000
         x = self.max_half + 16 
         values = [x + 0.1, x + 1, x + 10, x + 100, x + 1000]
@@ -623,7 +620,7 @@ class FloatTest(WormtableTest):
             [2 * self.min_half_denormal, 2 * self.min_float_denormal, 
                     2* self.min_double_denormal],
         ]
-        for j in range(1, 64):
+        for j in range(1, 128):
             # try some fractions
             x = 1 / j
             v = (x, x, x)
@@ -654,9 +651,7 @@ class FloatTest(WormtableTest):
         results = []
         for h, s, d in values:
             sa = np.array([s], dtype=np.float32)
-            #ha = np.array([float(sa[0]]), dtype=np.float16)
             ha = np.array([h], dtype=np.float16)
-            #print(h, "->", float(ha))
             da = np.array([d], dtype=np.float64)
             results.append((float(ha[0]), float(sa[0]), float(da[0])))
         #for u,v in zip(values, results):
