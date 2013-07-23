@@ -615,28 +615,36 @@ class TestDatabaseFloat(TestDatabase):
         cols = self._columns
         self.num_rows = num_rows
         self.rows = []
+        # either generate random ints or exactly representable fractions
+        # to avoid rounding issues with 2 and 4 byte floats
+        def generate_int():
+            min_v, max_v = -20, 20 
+            return random.randint(min_v, max_v) 
+        def generate_fraction():
+            denoms = [2**j for j in range(2, 10)]
+            denoms += [-v for v in denoms]
+            return 1.0 / denoms[random.randint(0, len(denoms) - 1)]
         for j in range(self.num_rows):
             row = [0 for c in cols]
             for k in range(1, self.num_columns): 
                 c = cols[k]
-                min_v, max_v = -10, 10 
+                f = generate_int 
+                if random.random() < 0.5:
+                    f = generate_fraction 
                 if c.num_elements == 1:
-                    row[k] = random.uniform(min_v, max_v) 
+                    row[k] = f() 
                 else:
                     n = c.num_elements
                     if n == _wormtable.WT_VAR_1:
                         n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
-                    v = tuple([random.uniform(min_v, max_v) for l in range(n)])
-                    row[k] = v
+                    row[k] = tuple([f() for l in range(n)])
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
                 else:
-                    # Use the exact hex encoding for floats to avoid loss of
-                    # precision by converting to base 10.
                     if c.num_elements == 1:
-                        s = row[k].hex()
+                        s = str(row[k])
                     else:
-                        s = ",".join(f.hex() for f in row[k])
+                        s = ",".join(str(x) for x in row[k])
                     rb.insert_encoded_elements(k, s.encode())
             rb.commit_row()
             self.rows.append(tuple(row))
@@ -838,9 +846,7 @@ class TestIndexIntegrity(object):
             # get the list from the original rows
             l3 = [row[j] for row in self.rows]
             l3.sort()
-            # these tests don't make sense for inexact types. 
-            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size != 8):
-                self.assertEqual(l, l3)
+            self.assertEqual(l, l3)
             index.close()
             del row_iter
          self.destroy_indexes()
@@ -869,16 +875,14 @@ class TestIndexIntegrity(object):
             l2 = sorted([v for v in original if min_val[0] <= v and v < max_val[0]])
             ri2 = _wormtable.IndexRowIterator(index, [j])
             l3 = [row[0] for row in ri2 if min_val[0] <= row[0] and row[0] < max_val[0]]
-            # these tests don't make sense for inexact types. 
-            if not (col.element_type == _wormtable.WT_FLOAT and col.element_size != 8):
-                self.assertRowListsEqual(l3, l2)
-                self.assertRowListsEqual(l, l2)
-                self.assertEqual(l, l3)
-                self.assertEqual(l2, l3)
-                min_value = index.get_min(tuple()) 
-                self.assertEqual(min(original), min_value[0]) 
-                max_value = index.get_max(tuple()) 
-                self.assertEqual(max(original), max_value[0]) 
+            self.assertRowListsEqual(l3, l2)
+            self.assertRowListsEqual(l, l2)
+            self.assertEqual(l, l3)
+            self.assertEqual(l2, l3)
+            min_value = index.get_min(tuple()) 
+            self.assertEqual(min(original), min_value[0]) 
+            max_value = index.get_max(tuple()) 
+            self.assertEqual(max(original), max_value[0]) 
             index.close()
         self.destroy_indexes()
 
@@ -924,10 +928,7 @@ class TestIndexIntegrity(object):
             row_iter = _wormtable.IndexRowIterator(index, cols)
             l = [row for row in row_iter]
             l2 = sorted(original) 
-            o = [col.element_type == _wormtable.WT_FLOAT and col.element_size != 8 
-                for col in columns]
-            if not any(o):
-                self.assertEqual(l, l2)
+            self.assertEqual(l, l2)
             index.close()
 
         for f in index_files:

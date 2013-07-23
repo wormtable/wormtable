@@ -1,3 +1,4 @@
+include *.h
 include *.txt 
 include tests.py
 recursive-include test *.py

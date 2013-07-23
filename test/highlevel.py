@@ -487,25 +487,33 @@ class FloatTest(WormtableTest):
     Tests the limits of the floating point types to see if they are correct
     under IEEE rules.
     """
+    # Maximum representable numbers
     max_half = (2 - 2**-10) * 2**15
     max_float = (2 - 2**-23) * 2**127
     max_double = (1 + (1 - 2**-52)) * 2**1023
-    
-    min_half_normal = 2**-24 
-    min_half_denormal = 2**-14
+    # Minimum values 
+    min_half_normal = 2**-14 
+    min_half_denormal = 2**-24
     min_float_normal = 2**-126
     min_float_denormal = 2**-149
     min_double_normal = 2**-1022
     min_double_denormal = 2**-1074
+    # The number of decimal digits of precision
+    max_half_digits = 3
+    max_float_digits = 6
+    max_double_digits = 15
 
-
-    def assert_tables_equal(self, in_values, out_values):
+    def create_table(self):
         t = wt.Table(self._homedir)
         t.add_id_column()
         t.add_float_column("half", size=2)
         t.add_float_column("single", size=4)
         t.add_float_column("double", size=8)
         t.open("w")
+        return t 
+
+    def assert_tables_equal(self, in_values, out_values):
+        t = self.create_table() 
         for r in in_values:
             t.append([None] + list(r)) 
         t.close()
@@ -523,10 +531,9 @@ class FloatTest(WormtableTest):
         results = [[None, None, None] for v in values]
         self.assert_tables_equal(values, results)
 
-
     def test_exact_values(self):
         """
-        Checks that exact values are added stored correctly.
+        Checks that exact values are stored correctly.
         """
         # Get a bunch of small integers
         in_values = []
@@ -558,7 +565,6 @@ class FloatTest(WormtableTest):
                     self.min_double_denormal]]
         in_values.extend(v) 
         self.assert_tables_equal(in_values, in_values)
-      
     
     def test_infinity(self):
         """
@@ -577,7 +583,6 @@ class FloatTest(WormtableTest):
         neg = [[-1 * v for v in x] for x in values]
         neg_inf = [[-inf for v in x] for x in values]
         self.assert_tables_equal(neg, neg_inf)
-
     
     def test_half_infinity(self):
         inf = 1e1000
@@ -599,6 +604,64 @@ class FloatTest(WormtableTest):
         y = [(-v, None, None) for v in values]
         self.assert_tables_equal(y, y)
 
+    def test_underflow(self):
+        """
+        Tests to see if the values less than the minimum representable values 
+        stored underflow to 0 correctly.
+        """
+        h = self.min_half_denormal
+        f = self.min_float_denormal
+        d = self.min_double_denormal
+        # Anything less than minimum denormal should underflow.
+        values = [[h / j , f / j, d / j] for j in range(2, 20)]
+        result = [[0 for v in r] for r in values]
+        self.assert_tables_equal(values, result)
+        values = [[-v for v in r] for r in values]
+        self.assert_tables_equal(values, result)
+        # Values less than the minimum normal should not result in underflow
+        h = self.min_half_normal
+        f = self.min_float_normal
+        d = self.min_double_normal
+        values = [[h / 2**j , f / 2**j, d / 2**j] for j in range(11)]
+        self.assert_tables_equal(values, values)
+
+    def test_denormal(self):
+        """
+        Tests to see if denormal values are stored and retrieved correctly. 
+        """
+        h = self.min_half_denormal
+        f = self.min_float_denormal
+        d = self.min_double_denormal
+        values = [[h * 2**j , f * 2**j, d * 2**j] for j in range(5)] 
+        self.assert_tables_equal(values, values)
+        values = [[-v for v in r] for r in values]
+        self.assert_tables_equal(values, values)
+       
+    def test_decimal_digits(self):
+        """
+        Generates a string of decimal digits of maximum lenght for 
+        each type and verifies that these are stored exactly.
+        """
+        md = [self.max_half_digits, self.max_float_digits, self.max_double_digits]
+        values = []
+        t = self.create_table() 
+        for j in range(100):
+            v = []
+            for d in md:
+                s = "0." + "".join([str(random.randint(0, 9)) for j in range(d)])
+                u = float(s)
+                v.append(s)
+            values.append(v)
+            t.append([None] + [float(x) for x in v])
+        t.close()
+        t.open("r")
+        for r1, r2 in zip(values, t):
+            u = []
+            for x, d in zip(r2[1:], md):
+                s = "{0:.{1}f}".format(x, d)
+                u.append(s) 
+            self.assertEqual(r1, u) 
+        t.close() 
 
     def test_nan(self):
         """
@@ -613,6 +676,7 @@ class FloatTest(WormtableTest):
         t.add_float_column("single", size=4)
         t.add_float_column("double", size=8)
         t.open("w")
+        t = self.create_table()
         t.append([None, nan, nan, nan])
         t.append_encoded([None, b"nan", b"NaN", b"NAN"])
         t.close()
@@ -621,7 +685,7 @@ class FloatTest(WormtableTest):
             for v in r[1:]:
                 self.assertTrue(math.isnan(v))
         t.close() 
-        
+ 
 
     def test_compare_numpy(self):
         """
@@ -677,8 +741,6 @@ class FloatTest(WormtableTest):
             ha = np.array([h], dtype=np.float16)
             da = np.array([d], dtype=np.float64)
             results.append((float(ha[0]), float(sa[0]), float(da[0])))
-        #for u,v in zip(values, results):
-        #    print(u, v)
         self.assert_tables_equal(values, results)
 
 

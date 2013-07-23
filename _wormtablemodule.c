@@ -157,6 +157,14 @@ byteswap_copy(void* dest, void *source, size_t n)
 }
 #endif
 
+/*
+ * Floating point packing and unpacking. Floating point values are stored as a
+ * slight perturbation to the IEEE standards so that they sort correctly. This 
+ * is done by a simple rule: if the number is positive, flip the sign bit; if
+ * it is negative, flip all bits. This procedure is reversed when we unpack 
+ * to recover the original values exactly.
+ */
+
 static void 
 pack_half(double value, void *dest)
 {
@@ -352,19 +360,21 @@ min_uint(u_int32_t k)
 static uint64_t 
 missing_float(u_int32_t k) 
 {
-    uint64_t ret = 0;
+    uint64_t zero = 0uLL;
+    union { double value; uint64_t bits; } conv;
+    conv.bits = 0;
     switch (k) {
         case 2:
-            ret = 0xfffffc0000000000uLL;
+            conv.value = unpack_half(&zero);
             break;
         case 4:
-            ret = 0xffffffffe0000000uLL;
+            conv.value = unpack_float(&zero);
             break;
         case 8:
-            ret = 0xffffffffffffffffuLL;
+            conv.value = unpack_double(&zero);
             break;
     }
-    return ret;
+    return conv.bits;
 }
 
 
