@@ -9,7 +9,7 @@
 \firstpage{1}
 
 \title[Wormtable]{Wormtable: A data structure for genome scale data}
-\author[Kelleher \textit{et~al}]{Jerome Kelleher, Robert W. Ness 
+\author[Kelleher \textit{et~al}]{Jerome Kelleher, Rob W. Ness 
 and Daniel L. Halligan}
 \address{
 University of Edinburgh,
@@ -127,7 +127,7 @@ variable length strings.
 To take advantage of the data processing capabilities of database
 technologies without the overheads and disadvantages of relational databases,
 wormtable uses Berkeley DB~\citep{obs99} for row storage and indexing.
-Berkeley DB is an open source embedded database toolkit that provides a
+Berkeley DB is a free and open-source embedded database toolkit that provides a
 scalable key-value store. It is a mature and stable platform, 
 and is currently the most widely deployed database toolkit in the 
 world~\citep{sb12}. Berkeley DB is a highly modular library, providing the 
@@ -170,7 +170,7 @@ a Python VCF parser.
 In this example we proceed 
 row-by-row, examining the REF and ALT columns and
 counting the transitions and transversions we encounter. 
-Using PyVCF this required approximately 130 minutes;
+Using PyVCF this required approximately 126 minutes;
 the wormtable version required
 55 seconds. To compare against methods that are known to be extremely
 efficient, we repeated the same 
@@ -245,9 +245,10 @@ participation it may grow to support many other formats and become
 a powerful common platform for bioinformatics data analysis.
 
 \section*{Acknowledgement}
+We would like to thank the Ashworth Codemonkeys for valuable feedback on earlier
+versions of wormtable.
 \paragraph{Funding\textcolon}  
-JK is supported by EPSRC grant EP/I013091/1; DLH is supported by XXXXX; 
-and RWN is supported by XXXX.
+JK is supported by EPSRC grant EP/I013091/1.
 
 \bibliographystyle{plainnat}
 \bibliography{paper}
