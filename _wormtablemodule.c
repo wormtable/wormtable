@@ -66,20 +66,29 @@ typedef struct Column_t {
     PyObject *(*native_to_python)(struct Column_t *, int);
 } Column;
 
+/*
+ * We're using a mixture of fixed and non-fixed size integer types because 
+ * of the conflicting needs of being exact about the sizes and interfacing 
+ * with Python. Ideally, all of the types would be fixed size for simplicity
+ */
 
 typedef struct {
     PyObject_HEAD
     DB *db;
     PyObject *filename;
     Column **columns;
-    Py_ssize_t cache_size;
-    u_int32_t page_size;
-    u_int32_t num_columns;
-    u_int32_t fixed_region_size;
+    unsigned long long cache_size;
+    unsigned int page_size;
+    unsigned int fixed_region_size;
+    unsigned int num_columns;
     void *row_buffer;
     u_int32_t row_buffer_size;     /* max size */
     u_int32_t current_row_size;    /* current size */
-    u_int64_t current_row_id;      
+    unsigned long long num_rows;     
+    /* row stats */
+    unsigned long long total_row_size;
+    unsigned int min_row_size;
+    unsigned int max_row_size;
 } Table;
 
 
@@ -88,7 +97,7 @@ typedef struct {
     Table *table;
     DB *db;
     PyObject *filename;
-    Py_ssize_t cache_size;
+    unsigned long long cache_size;
     u_int32_t *columns;
     u_int32_t num_columns;
     void *key_buffer;
@@ -1912,7 +1921,10 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
         }
     }
     self->current_row_size = self->fixed_region_size;
-    self->current_row_id = 0; 
+    self->num_rows = 0; 
+    self->max_row_size = 0;
+    self->min_row_size = MAX_ROW_SIZE;
+    self->total_row_size = 0;
     ret = 0;
 out:
     return ret;
@@ -1920,9 +1932,13 @@ out:
 
 static PyMemberDef Table_members[] = {
     {"filename", T_OBJECT_EX, offsetof(Table, filename), READONLY, "filename"},
-    {"cache_size", T_PYSSIZET, offsetof(Table, cache_size), READONLY, "cache_size"},
-    {"page_size", T_PYSSIZET, offsetof(Table, page_size), READONLY, "page_size"},
-    {"fixed_region_size", T_INT, offsetof(Table, fixed_region_size), READONLY, 
+    {"cache_size", T_ULONGLONG, offsetof(Table, cache_size), READONLY, "cache_size"},
+    {"page_size", T_UINT, offsetof(Table, page_size), READONLY, "page_size"},
+    {"num_rows", T_ULONGLONG, offsetof(Table, num_rows), READONLY, "num_rows"},
+    {"total_row_size", T_ULONGLONG, offsetof(Table, total_row_size), READONLY, "total_row_size"},
+    {"min_row_size", T_UINT, offsetof(Table, min_row_size), READONLY, "min_row_size"},
+    {"max_row_size", T_UINT, offsetof(Table, max_row_size), READONLY, "max_row_size"},
+    {"fixed_region_size", T_UINT, offsetof(Table, fixed_region_size), READONLY, 
             "fixed_region_size"},
     {NULL}  /* Sentinel */
 };
@@ -2187,7 +2203,17 @@ out:
     return ret; 
 }
 
-
+static void
+Table_update_row_stats(Table *self, u_int32_t row_size) 
+{
+    self->total_row_size += row_size;
+    if (row_size < self->min_row_size) {
+        self->min_row_size = row_size;
+    }
+    if (row_size > self->max_row_size) {
+        self->max_row_size = row_size;
+    }
+}
 
 static PyObject *
 Table_commit_row(Table* self)
@@ -2200,7 +2226,7 @@ Table_commit_row(Table* self)
     if (Table_check_write_mode(self) != 0) {
         goto out;
     }
-    if (Column_set_row_id(id_col, self->current_row_id) != 0) {
+    if (Column_set_row_id(id_col, (u_int64_t) self->num_rows) != 0) {
         goto out;
     }
     if (Column_update_row(id_col, self->row_buffer, self->current_row_size) 
@@ -2213,6 +2239,7 @@ Table_commit_row(Table* self)
     key.size = key_size;
     data.data = self->row_buffer + key_size;
     data.size = self->current_row_size - key_size;
+    Table_update_row_stats(self, data.size); 
     db_ret = self->db->put(self->db, NULL, &key, &data, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret); 
@@ -2220,7 +2247,7 @@ Table_commit_row(Table* self)
     } 
     memset(self->row_buffer, 0, self->current_row_size); 
     self->current_row_size = self->fixed_region_size;
-    self->current_row_id++;
+    self->num_rows++;
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
@@ -2278,6 +2305,7 @@ out:
     }
     return ret; 
 }
+
 static PyObject *
 Table_get_row(Table* self, PyObject *args)
 {
@@ -2510,7 +2538,7 @@ out:
 static PyMemberDef Index_members[] = {
     {"table", T_OBJECT_EX, offsetof(Index, table), READONLY, "table"},
     {"filename", T_OBJECT_EX, offsetof(Index, filename), READONLY, "filename"},
-    {"cache_size", T_PYSSIZET, offsetof(Index, cache_size), READONLY, "cache_size"},
+    {"cache_size", T_ULONGLONG, offsetof(Index, cache_size), READONLY, "cache_size"},
     {NULL}  /* Sentinel */
 };
 

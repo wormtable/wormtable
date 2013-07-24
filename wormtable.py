@@ -38,7 +38,7 @@ from xml.etree import ElementTree
 import _wormtable
 
 __version__ = '0.1.0b2'
-SCHEMA_VERSION = "0.1"
+TABLE_METADATA_VERSION = "0.1"
 INDEX_METADATA_VERSION = "0.1"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
@@ -470,8 +470,29 @@ class Table(Database):
         Database.__init__(self, homedir, self.DB_NAME)
         self.__columns = []
         self.__column_name_map = {}
-        self.__num_rows = 0
         self.__page_size = self.DEFAULT_PAGE_SIZE
+        self.__num_rows = 0
+        self.__total_row_size = 0
+        self.__min_row_size = 0 
+        self.__max_row_size = 0
+        
+    def get_total_row_size(self):
+        """
+        Returns the total number of bytes stored within rows in this table.
+        """
+        return self.__total_row_size
+
+    def get_min_row_size(self):
+        """
+        Returns the size of the smallest row in this table in bytes.
+        """
+        return self.__min_row_size
+
+    def get_max_row_size(self):
+        """
+        Returns the size of the largest row in this table in bytes.
+        """
+        return self.__max_row_size
 
     def set_page_size(self, page_size):
         """
@@ -588,38 +609,101 @@ class Table(Database):
             raise TypeError("column ids must be strings or integers")
         return ret
     
+    
+    def __generate_schema_xml(self):
+        """
+        Generates the XML representing the schema for this table.
+        """
+        schema = ElementTree.Element("schema")
+        columns = ElementTree.Element("columns")
+        schema.append(columns)
+        for c in self.__columns:
+            columns.append(c.get_xml())
+        return schema
+   
+    def __generate_stats_xml(self):
+        """
+        Generates the XML representing the statistics for this table.
+        """
+        stats = ElementTree.Element("stats")
+        l = [ 
+            ("num_rows", self.__num_rows), 
+            ("max_row_size", self.__max_row_size),
+            ("min_row_size", self.__min_row_size),
+            ("total_row_size", self.__total_row_size)
+        ] 
+        for name, value in l:
+            d = {"name":name, "value":str(value)}
+            s = ElementTree.Element("stat", d)
+            stats.append(s)
+        return stats
+
     def get_metadata(self):
         """
         Returns an ElementTree instance describing the metadata for this 
         Table.
         """
-        d = {"version":SCHEMA_VERSION}
-        root = ElementTree.Element("schema", d)
-        columns = ElementTree.Element("columns")
-        root.append(columns)
-        for c in self.__columns:
-            columns.append(c.get_xml())
+        d = {"version":TABLE_METADATA_VERSION}
+        root = ElementTree.Element("table", d)
+        root.append(self.__generate_schema_xml())
+        root.append(self.__generate_stats_xml())
         return ElementTree.ElementTree(root)
-       
+
+    def __parse_schema_xml(self, schema):
+        """
+        Parses the schema xml and updates the state of this table.
+        """
+        xml_columns = schema.find("columns")
+        for xmlcol in xml_columns.getchildren():
+            col = Column.parse_xml(xmlcol)
+            self.__column_name_map[col.get_name()]= len(self.__columns)
+            self.__columns.append(col)
+
+    def __parse_stats_xml(self, stats):
+        """
+        Parses the specified XML to retrieve the statistics for this table.
+        """
+        for stat in stats.getchildren():
+            name = stat.get("name")
+            value = stat.get("value")
+            # TODO this really isn't very good at all.
+            if name == "num_rows":
+                self.__num_rows = int(value)
+            elif name == "max_row_size":
+                self.__max_row_size = int(value)
+            elif name == "min_row_size":
+                self.__min_row_size = int(value)
+            elif name == "total_row_size":
+                self.__total_row_size = int(value)
+            else:
+                raise ValueError("unknown table statistic '" + name + "'")
+
     def set_metadata(self, tree):
         """
         Sets up this Table to reflect the metadata in the specified xml 
         ElementTree.
         """
         root = tree.getroot()
-        if root.tag != "schema":
+        # Be nice to people using beta version or older; this can be 
+        # removed pretty soon. TODO
+        if root.tag == "schema":
+            raise ValueError("""
+                You are trying to read a table built with a pre-release version
+                of wormtable which is not compatible. You must rebuild this table. 
+                Sorry.""")
+        if root.tag != "table":
             raise ValueError("invalid xml")
         version = root.get("version")
         if version is None:
             raise ValueError("invalid xml")
-        supported_versions = ["0.1-alpha", SCHEMA_VERSION]
+        supported_versions = [TABLE_METADATA_VERSION]
         if version not in supported_versions: 
             raise ValueError("Unsupported schema version - rebuild required.")
-        xml_columns = root.find("columns")
-        for xmlcol in xml_columns.getchildren():
-            col = Column.parse_xml(xmlcol)
-            self.__column_name_map[col.get_name()]= len(self.__columns)
-            self.__columns.append(col)
+        schema = root.find("schema")
+        self.__parse_schema_xml(schema)
+        stats = root.find("stats")
+        self.__parse_stats_xml(stats)
+             
 
     def append(self, row):
         """
@@ -679,12 +763,25 @@ class Table(Database):
         else:
             raise TypeError("table positions must be integers")
         return ret
-    
+  
+    def __update_stats(self):
+        """
+        Updates the statistics about the underlying database.
+        """
+        t = self.get_ll_object()
+        self.__total_row_size = t.total_row_size
+        self.__num_rows = t.num_rows
+        self.__min_row_size = t.min_row_size
+        self.__max_row_size = t.max_row_size
+
     def close(self):
         """
         Closes this table freeing all underlying resources.
         """
         self.verify_open()
+        mode = self.get_open_mode()
+        if mode == WT_WRITE:
+            self.__update_stats()
         try:
             Database.close(self)
         finally:
