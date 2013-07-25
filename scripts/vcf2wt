@@ -379,7 +379,7 @@ class VCFWriter(object):
     """
     def __init__(self, table):
         self.__table = table
-        self.__table.read_metadata(self.__table.get_metadata_path())
+        self.__table.read_metadata()
         # Set the page size based on the fixed region size
         # Opening and closing a is a temporary workaround. A more elegant 
         # solution should be found here.
@@ -393,7 +393,7 @@ class VCFWriter(object):
         if n > 10 * 1024:
             page_size = 512
         self.__table.set_page_size(page_size)
-        self.__table.read_metadata(self.__table.get_metadata_path())
+        self.__table.read_metadata()
         self.__table.open("w")
     
     def append(self, row):
@@ -441,7 +441,7 @@ class ProgramRunner(object):
         self.__tmp_dirs.append(tmpdir)
         table = wt.Table(tmpdir)
         self.__reader.generate_schema(table)
-        table.write_metadata(schema_file)
+        table.write_schema(schema_file)
         self.__schema = schema_file
 
     def create_table(self):
@@ -450,7 +450,7 @@ class ProgramRunner(object):
         """
         os.mkdir(self.__destination)
         self.__table = wt.Table(self.__destination)
-        self.__table.read_metadata(self.__schema)
+        self.__table.read_schema(self.__schema)
         self.__table.set_cache_size(self.__cache_size)
         self.__table.open("w")
         self.__column_map = {}

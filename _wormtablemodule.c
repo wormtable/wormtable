@@ -57,7 +57,7 @@ typedef struct Column_t {
     void **input_elements; /* pointer to each elements in input format */
     void *element_buffer; /* parsed input elements in native CPU format */
     int num_buffered_elements;
-    int (*string_to_native)(struct Column_t*, char *);  /* DEPRECATED */
+    int (*string_to_native)(struct Column_t*, char *);  
     int (*python_to_native)(struct Column_t*, PyObject *);
     int (*verify_elements)(struct Column_t*);
     int (*truncate_elements)(struct Column_t*, double);
@@ -263,6 +263,10 @@ unpack_double(void *src)
     return conv.value;
 }
 
+
+/* Integer packing and unpacking.
+ * TODO document the format and create pack functions.
+ */
 
 static u_int64_t
 unpack_uint(void *src, u_int8_t size) 
