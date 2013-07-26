@@ -1888,7 +1888,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
      * an optional setter. There should be a proper getter method 
      * also which queries DB */
     self->page_size = 64 * 1024;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!n|n", kwlist, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!K|I", kwlist, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
             &self->cache_size, &self->page_size)) {
@@ -2473,7 +2473,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     self->key_buffer = NULL; 
     self->row_buffer = NULL; 
     self->columns = NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!n", kwlist, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!K", kwlist, 
             &TableType, &table, 
             &PyBytes_Type, &filename, 
             &PyList_Type,  &columns, 
