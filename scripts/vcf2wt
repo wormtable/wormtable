@@ -519,7 +519,7 @@ class ProgramRunner(object):
         if self.__writer is not None:
             self.__writer.close()
 
-def main():
+def main(args=None):
     prog_description = "Convert VCF file to Wormtable format."
     parser = argparse.ArgumentParser(description=prog_description) 
     parser.add_argument("SOURCE", 
@@ -550,8 +550,7 @@ def main():
     g.add_argument("--schema", "-s", default=None,
         help="""Use schema from the file SCHEMA rather than default 
                 generated schema""")
-    args = parser.parse_args()
-    
+    args = parser.parse_args(args)
     runner = ProgramRunner(args) 
     try:
         runner.run()

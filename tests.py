@@ -28,6 +28,7 @@ import os
 
 import test.lowlevel
 import test.highlevel
+import test.utilities
 
 def cleanup():
     """
@@ -62,6 +63,8 @@ def main():
     else:
         suite = testloader.loadTestsFromModule(test.highlevel) 
         l = testloader.loadTestsFromModule(test.lowlevel) 
+        suite.addTests(l)
+        l = testloader.loadTestsFromModule(test.utilities) 
         suite.addTests(l)
     try:
         for i in range(iterations):
