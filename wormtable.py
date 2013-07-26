@@ -478,7 +478,14 @@ class Table(Database):
         self.__total_row_size = 0
         self.__min_row_size = 0 
         self.__max_row_size = 0
-        
+    
+
+    def finalise_build(self):
+        super(Table, self).finalise_build()
+        new = self.get_db_path()
+        old = self.get_db_build_path()
+        os.rename(old + ".dat", new + ".dat") # FIXME
+
     def get_total_row_size(self):
         """
         Returns the total number of bytes stored within rows in this table.
@@ -511,10 +518,11 @@ class Table(Database):
         Returns a new instance of _wormtable.Table using the specified 
         path as the backing file.
         """ 
-        filename = path.encode() 
+        filename = path.encode()
+        data_file = filename + b".dat"
         ll_cols = [c.get_ll_object() for c in self.__columns]
-        t = _wormtable.Table(filename, ll_cols, self.get_cache_size(), 
-                self.__page_size)
+        t = _wormtable.Table(filename, data_file, ll_cols, 
+                self.get_cache_size(), self.__page_size)
         return t
 
     def get_fixed_region_size(self):

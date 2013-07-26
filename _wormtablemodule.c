@@ -75,7 +75,9 @@ typedef struct Column_t {
 typedef struct {
     PyObject_HEAD
     DB *db;
-    PyObject *filename;
+    PyObject *db_filename;
+    FILE *data_file;
+    PyObject *data_filename;
     Column **columns;
     unsigned long long cache_size;
     unsigned int page_size;
@@ -96,7 +98,7 @@ typedef struct {
     PyObject_HEAD
     Table *table;
     DB *db;
-    PyObject *filename;
+    PyObject *db_filename;
     unsigned long long cache_size;
     u_int32_t *columns;
     u_int32_t num_columns;
@@ -147,6 +149,12 @@ static void
 handle_bdb_error(int err)
 {
     PyErr_SetString(WormtableError, db_strerror(err));
+}
+
+static void
+handle_io_error(void)
+{
+    PyErr_SetFromErrno(WormtableError);
 }
 
 #ifndef WORDS_BIGENDIAN
@@ -265,8 +273,23 @@ unpack_double(void *src)
 
 
 /* Integer packing and unpacking.
- * TODO document the format and create pack functions.
+ * TODO document the format.
  */
+
+static void
+pack_uint(u_int64_t value, void *dest, u_int8_t size) 
+{
+    void *src;
+    u_int64_t u = value;
+    /* increment before storing */
+    u += 1; 
+    src = &u;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, src + (8 - size), size);
+#else
+    byteswap_copy(dest, src, size);
+#endif
+}
 
 static u_int64_t
 unpack_uint(void *src, u_int8_t size) 
@@ -281,6 +304,22 @@ unpack_uint(void *src, u_int8_t size)
     /* decrement and return */
     dest -= 1;
     return dest; 
+}
+
+
+static void
+pack_int(int64_t value, void *dest, u_int8_t size) 
+{
+    void *src;
+    int64_t u = value; 
+    /* flip the sign bit */
+    u ^= 1LL << (size * 8 - 1);
+    src = &u;
+#ifdef WORDS_BIGENDIAN
+    memcpy(dest, src + (8 - size), size);
+#else
+    byteswap_copy(dest, src, size);
+#endif
 }
 
 static int64_t
@@ -580,19 +619,9 @@ Column_pack_elements_uint(Column *self, void *dest)
     int j;
     int ret = -1;
     void *v = dest;
-    void *src;
     u_int64_t *elements = (u_int64_t *) self->element_buffer;
-    u_int64_t u;
     for (j = 0; j < self->num_buffered_elements; j++) {
-        u = elements[j];
-        /* increment before storing */
-        u += 1; 
-        src = &u;
-#ifdef WORDS_BIGENDIAN
-        memcpy(v, src + (8 - self->element_size), self->element_size);
-#else
-        byteswap_copy(v, src, self->element_size);
-#endif
+        pack_uint(elements[j], v, self->element_size);
         v += self->element_size;
     }
     ret = 0;
@@ -605,19 +634,9 @@ Column_pack_elements_int(Column *self, void *dest)
     int j;
     int ret = -1;
     void *v = dest;
-    void *src;
     int64_t *elements = (int64_t *) self->element_buffer;
-    int64_t u;
     for (j = 0; j < self->num_buffered_elements; j++) {
-        u = elements[j];
-        /* flip the sign bit */
-        u ^= 1LL << (self->element_size * 8 - 1);
-        src = &u;
-#ifdef WORDS_BIGENDIAN
-        memcpy(v, src + (8 - self->element_size), self->element_size);
-#else
-        byteswap_copy(v, src, self->element_size);
-#endif
+        pack_int(elements[j], v, self->element_size);
         v += self->element_size;
     }
     ret = 0;
@@ -1798,10 +1817,14 @@ static void
 Table_dealloc(Table* self)
 {
     u_int32_t j;
-    Py_XDECREF(self->filename);
+    Py_XDECREF(self->db_filename);
+    Py_XDECREF(self->data_filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->db != NULL) {
         self->db->close(self->db, 0);
+    }
+    if (self->data_file != NULL) {
+        fclose(self->data_file);
     }
     if (self->row_buffer != NULL) {
         PyMem_Free(self->row_buffer);
@@ -1873,29 +1896,33 @@ static int
 Table_init(Table *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
-    static char *kwlist[] = {"filename", "columns", "cache_size", "page_size",
-            NULL}; 
+    static char *kwlist[] = {"db_filename", "data_filename", "columns", 
+            "cache_size", "page_size", NULL}; 
     Column *col;
-    PyObject *filename = NULL;
+    PyObject *db_filename = NULL;
+    PyObject *data_filename = NULL;
     PyObject *columns = NULL;
     u_int32_t j;
     self->db = NULL;
     self->row_buffer = NULL; 
     self->columns = NULL;
-    self->filename = NULL;
+    self->db_filename = NULL;
     self->cache_size = 0;
     /* TODO: take page size out of this initialiser and make it 
      * an optional setter. There should be a proper getter method 
      * also which queries DB */
     self->page_size = 64 * 1024;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!K|I", kwlist, 
-            &PyBytes_Type, &filename, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!K|I", kwlist, 
+            &PyBytes_Type, &db_filename, 
+            &PyBytes_Type, &data_filename, 
             &PyList_Type,  &columns, 
             &self->cache_size, &self->page_size)) {
         goto out;
     }
-    self->filename = filename;
-    Py_INCREF(self->filename);
+    self->db_filename = db_filename;
+    Py_INCREF(self->db_filename);
+    self->data_filename = data_filename;
+    Py_INCREF(self->data_filename);
     self->num_columns = PyList_GET_SIZE(columns);
     self->columns = PyMem_Malloc(self->num_columns * sizeof(Column *));
     for (j = 0; j < self->num_columns; j++) {
@@ -1935,7 +1962,7 @@ out:
 }
 
 static PyMemberDef Table_members[] = {
-    {"filename", T_OBJECT_EX, offsetof(Table, filename), READONLY, "filename"},
+    {"db_filename", T_OBJECT_EX, offsetof(Table, db_filename), READONLY, "db_filename"},
     {"cache_size", T_ULONGLONG, offsetof(Table, cache_size), READONLY, "cache_size"},
     {"page_size", T_UINT, offsetof(Table, page_size), READONLY, "page_size"},
     {"num_rows", T_ULONGLONG, offsetof(Table, num_rows), READONLY, "num_rows"},
@@ -2054,6 +2081,8 @@ Table_open(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
     char *db_name = NULL;
+    char *data_name = NULL;
+    char *data_mode = NULL;
     u_int32_t flags = 0; 
     Py_ssize_t gigabyte = 1024 * 1024 * 1024;
     u_int32_t gigs, bytes;
@@ -2063,8 +2092,10 @@ Table_open(Table* self, PyObject *args)
     }
     if (mode == WT_WRITE) {
         flags = DB_CREATE|DB_TRUNCATE;
+        data_mode = "w";
     } else if (mode == WT_READ) {
         flags = DB_RDONLY|DB_NOMMAP;
+        data_mode = "r";
     } else {
         PyErr_Format(PyExc_ValueError, "mode must be WT_READ or WT_WRITE."); 
         goto out;
@@ -2073,8 +2104,9 @@ Table_open(Table* self, PyObject *args)
         PyErr_Format(WormtableError, "Table already open."); 
         goto out;
     }
-    db_name = PyBytes_AsString(self->filename);
-    if (db_name == NULL) {
+    db_name = PyBytes_AsString(self->db_filename);
+    data_name = PyBytes_AsString(self->data_filename);
+    if (db_name == NULL || data_name == NULL) {
         goto out;
     }
     /* Now we create the DB handle */
@@ -2104,6 +2136,14 @@ Table_open(Table* self, PyObject *args)
         self->db = NULL;
         goto out;    
     }
+    /* Now open the data file */
+    self->data_file = fopen(data_name, data_mode);
+    if (self->data_file == NULL) {
+        handle_io_error();
+        goto out;
+    }
+
+
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
@@ -2115,7 +2155,7 @@ static PyObject *
 Table_close(Table* self)
 {
     PyObject *ret = NULL;
-    int db_ret;
+    int db_ret, io_ret;
     DB *db = self->db;
     if (db == NULL) {
         PyErr_SetString(WormtableError, "table closed");
@@ -2126,6 +2166,14 @@ Table_close(Table* self)
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
+    }
+    if (self->data_file != NULL) {
+        io_ret = fclose(self->data_file);
+        self->data_file = NULL;
+        if (io_ret != 0) {
+            handle_io_error();
+            goto out;
+        }
     }
     Py_INCREF(Py_None);
     ret = Py_None;
@@ -2219,11 +2267,53 @@ Table_update_row_stats(Table *self, u_int32_t row_size)
     }
 }
 
+/* Retrieves a the row pointed to by the current state of the row_buffer.
+ * DB has filled in the offset and length of the row into the start of
+ * the row buffer and now we must read this row from the data file.
+ *
+ * TODO this is an ugly quick hack and should be fixed! 
+ */
+static int    
+Table_retrieve_row(Table *self, void *buffer) 
+{
+    int ret = -1;
+    void *v;
+    Column *id_col = self->columns[0];
+    u_int32_t key_size = id_col->element_size; 
+    u_int64_t offset = 0;
+    u_int16_t len = 0;
+    
+    v = buffer + key_size;
+    offset = unpack_uint(v, sizeof(offset));
+    v += sizeof(offset);
+    len = unpack_uint(v, sizeof(len));
+    //printf("read: %lu\t%u\n", offset, len);
+    /* Now read this record from the file and put it in the row buffer */
+    if (fseeko(self->data_file, (off_t) offset, SEEK_SET) != 0) {
+        handle_io_error();
+        goto out;
+    }
+    v = buffer + key_size;
+    if (fread(v, len, 1, self->data_file) != 1) {
+        handle_io_error();
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
 static PyObject *
 Table_commit_row(Table* self)
 {
     PyObject *ret = NULL;
+    size_t io_ret;
     int db_ret;
+    void *v;
+    char *record[10]; /* TODO tidy */
+    void *row = NULL;
+    u_int64_t offset;
+    u_int16_t len;
     DBT key, data;
     Column *id_col = self->columns[0];
     u_int32_t key_size = id_col->element_size; 
@@ -2237,13 +2327,28 @@ Table_commit_row(Table* self)
             != 0) {
         goto out;
     }
+    /* write the data row */
+    offset = (u_int64_t) ftello(self->data_file);
+    len = self->current_row_size - key_size;
+    row = self->row_buffer + key_size;
+    //printf("write: %lu %u\n", offset, len);
+    io_ret = fwrite(row, len, 1, self->data_file);
+    if (io_ret != 1) {
+        handle_io_error();
+        goto out;
+    }
+    /* pack offset|length into record */
+    v = record;
+    pack_uint(offset, v, sizeof(offset));
+    v += sizeof(offset);
+    pack_uint(len, v, sizeof(len));
+    /* Now store the offset+length in the DB */
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
     key.data = self->row_buffer;
     key.size = key_size;
-    data.data = self->row_buffer + key_size;
-    data.size = self->current_row_size - key_size;
-    Table_update_row_stats(self, data.size); 
+    data.data = record; 
+    data.size = 10; /* FIXME */
     db_ret = self->db->put(self->db, NULL, &key, &data, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret); 
@@ -2252,6 +2357,7 @@ Table_commit_row(Table* self)
     memset(self->row_buffer, 0, self->current_row_size); 
     self->current_row_size = self->fixed_region_size;
     self->num_rows++;
+    Table_update_row_stats(self, len); 
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
@@ -2339,6 +2445,9 @@ Table_get_row(Table* self, PyObject *args)
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
+    }
+    if (Table_retrieve_row(self, self->row_buffer) != 0) {
+        goto out;
     }
     t = PyTuple_New(self->num_columns);
     if (t == NULL) {
@@ -2434,7 +2543,7 @@ static void
 Index_dealloc(Index* self)
 {
     Py_XDECREF(self->table);
-    Py_XDECREF(self->filename);
+    Py_XDECREF(self->db_filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
     if (self->db != NULL) {
         self->db->close(self->db, 0);
@@ -2460,30 +2569,30 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     int j;
     long k;
     int ret = -1;
-    static char *kwlist[] = {"table", "filename", "columns", "cache_size", NULL}; 
+    static char *kwlist[] = {"table", "db_filename", "columns", "cache_size", NULL}; 
     PyObject *v;
     Column *col;
-    PyObject *filename = NULL;
+    PyObject *db_filename = NULL;
     PyObject *columns = NULL;
     Table *table = NULL;
     self->db = NULL;
     self->table = NULL;
-    self->filename = NULL;
+    self->db_filename = NULL;
     self->bin_widths = NULL; 
     self->key_buffer = NULL; 
     self->row_buffer = NULL; 
     self->columns = NULL;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!K", kwlist, 
             &TableType, &table, 
-            &PyBytes_Type, &filename, 
+            &PyBytes_Type, &db_filename, 
             &PyList_Type,  &columns, 
             &self->cache_size)) {
         goto out;
     }
     self->table = table;
     Py_INCREF(self->table);
-    self->filename = filename;
-    Py_INCREF(self->filename);
+    self->db_filename = db_filename;
+    Py_INCREF(self->db_filename);
     if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
@@ -2541,7 +2650,7 @@ out:
 
 static PyMemberDef Index_members[] = {
     {"table", T_OBJECT_EX, offsetof(Index, table), READONLY, "table"},
-    {"filename", T_OBJECT_EX, offsetof(Index, filename), READONLY, "filename"},
+    {"db_filename", T_OBJECT_EX, offsetof(Index, db_filename), READONLY, "db_filename"},
     {"cache_size", T_ULONGLONG, offsetof(Index, cache_size), READONLY, "cache_size"},
     {NULL}  /* Sentinel */
 };
@@ -2834,6 +2943,9 @@ Index_get_min(Index* self, PyObject *args)
     db_ret = cursor->pget(cursor, &secondary_key, &primary_key, &primary_data, 
             DB_SET_RANGE);
     if (db_ret == 0) {
+        if (Table_retrieve_row(self->table, self->row_buffer) != 0) {
+            goto out;
+        }
         ret = Index_row_to_python(self, self->row_buffer);
         if (ret == NULL) {
             goto out;
@@ -2918,6 +3030,9 @@ Index_get_max(Index* self, PyObject *args)
             handle_bdb_error(db_ret);
             goto out;    
         }
+    }
+    if (Table_retrieve_row(self->table, self->row_buffer) != 0) {
+        goto out;
     }
     /* data points to the correct row */
     ret = Index_row_to_python(self, self->row_buffer);
@@ -3053,6 +3168,9 @@ Index_build(Index* self, PyObject *args)
     sdata.data = self->row_buffer;
     sdata.size = primary_key_size;
     while ((db_ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
+        if (Table_retrieve_row(self->table, self->row_buffer) != 0) {
+            goto out;
+        }
         if (Index_fill_key(self, self->row_buffer, &skey) < 0 ) {
             goto out;
         }
@@ -3142,7 +3260,7 @@ Index_open(Index* self, PyObject *args)
         PyErr_Format(WormtableError, "Index already open."); 
         goto out;
     }
-    db_name = PyBytes_AsString(self->filename);
+    db_name = PyBytes_AsString(self->db_filename);
     if (db_name == NULL) {
         goto out;
     }
@@ -3406,6 +3524,9 @@ TableRowIterator_next(TableRowIterator *self)
     } 
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
+        if (Table_retrieve_row(self->table, self->table->row_buffer) != 0) {
+            goto out;
+        }
         /* Now, check if we've hit or gone past max_key */ 
         if (self->max_key_size > 0) {
             if (key.size != self->max_key_size) {
@@ -3690,6 +3811,9 @@ IndexRowIterator_next(IndexRowIterator *self)
     db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
             &primary_data, flags);
     if (db_ret == 0) {
+        if (Table_retrieve_row(self->index->table, self->index->row_buffer) != 0) {
+            goto out;
+        }
         /* Now, check if we've hit or gone past max_key */
         if (self->max_key_size > 0) {
             cmp_size = self->max_key_size;
@@ -3883,6 +4007,9 @@ DistinctValueIterator_next(DistinctValueIterator *self)
     db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
             &primary_data, DB_NEXT_NODUP);
     if (db_ret == 0) {
+        if (Table_retrieve_row(self->index->table, self->index->row_buffer) != 0) {
+            goto out;
+        }
         ret = Index_row_to_python(self->index, self->index->row_buffer);
         if (ret == NULL) {
             goto out;
