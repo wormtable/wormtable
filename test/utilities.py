@@ -138,11 +138,14 @@ class TestInputMethods(Vcf2wtTest):
         zipped = os.path.join(self._homedir, "zipped")
         self.run_command([input_file, original, "-q"]) 
         zvcf = os.path.join(self._homedir, "vcf.gz") 
-        with gzip.open(zvcf, "wb") as z, open(input_file, "rb") as f:
+        z = gzip.open(zvcf, "wb")
+        with open(input_file, "rb") as f:
             z.write(f.read())
+        z.close()
         self.run_command([zvcf, zipped, "-qf"]) 
-        with wt.open_table(original) as t1, wt.open_table(zipped) as t2:
-            self.assert_tables_equal(t1, t2)
+        with wt.open_table(original) as t1:
+            with wt.open_table(zipped) as t2:
+                self.assert_tables_equal(t1, t2)
         shutil.rmtree(self._homedir)
         os.mkdir(self._homedir)
 
@@ -186,11 +189,14 @@ class TestSchemaBuild(VcfBuildTest):
         super(TestSchemaBuild, self).setUp()
         # TODO FINISH
         # Now, alter the schema
-        with open(schema, "r") as r, open(alt_schema, "w") as w:
-            for l in r:
-                # remove CHROM and POS
-                if CHROM not in l and POS not in l:
-                    w.write(l)
+        r = open(schema, "r")
+        w = open(alt_schema, "w") 
+        for l in r:
+            # remove CHROM and POS
+            if CHROM not in l and POS not in l:
+                w.write(l)
+        r.close()
+        w.close()
         self.run_command([input_file, table , "-qs" + alt_schema]) 
         with wt.open_table(table) as t:
             self.assertRaises(KeyError, t.get_column, CHROM)
