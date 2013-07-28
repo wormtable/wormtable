@@ -380,20 +380,6 @@ class VCFWriter(object):
     def __init__(self, table):
         self.__table = table
         self.__table.read_metadata()
-        # Set the page size based on the fixed region size
-        # Opening and closing a is a temporary workaround. A more elegant 
-        # solution should be found here.
-        self.__table.open("w")
-        n = self.__table.get_fixed_region_size()
-        self.__table.close()
-        page_size = 64 * 1024
-        # If the fixed region size is > 10k, then rows are probably more 
-        # than 16K, so we revert to a small page size to minimise the space
-        # wasted in overflow pages.
-        if n > 10 * 1024:
-            page_size = 512
-        self.__table.set_page_size(page_size)
-        self.__table.read_metadata()
         self.__table.open("w")
     
     def append(self, row):

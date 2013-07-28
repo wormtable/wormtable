@@ -82,7 +82,6 @@ typedef struct {
     PyObject *data_filename;
     Column **columns;
     unsigned long long cache_size;
-    unsigned int page_size;
     unsigned int fixed_region_size;
     unsigned int num_columns;
     void *row_buffer;
@@ -1894,7 +1893,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
     static char *kwlist[] = {"db_filename", "data_filename", "columns", 
-            "cache_size", "page_size", NULL}; 
+            "cache_size", NULL}; 
     Column *col;
     PyObject *db_filename = NULL;
     PyObject *data_filename = NULL;
@@ -1905,15 +1904,11 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     self->columns = NULL;
     self->db_filename = NULL;
     self->cache_size = 0;
-    /* TODO: take page size out of this initialiser and make it 
-     * an optional setter. There should be a proper getter method 
-     * also which queries DB */
-    self->page_size = 64 * 1024;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!K|I", kwlist, 
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O!O!K", kwlist, 
             &PyBytes_Type, &db_filename, 
             &PyBytes_Type, &data_filename, 
             &PyList_Type,  &columns, 
-            &self->cache_size, &self->page_size)) {
+            &self->cache_size)) {
         goto out;
     }
     self->db_filename = db_filename;
@@ -1961,7 +1956,6 @@ out:
 static PyMemberDef Table_members[] = {
     {"db_filename", T_OBJECT_EX, offsetof(Table, db_filename), READONLY, "db_filename"},
     {"cache_size", T_ULONGLONG, offsetof(Table, cache_size), READONLY, "cache_size"},
-    {"page_size", T_UINT, offsetof(Table, page_size), READONLY, "page_size"},
     {"num_rows", T_ULONGLONG, offsetof(Table, num_rows), READONLY, "num_rows"},
     {"total_row_size", T_ULONGLONG, offsetof(Table, total_row_size), READONLY, "total_row_size"},
     {"min_row_size", T_UINT, offsetof(Table, min_row_size), READONLY, "min_row_size"},
@@ -2071,8 +2065,6 @@ Table_init_dbts(Table *self, DBT *primary_key, DBT *primary_data)
     return 0;
 }
 
-
-
 static PyObject *
 Table_open(Table* self, PyObject *args)
 {
@@ -2118,11 +2110,6 @@ Table_open(Table* self, PyObject *args)
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
-    }
-    db_ret = self->db->set_pagesize(self->db, self->page_size);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);

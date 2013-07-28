@@ -467,13 +467,11 @@ class Table(Database):
     """
     DB_NAME = "table"
     PRIMARY_KEY_NAME = "row_id"
-    DEFAULT_PAGE_SIZE = 64 * 1024
 
     def __init__(self, homedir):
         Database.__init__(self, homedir, self.DB_NAME)
         self.__columns = []
         self.__column_name_map = {}
-        self.__page_size = self.DEFAULT_PAGE_SIZE
         self.__num_rows = 0
         self.__total_row_size = 0
         self.__min_row_size = 0 
@@ -504,15 +502,6 @@ class Table(Database):
         """
         return self.__max_row_size
 
-    def set_page_size(self, page_size):
-        """
-        Sets the Berkeley DB page size to the specified value.
-
-        This only has an effect when a table is first created; afterwards,
-        the page size for a table is fixed.
-        """
-        self.__page_size = page_size
-
     def _create_ll_object(self, path):
         """
         Returns a new instance of _wormtable.Table using the specified 
@@ -522,7 +511,7 @@ class Table(Database):
         data_file = filename + b".dat"
         ll_cols = [c.get_ll_object() for c in self.__columns]
         t = _wormtable.Table(filename, data_file, ll_cols, 
-                self.get_cache_size(), self.__page_size)
+                self.get_cache_size())
         return t
 
     def get_fixed_region_size(self):
