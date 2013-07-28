@@ -13,10 +13,7 @@ paper.dvi: paper.tex paper.bib
 
 
 clean:
-	rm -f *.log *.dvi *.aux
-	rm -f *.blg *.bbl
-	rm -f *.eps *.[1-9]	
-	rm -f src/*.mpx *.mpx
+	rm -f *.log *.dvi *.aux *.blg *.bbl *.bak
 	
 mrproper:
 	rm -f *.ps *.pdf

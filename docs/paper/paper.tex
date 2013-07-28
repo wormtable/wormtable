@@ -1,59 +1,244 @@
-\documentclass{bioinfo}
+%% BioMed_Central_Tex_Template_v1.05
+%%                                      %
+%  bmc_article.tex            ver: 1.05 %
+%                                       %
 
-% Bioinformatics definitions.
 
-\copyrightyear{2013}
-\pubyear{2013}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                     %%
+%%  LaTeX template for BioMed Central  %%
+%%     journal article submissions     %%
+%%                                     %%
+%%         <27 January 2006>           %%
+%%                                     %%
+%%                                     %%
+%% Uses:                               %%
+%% cite.sty, url.sty, bmc_article.cls  %%
+%% ifthen.sty. multicol.sty		       %%
+%%									   %%
+%%                                     %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                 %%	
+%% For instructions on how to fill out this Tex template           %%
+%% document please refer to Readme.pdf and the instructions for    %%
+%% authors page on the biomed central website                      %%
+%% http://www.biomedcentral.com/info/authors/                      %%
+%%                                                                 %%
+%% Please do not use \input{...} to include other tex files.       %%
+%% Submit your LaTeX manuscript as one .tex document.              %%
+%%                                                                 %%
+%% All additional figures and files should be attached             %%
+%% separately and not embedded in the \TeX\ document itself.       %%
+%%                                                                 %%
+%% BioMed Central currently use the MikTex distribution of         %%
+%% TeX for Windows) of TeX and LaTeX.  This is available from      %%
+%% http://www.miktex.org                                           %%
+%%                                                                 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+\documentclass[10pt]{bmc_article}    
+
+
+
+% Load packages
+\usepackage{cite} % Make references as [1-4], not [1,2,3,4]
+\usepackage{url}  % Formatting web addresses  
+\usepackage{ifthen}  % Conditional 
+\usepackage{multicol}   %Columns
+\usepackage[utf8]{inputenc} %unicode support
+%\usepackage[applemac]{inputenc} %applemac support if unicode package fails
+%\usepackage[latin1]{inputenc} %UNIX support if unicode package fails
+\urlstyle{rm}
+ 
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
+%%                                             %%
+%%  If you wish to display your graphics for   %%
+%%  your own use using includegraphic or       %%
+%%  includegraphics, then comment out the      %%
+%%  following two lines of code.               %%   
+%%  NB: These line *must* be included when     %%
+%%  submitting to BMC.                         %% 
+%%  All figure files must be submitted as      %%
+%%  separate graphics through the BMC          %%
+%%  submission process, not included in the    %% 
+%%  submitted article.                         %% 
+%%                                             %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%                     
+
+
+\def\includegraphic{}
+\def\includegraphics{}
+
+
+
+\setlength{\topmargin}{0.0cm}
+\setlength{\textheight}{21.5cm}
+\setlength{\oddsidemargin}{0cm} 
+\setlength{\textwidth}{16.5cm}
+\setlength{\columnsep}{0.6cm}
+
+\newboolean{publ}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                              %%
+%% You may change the following style settings  %%
+%% Should you wish to format your article       %%
+%% in a publication style for printing out and  %%
+%% sharing with colleagues, but ensure that     %%
+%% before submitting to BMC that the style is   %%
+%% returned to the Review style setting.        %%
+%%                                              %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+
+%Review style settings
+\newenvironment{bmcformat}{\begin{raggedright}\baselineskip20pt\sloppy\setboolean{publ}{false}}{\end{raggedright}\baselineskip20pt\sloppy}
+
+%Publication style settings
+%\newenvironment{bmcformat}{\fussy\setboolean{publ}{true}}{\fussy}
+
+
+
+% Begin ...
 \begin{document}
-\firstpage{1}
+\begin{bmcformat}
 
-\title[Wormtable]{Wormtable: A data structure for genome scale data}
-\author[Kelleher \textit{et~al}]{Jerome Kelleher, Rob W. Ness 
-and Daniel L. Halligan}
-\address{
-University of Edinburgh,
-King's Buildings,
-West Mains Road,
-EH9 3JT,
-UK
-}
 
-\history{Received on XXXXX; revised on XXXXX; accepted on XXXXX}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                          %%
+%% Enter the title of your article here     %%
+%%                                          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\editor{Associate Editor: XXXXXXX}
+\title{Processing genome scale tabular data with Wormtable}
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                          %%
+%% Enter the authors here                   %%
+%%                                          %%
+%% Ensure \and is entered between all but   %%
+%% the last two authors. This will be       %%
+%% replaced by a comma in the final article %%
+%%                                          %%
+%% Ensure there are no trailing spaces at   %% 
+%% the ends of the lines                    %%     	
+%%                                          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\author{Jerome Kelleher\correspondingauthor%
+       \email{Jerome Kelleher\correspondingauthor - jerome.kelleher@ed.ac.uk}%
+      \and
+         Rob W Ness
+         \email{Rob W Ness - rob.ness@ed.ac.uk}%
+       and 
+         Daniel L Halligan%
+         \email{Daniel L Halligan - dan.halligan@gmail.com}%
+      }
+      
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                          %%
+%% Enter the authors' addresses here        %%
+%%                                          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\address{%
+    University of Edinburgh, King's Buildings, West Mains Road, %
+        EH9 3JT, UK}%
 
 \maketitle
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                          %%
+%% The Abstract begins here                 %%
+%%                                          %%
+%% The Section headings here are those for  %%
+%% a Research article submitted to a        %%
+%% BMC-Series journal.                      %%  
+%%                                          %%
+%% If your article is not of this type,     %%
+%% then refer to the Instructions for       %%
+%% authors on http://www.biomedcentral.com  %%
+%% and change the section headings          %%
+%% accordingly.                             %%   
+%%                                          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 \begin{abstract}
-\section{Summary:}
-Biological research generates large amounts of tabular data.
+        % Do not use inserted blank lines (ie \\) until main body of text.
+        \paragraph*{Background:} 
+      Biological research generates large amounts of tabular data.
 These tables are produced by 
 programs and exported to plain text files, which are often very large. 
 Researchers must process these files 
 line-by-line, parsing values encoded as text into native types so that 
 calculations may be done. This is a time consuming process.
 Furthermore, there is no simple means of indexing these files so that 
-rows containing particular values can be quickly found. We introduce a new 
+rows containing particular values can be quickly found. 
+        \paragraph*{Results:} 
+We introduce a new 
 data format and software library called wormtable, which provides efficient 
 access to tabular data in Python. Wormtable stores data in a compact
 binary format, provides random access to rows, and enables sophisticated
 indexing on columns within these tables. 
-\section{Availability:}
-Package available at 
-\href{http://pypi.python.org/pypi/wormtable}{http://pypi.python.org/pypi/wormtable}
 
-\section{Contact:} \href{jerome.kelleher@ed.ac.uk}{jerome.kelleher@ed.ac.uk}
+        \paragraph*{Conclusions:} Text for this section of the abstract \ldots
 \end{abstract}
 
-\section{Introduction}
+
+
+\ifthenelse{\boolean{publ}}{\begin{multicols}{2}}{}
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                          %%
+%% The Main Body begins here                %%
+%%                                          %%
+%% The Section headings here are those for  %%
+%% a Research article submitted to a        %%
+%% BMC-Series journal.                      %%  
+%%                                          %%
+%% If your article is not of this type,     %%
+%% then refer to the instructions for       %%
+%% authors on:                              %%
+%% http://www.biomedcentral.com/info/authors%%
+%% and change the section headings          %%
+%% accordingly.                             %% 
+%%                                          %%
+%% See the Results and Discussion section   %%
+%% for details on how to create sub-sections%%
+%%                                          %%
+%% use \cite{...} to cite references        %%
+%%  \cite{koon} and                         %%
+%%  \cite{oreg,khar,zvai,xjon,schn,pond}    %%
+%%  \nocite{smith,marg,hunn,advi,koha,mouse}%%
+%%                                          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+%%%%%%%%%%%%%%%%
+%% Background %%
+%%
+\section*{Background}
 Despite the ever increasing volumes of data being processed in bioinformatics,
 the methods used are almost entirely based on plain text files. Data is 
 usually encoded in lines of text, with each row consisting of a series of tab-delimited 
 values.
 These files are easy to view and interpret and can be processed on 
 any platform with the minimum of library dependencies. Using compression,
-text files can be quite compact, and Tabix~\citep{li11} provides  
+text files can be quite compact, and Tabix~\cite{li11} provides  
 fast retrieval of rows from arbitrary locations in the table.
 
 It is not sufficient, however, to simply store and retrieve data. To use data
@@ -98,7 +283,12 @@ provide powerful data management technologies, they are complex
 to use and maintain and are therefore rarely used for 
 static datasets.
 
-\section{Wormtable}
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Results and Discussion %%
+%%
+\section*{Results and Discussion}
+\subsection*{Wormtable}
 % what is wormtable?
 Wormtable (write-once read-many table) 
 is a new data format and software library designed specifically
@@ -126,11 +316,11 @@ variable length strings.
 % why do we use Berkeley DB?
 To take advantage of the data processing capabilities of database
 technologies without the overheads and disadvantages of relational databases,
-wormtable uses Berkeley DB~\citep{obs99} for row storage and indexing.
+wormtable uses Berkeley DB~\cite{obs99} for row storage and indexing.
 Berkeley DB is a free and open-source embedded database toolkit that provides a
 scalable key-value store. It is a mature and stable platform, 
 and is currently the most widely deployed database toolkit in the 
-world~\citep{sb12}. Berkeley DB is a highly modular library, providing the 
+world~\cite{sb12}. Berkeley DB is a highly modular library, providing the 
 means to define a very lightweight read-only database, without the 
 overheads and complexity of a relational database system.
 
@@ -142,16 +332,16 @@ provides several other administration utilities.
 Wormtable files are portable across operating systems 
 and processor architectures.
 
-\section{Examples}
+\subsection*{Examples}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
-as tab-delimited rows in a text file~\citep{da+11}.  
+as tab-delimited rows in a text file~\cite{da+11}.  
 To illustrate the advantages of wormtable, we
 converted a large 
 publicly available VCF file, produced as part of the
-Drosophila genetic reference panel~\citep{mr+12}, to wormtable format.
-This VCF\footnote{\href%
-{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}
-{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}}
+Drosophila genetic reference panel~\cite{mr+12}, to wormtable format.
+This VCF%\footnote{\href%
+%{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}
+%{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}}
 consists of 15GB of uncompressed text and contains data from the 
 whole genome over 6,146,611 rows.
 Using the included \texttt{vcf2wt} program
@@ -164,8 +354,8 @@ to represent the data in each column).
 Values are stored in wormtable in a portable binary format, so that no parsing is
 required when reading in rows. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset using wormtable and PyVCF\footnote{%
-\href{http://pyvcf.rtfd.org/}{http://pyvcf.rtfd.org/}}, 
+in the dataset using wormtable and PyVCF%\footnote{%
+%\href{http://pyvcf.rtfd.org/}{http://pyvcf.rtfd.org/}}, 
 a Python VCF parser.
 In this example we proceed 
 row-by-row, examining the REF and ALT columns and
@@ -195,7 +385,10 @@ consumed 66MB of storage space. Counting the number of
 transitions and transversions using this index required 
 less than a second.
 
-\section{Conclusions}
+
+
+%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusions}
 It is well known that parsing text files is a very inefficient process, 
 and binary file formats are preferable for this reason. The BCF format,
 for example, is a binary version of the VCF format discussed above which 
@@ -244,13 +437,79 @@ providing a conversion tool for the VCF format only. With community
 participation it may grow to support many other formats and become
 a powerful common platform for bioinformatics data analysis.
 
-\section*{Acknowledgement}
+
+
+  
+%%%%%%%%%%%%%%%%%%
+\section*{Methods}
+  \subsection*{Methods sub-heading for this section}
+    Text for this sub-section \ldots
+
+  \subsection*{Another methods sub-heading for this section}
+    Text for this sub-section \ldots
+
+  \subsection*{Yet another sub-heading for this section}
+    Text for this sub-section \ldots
+
+
+    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Authors contributions}
+    Text for this section \ldots
+
+    
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Acknowledgements}
+  \ifthenelse{\boolean{publ}}{\small}{}
 We would like to thank the Ashworth Codemonkeys for valuable feedback on earlier
-versions of wormtable.
-\paragraph{Funding\textcolon}  
-JK is supported by EPSRC grant EP/I013091/1.
+versions of wormtable.  JK is supported by EPSRC grant EP/I013091/1.
 
-\bibliographystyle{plainnat}
-\bibliography{paper}
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                  The Bibliography                       %%
+%%                                                         %%              
+%%  Bmc_article.bst  will be used to                       %%
+%%  create a .BBL file for submission, which includes      %%
+%%  XML structured for BMC.                                %%
+%%                                                         %%
+%%                                                         %%
+%%  Note that the displayed Bibliography will not          %% 
+%%  necessarily be rendered by Latex exactly as specified  %%
+%%  in the online Instructions for Authors.                %% 
+%%                                                         %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+{\ifthenelse{\boolean{publ}}{\footnotesize}{\small}
+ \bibliographystyle{bmc_article}  % Style BST file
+  \bibliography{paper.bib} }     % Bibliography file (usually '*.bib' ) 
+
+%%%%%%%%%%%
+
+\ifthenelse{\boolean{publ}}{\end{multicols}}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                               %%
+%% Figures                       %%
+%%                               %%
+%% NB: this is for captions and  %%
+%% Titles. All graphics must be  %%
+%% submitted separately and NOT  %%
+%% included in the Tex document  %%
+%%                               %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%
+%% Do not use \listoffigures as most will included as separate files
+
+
+\end{bmcformat}
 \end{document}
+
+
+
+
+
+
+

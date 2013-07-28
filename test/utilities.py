@@ -203,7 +203,6 @@ class TestSchemaGeneration(Vcf2wtTest):
         self.assertEqual(root.tag, "schema")
         shutil.rmtree(self._homedir)
         os.mkdir(self._homedir)
-
     
     def test_generator(self):
         self.__test_schema_generator(EXAMPLE_VCF)
