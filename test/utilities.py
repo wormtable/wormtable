@@ -209,27 +209,102 @@ class TestSchemaGeneration(Vcf2wtTest):
         self.__test_schema_generator(EXAMPLE_VCF)
         self.__test_schema_generator(SAMPLE_VCF)
 
-
-class TestSchemaBuild(VcfBuildTest):
+class WtadminTest(UtilityTest):
     """
-    Test the processing of schema files.
+    Class for testing wtadmin 
     """
 
     def setUp(self):
-        super(TestSchemaBuild, self).setUp()
-        # TODO FINISH
-        # Now, alter the schema
-        r = open(schema, "r")
-        w = open(alt_schema, "w") 
-        for l in r:
-            # remove CHROM and POS
-            if CHROM not in l and POS not in l:
-                w.write(l)
-        r.close()
-        w.close()
-        self.run_command([input_file, table , "-qs" + alt_schema]) 
-        with wt.open_table(table) as t:
-            self.assertRaises(KeyError, t.get_column, CHROM)
-            self.assertRaises(KeyError, t.get_column, POS)
+        super(WtadminTest, self).setUp()
+        vcf2wt.main([EXAMPLE_VCF, self._homedir, "-fq"])
+        self._table = wt.open_table(self._homedir)
+
+    def tearDown(self):
+        self._table.close()
+        super(WtadminTest, self).tearDown()
+
+    def run_dump(self, args=[]):
+        return self.run_command(["dump", self._homedir] + args) 
+
+    def run_add(self, args=[]):
+        return self.run_command(["add", self._homedir] + args) 
+    
+    def run_hist(self, args=[]):
+        return self.run_command(["hist", self._homedir] + args) 
+        
+    def get_program(self):
+        return wtadmin.main
+
+    def test_dump_all(self):
+        s = self.run_dump()         
+        n = 0
+        for line, r in zip(s.splitlines(), self._table):
+            n += 1
+            l = line.split()
+            # check the first few columns
+            self.assertEqual(int(l[0]), r[0])
+            self.assertEqual(l[1].encode(), r[1])
+            self.assertEqual(int(l[2]), r[2])
+        self.assertEqual(n, len(self._table))
+    
+    def test_dump_cols(self):
+        cols = ["CHROM", "REF", "ALT"]
+        s = self.run_dump(cols)         
+        c = self._table.cursor(cols)
+        n = 0
+        for line, r in zip(s.splitlines(), c): 
+            n += 1
+            l = line.split()
+            for u, v in zip(l, r):
+                self.assertEqual(u.encode(), v)
+        self.assertEqual(n, len(self._table))
+    
+    def test_dump_index(self):
+        cols = ["CHROM", "REF", "ALT"]
+        indexes = [wt.Index(self._table, col) for col in cols]
+        for i in indexes:
+            i.add_key_column(self._table.get_column(i.get_name()))
+            i.open("w")
+            i.build()
+            i.close()
+            i.open("r")
+            s = self.run_dump(["0", "--index=" + i.get_name()])         
+            c = self._table.cursor([0], i)
+            n = 0
+            for line, r in zip(s.splitlines(), c): 
+                n += 1
+                self.assertEqual(int(line), r[0])
+            self.assertEqual(n, len(self._table))
+            i.close()
+            i.delete() 
+    
+    def test_add_index(self):
+        cols = ["CHROM", "REF", "ALT"]
+        for c in cols:
+            s = self.run_add([c, "-q"])
+            self.assertEqual(s, "")
+            i = wt.Index(self._table, c)
+            self.assertTrue(i.exists())
+            i.open("r")
+            self.assertEqual([col.get_name() for col in i.key_columns()], [c]) 
+            i.close()
+     
+    def test_hist(self):
+        cols = ["CHROM", "REF", "ALT"]
+        for c in cols:
+            self.run_add([c, "-q"])
+            s = self.run_hist([c])
+            d1 = {}
+            for line in s.splitlines()[1:]:
+                l = line.split()
+                count = int(l[0])
+                key = l[1].encode()
+                d1[key] = count
+            d2 = {}
+            with self._table.open_index(c) as i:
+                for k, v in i.counter().items():
+                    d2[k] = v
+            self.assertEqual(d1, d2)
+            
 
 

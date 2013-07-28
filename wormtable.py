@@ -262,7 +262,7 @@ class Database(object):
         """
         return self.__ll_object
 
-    def _create_ll_object(self, path):
+    def _create_ll_object(self, build):
         """
         Returns a newly created instance of the low-level object that this 
         Database is a facade for.
@@ -306,7 +306,8 @@ class Database(object):
         """
         Returns the path of the file used to build the database.
         """
-        s = "_build_{0}_{1}.db".format(os.getpid(), self.get_db_name()) 
+        s = "_build_{0}_{1}{2}".format(os.getpid(), self.get_db_name(),
+                self.DB_SUFFIX) 
         return os.path.join(self.get_homedir(), s) 
 
     def get_db_file_size(self):
@@ -409,12 +410,12 @@ class Database(object):
         m = modes[mode]
         self.__open_mode = None
         self.__ll_object = None
-        path = self.get_db_path()
+        build = False 
         if m == WT_WRITE:
-            path = self.get_db_build_path()
+            build = True 
         else:
             self.read_metadata()
-        llo = self._create_ll_object(path)
+        llo = self._create_ll_object(build)
         llo.open(m)
         self.__ll_object = llo
         self.__open_mode = m 
@@ -466,6 +467,7 @@ class Table(Database):
     The main storage table class. 
     """
     DB_NAME = "table"
+    DATA_SUFFIX = ".dat" 
     PRIMARY_KEY_NAME = "row_id"
 
     def __init__(self, homedir):
@@ -476,13 +478,45 @@ class Table(Database):
         self.__total_row_size = 0
         self.__min_row_size = 0 
         self.__max_row_size = 0
-    
+   
+    def get_data_path(self):
+        """
+        Returns the path of the permanent data file. 
+        """
+        return os.path.join(self.get_homedir(), self.get_db_name() + 
+                self.DATA_SUFFIX)
+
+    def get_data_build_path(self):
+        """
+        Returns the path of the file used to build the database.
+        """
+        s = "_build_{0}_{1}{2}".format(os.getpid(), self.get_db_name(),
+                self.DATA_SUFFIX) 
+        return os.path.join(self.get_homedir(), s) 
+
+    def get_data_file_size(self):
+        """
+        Returns the size of the data file in bytes.    
+        """
+        statinfo = os.stat(self.get_data_path())
+        return statinfo.st_size 
 
     def finalise_build(self):
+        """
+        Finalise the build by moving the data and db files to their 
+        permanent values.
+        """
         super(Table, self).finalise_build()
-        new = self.get_db_path()
-        old = self.get_db_build_path()
-        os.rename(old + ".dat", new + ".dat") # FIXME
+        new = self.get_data_path()
+        old = self.get_data_build_path()
+        os.rename(old, new)
+    
+    def delete(self):
+        """
+        Deletes this table.
+        """
+        super(Table, self).delete()
+        os.unlink(self.get_data_path())
 
     def get_total_row_size(self):
         """
@@ -502,15 +536,19 @@ class Table(Database):
         """
         return self.__max_row_size
 
-    def _create_ll_object(self, path):
+    def _create_ll_object(self, build):
         """
-        Returns a new instance of _wormtable.Table using the specified 
-        path as the backing file.
-        """ 
-        filename = path.encode()
-        data_file = filename + b".dat"
+        Returns a new instance of _wormtable.Table using either the build 
+        or permanent locations for the db and data files.
+        """
+        if build:
+            db_file = self.get_db_build_path().encode() 
+            data_file = self.get_data_build_path().encode() 
+        else:
+            db_file = self.get_db_path().encode() 
+            data_file = self.get_data_path().encode() 
         ll_cols = [c.get_ll_object() for c in self.__columns]
-        t = _wormtable.Table(filename, data_file, ll_cols, 
+        t = _wormtable.Table(db_file, data_file, ll_cols, 
                 self.get_cache_size())
         return t
 
@@ -941,12 +979,14 @@ class Index(Database):
         self.__key_columns.append(key_column)
         self.__bin_widths.append(bin_width)
 
-    def _create_ll_object(self, path):
+    def _create_ll_object(self, build):
         """
-        Returns a new instance of _wormtable.Table using the specified 
-        path as the backing file.
+        Returns a new instance of _wormtable.Index using ether the build or 
+        permanent locations for the db.
         """ 
-        filename = path.encode() 
+        filename = self.get_db_path().encode() 
+        if build:
+            filename = self.get_db_build_path().encode() 
         cols = [c.get_position() for c in self.__key_columns]
         i = _wormtable.Index(self.__table.get_ll_object(), filename, 
                 cols, self.get_cache_size())

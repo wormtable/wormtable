@@ -1955,6 +1955,7 @@ out:
 
 static PyMemberDef Table_members[] = {
     {"db_filename", T_OBJECT_EX, offsetof(Table, db_filename), READONLY, "db_filename"},
+    {"data_filename", T_OBJECT_EX, offsetof(Table, data_filename), READONLY, "data_filename"},
     {"cache_size", T_ULONGLONG, offsetof(Table, cache_size), READONLY, "cache_size"},
     {"num_rows", T_ULONGLONG, offsetof(Table, num_rows), READONLY, "num_rows"},
     {"total_row_size", T_ULONGLONG, offsetof(Table, total_row_size), READONLY, "total_row_size"},

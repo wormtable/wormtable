@@ -1143,15 +1143,15 @@ class TestTable(unittest.TestCase):
     def setUp(self):
         fd, self._db_file = tempfile.mkstemp("-test.db", prefix=TEMPFILE_PREFIX) 
         os.close(fd)
+        fd, self._data_file = tempfile.mkstemp("-dat.db", prefix=TEMPFILE_PREFIX) 
+        os.close(fd)
     
     def tearDown(self):
         os.unlink(self._db_file)
+        os.unlink(self._data_file)
 
 
-#class TestTableInitialisation(TestTable):
-# TODO FIXME
-# This test was disabled as part of the data table hack. Update and fix!
-class DisabledTest(object):
+class TestTableInitialisation(TestTable):
     """ 
     Tests the initialisation code for the Table class to make sure everything 
     is checked correctly.
@@ -1160,25 +1160,26 @@ class DisabledTest(object):
         t = _wormtable.Table
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
-        f = b"file.db"
+        f1 = b"file.db"
+        f2 = b"file.dat"
         # check number of columns.
-        self.assertRaises(ValueError, t, f, [], 0) 
-        self.assertRaises(ValueError, t, f, [c0], 0) 
+        self.assertRaises(ValueError, t, f1, f2, [], 0) 
+        self.assertRaises(ValueError, t, f1, f2, [c0], 0) 
         # Make sure the row_id column is of the right type.
         for j in range(2, 5):
-            self.assertRaises(ValueError, t, f, [get_uint_column(1, j), c0], 0) 
+            self.assertRaises(ValueError, t, f1, f2, [get_uint_column(1, j), c0], 0) 
         for j in range(5):
-            self.assertRaises(ValueError, t, f, [get_int_column(1, j), c0], 0) 
-            self.assertRaises(ValueError, t, f, [get_float_column(4, j), c0], 0) 
-            self.assertRaises(ValueError, t, f, [get_char_column(j), c0], 0) 
+            self.assertRaises(ValueError, t, f1, f2, [get_int_column(1, j), c0], 0) 
+            self.assertRaises(ValueError, t, f1, f2, [get_float_column(4, j), c0], 0) 
+            self.assertRaises(ValueError, t, f1, f2, [get_char_column(j), c0], 0) 
         # check for duplicate columns
         n = 10
-        self.assertRaises(ValueError, t, f, [c0, c0], 0) 
+        self.assertRaises(ValueError, t, f1, f2, [c0, c0], 0) 
         cols = [c1, c1] + [get_int_column(1, 1) for j in range(n)]
-        self.assertRaises(ValueError, t, f, [c0] + cols, 0) 
+        self.assertRaises(ValueError, t, f1, f2, [c0] + cols, 0) 
         for j in range(n):
             random.shuffle(cols) 
-            self.assertRaises(ValueError, t, f, [c0] + cols, 0) 
+            self.assertRaises(ValueError, t, f1, f2, [c0] + cols, 0) 
         def g(j):
             s = "c_{0}".format(j)
             return s.encode()
@@ -1189,7 +1190,7 @@ class DisabledTest(object):
             c = _wormtable.Column(g(j), b"", _wormtable.WT_UINT, 1, 1) 
             cp = cols + [c]
             random.shuffle(cp)
-            self.assertRaises(ValueError, t, f, cp, 0) 
+            self.assertRaises(ValueError, t, f1, f2, cp, 0) 
 
 
     def test_parameters(self):
@@ -1200,12 +1201,12 @@ class DisabledTest(object):
         self.assertRaises(TypeError, t, None, None, None) 
         self.assertRaises(TypeError, t, [], [], 0) 
         self.assertRaises(TypeError, t, b"", {}, 0) 
-        f = b"file.db"
-        self.assertRaises(TypeError, t, f, [None, None], 0) 
-        self.assertRaises(TypeError, t, f, [None, c0], 0) 
-        self.assertRaises(TypeError, t, f, [c1, ""], 0) 
-        self.assertRaises(TypeError, t, [], [c0, c1], 0) 
-        self.assertRaises(TypeError, t, TypeError, [c0, c1], 0) 
+        f1 = b"file.db"
+        self.assertRaises(TypeError, t, f1, f1, [None, None], 0) 
+        self.assertRaises(TypeError, t, f1, f1, [None, c0], 0) 
+        self.assertRaises(TypeError, t, f1, f1, [c1, ""], 0) 
+        self.assertRaises(TypeError, t, [], f1, [c0, c1], 0) 
+        self.assertRaises(TypeError, t, TypeError, [], [c0, c1], 0) 
     
 
     def test_column_limits(self):
@@ -1213,20 +1214,23 @@ class DisabledTest(object):
         See if we correctly catch an impossibly large column spec.
         """
 
-        f = self._db_file.encode()
+        f1 = self._db_file.encode()
+        f2 = self._data_file.encode()
         cols = [get_uint_column(8, 1) for k in range(MAX_ROW_SIZE // 8)]
         # This should be fine
-        t = _wormtable.Table(f, cols, 0)
+        t = _wormtable.Table(f1, f2, cols, 0)
         cols += [get_uint_column(1, 1)]
-        self.assertRaises(WormtableError, _wormtable.Table, f, cols, 0)
+        self.assertRaises(WormtableError, _wormtable.Table, f1, f2, cols, 0)
 
     def test_open(self):
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
-        f = self._db_file.encode()
+        f1 = self._db_file.encode()
+        f2 = self._data_file.encode()
         cache_size = 64 * 1024
-        t = _wormtable.Table(f, [c0, c1], cache_size) 
-        self.assertEqual(f, t.filename)
+        t = _wormtable.Table(f1, f2, [c0, c1], cache_size) 
+        self.assertEqual(f1, t.db_filename)
+        self.assertEqual(f2, t.data_filename)
         self.assertEqual(cache_size, t.cache_size)
         self.assertEqual(2, t.fixed_region_size)
         # Try bad mode values.
@@ -1243,9 +1247,10 @@ class DisabledTest(object):
     def test_close(self):
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
-        f = self._db_file.encode()
+        f1 = self._db_file.encode()
+        f2 = self._data_file.encode()
         cache_size = 64 * 1024
-        t = _wormtable.Table(f, [c0, c1], cache_size) 
+        t = _wormtable.Table(f1, f2, [c0, c1], cache_size) 
         for j in range(10):
             self.assertRaises(WormtableError, t.close) 
             t.open(WT_WRITE)
@@ -1259,8 +1264,9 @@ class DisabledTest(object):
         c0 = get_uint_column(1, 1)
         c1 = get_uint_column(1, 1)
         c2 = get_uint_column(1, 1)
-        f = self._db_file.encode()
-        t = _wormtable.Table(f, [c0, c1, c2], 0)
+        f1 = self._db_file.encode()
+        f2 = self._data_file.encode()
+        t = _wormtable.Table(f1, f2, [c0, c1, c2], 0)
         t.open(WT_WRITE)
         n = 10
         for j in range(n):

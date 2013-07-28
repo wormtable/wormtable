@@ -464,8 +464,6 @@ class ProgramRunner(object):
             self.__writer.append(r) 
         self.__reader.close()
         self.__reader = None
-        if not self.__quiet:
-            print("Flushing cache; this may take some time...")
         self.__writer.close()
         self.__writer = None
 
@@ -544,8 +542,8 @@ def main(args=None):
     g.add_argument("--schema", "-s", default=None,
         help="""Use schema from the file SCHEMA rather than default 
                 generated schema""")
-    args = parser.parse_args(args)
-    runner = ProgramRunner(args) 
+    parsed_args = parser.parse_args(args)
+    runner = ProgramRunner(parsed_args) 
     try:
         runner.run()
     finally:

@@ -126,7 +126,9 @@ class ListRunner(ProgramRunner):
         # print a summary of the table first
         fmt = "{0:<20}:{1:>15}"
         print(fmt.format("rows", n))
-        print(fmt.format("file size", 
+        print(fmt.format("data file size", 
+            self.format_size(t.get_data_file_size())))
+        print(fmt.format("db file size", 
             self.format_size(t.get_db_file_size())))
         print(fmt.format("minimum row size", 
             self.format_size(t.get_min_row_size())))
@@ -264,7 +266,6 @@ class AddRunner(ProgramRunner):
         self._index.build(f, max(1, int(n / 1000)))
         if not self._quiet:
             monitor.finish()
-            print("Flushing cache; this may take some time...")
 
     def cleanup(self):
         if self._index is not None:
@@ -373,7 +374,7 @@ def add_colspec_argument(parser):
         """)   
 
 
-def main():
+def main(cmdline_args=None):
     prog_description = "Wormtable administration program."
     parser = argparse.ArgumentParser(description=prog_description) 
     subparsers = parser.add_subparsers(title='subcommands',)
@@ -452,7 +453,7 @@ def main():
     # Set signal handler for SIGPIPE to quietly kill the program.
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     
-    args = parser.parse_args()
+    args = parser.parse_args(cmdline_args)
     if "runner" not in args:
         parser.print_help()
     else:
