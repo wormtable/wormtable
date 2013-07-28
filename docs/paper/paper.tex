@@ -98,10 +98,10 @@
  
 
 %Review style settings
-\newenvironment{bmcformat}{\begin{raggedright}\baselineskip20pt\sloppy\setboolean{publ}{false}}{\end{raggedright}\baselineskip20pt\sloppy}
+%\newenvironment{bmcformat}{\begin{raggedright}\baselineskip20pt\sloppy\setboolean{publ}{false}}{\end{raggedright}\baselineskip20pt\sloppy}
 
 %Publication style settings
-%\newenvironment{bmcformat}{\fussy\setboolean{publ}{true}}{\fussy}
+\newenvironment{bmcformat}{\fussy\setboolean{publ}{true}}{\fussy}
 
 
 
@@ -116,7 +116,7 @@
 %%                                          %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\title{Processing genome scale tabular data with Wormtable}
+\title{Processing genome scale tabular data with wormtable}
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                          %%
@@ -190,7 +190,7 @@ access to tabular data in Python. Wormtable stores data in a compact
 binary format, provides random access to rows, and enables sophisticated
 indexing on columns within these tables. 
 
-        \paragraph*{Conclusions:} Text for this section of the abstract \ldots
+        \paragraph*{Conclusions:} \emph{ Conclusions, brief summary and potential implications. }
 \end{abstract}
 
 
@@ -226,12 +226,18 @@ indexing on columns within these tables.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-
-
 %%%%%%%%%%%%%%%%
 %% Background %%
 %%
-\section*{Background}
+\section*{Background} 
+
+\emph{The Background section should be written in a
+way that is accessible to researchers without specialist knowledge in
+that area and must clearly state - and, if helpful, illustrate - the
+background to the research and its aims. It should clearly described the
+relevant context and the specific issue which the software described is
+intended to address.}
+
 Despite the ever increasing volumes of data being processed in bioinformatics,
 the methods used are almost entirely based on plain text files. Data is 
 usually encoded in lines of text, with each row consisting of a series of tab-delimited 
@@ -283,12 +289,13 @@ provide powerful data management technologies, they are complex
 to use and maintain and are therefore rarely used for 
 static datasets.
 
- 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Results and Discussion %%
+%% Implementation 
 %%
-\section*{Results and Discussion}
-\subsection*{Wormtable}
+\section*{Implementation}
+\emph{This should include a description of the overall architecture of the software implementation, 
+along with details of any critical issues and how they were addressed.
+}
 % what is wormtable?
 Wormtable (write-once read-many table) 
 is a new data format and software library designed specifically
@@ -332,6 +339,23 @@ provides several other administration utilities.
 Wormtable files are portable across operating systems 
 and processor architectures.
 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Results and Discussion %%
+%%
+\section*{Results and Discussion}
+
+\emph{The Results and Discussion may be combined into a single section or
+presented separately. They may also be broken into subsections with
+short, informative headings. In any case what should be described is the
+functionality of the software together with data on how its performance
+and functionality compare with and improve on functionally similar
+existing software. There should then be a discussion of the intended
+use of the software, and the benefits that are envisioned together,
+if possible, with an outline for the planned future development of
+new features.}
+
 \subsection*{Examples}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
 as tab-delimited rows in a text file~\cite{da+11}.  
@@ -339,7 +363,8 @@ To illustrate the advantages of wormtable, we
 converted a large 
 publicly available VCF file, produced as part of the
 Drosophila genetic reference panel~\cite{mr+12}, to wormtable format.
-This VCF%\footnote{\href%
+This VCF\cite{freeze.vcf}
+%\footnote{\href%
 %{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}
 %{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}}
 consists of 15GB of uncompressed text and contains data from the 
@@ -354,8 +379,7 @@ to represent the data in each column).
 Values are stored in wormtable in a portable binary format, so that no parsing is
 required when reading in rows. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset using wormtable and PyVCF%\footnote{%
-%\href{http://pyvcf.rtfd.org/}{http://pyvcf.rtfd.org/}}, 
+in the dataset using wormtable and PyVCF~\cite{pyvcf}
 a Python VCF parser.
 In this example we proceed 
 row-by-row, examining the REF and ALT columns and
@@ -389,6 +413,10 @@ less than a second.
 
 %%%%%%%%%%%%%%%%%%%%%%
 \section*{Conclusions}
+
+\emph{This should state clearly the main conclusions of the article and give a clear 
+explanation of the importance and relevance of the software.}
+
 It is well known that parsing text files is a very inefficient process, 
 and binary file formats are preferable for this reason. The BCF format,
 for example, is a binary version of the VCF format discussed above which 
@@ -441,23 +469,20 @@ a powerful common platform for bioinformatics data analysis.
 
   
 %%%%%%%%%%%%%%%%%%
-\section*{Methods}
-  \subsection*{Methods sub-heading for this section}
-    Text for this sub-section \ldots
-
-  \subsection*{Another methods sub-heading for this section}
-    Text for this sub-section \ldots
-
-  \subsection*{Yet another sub-heading for this section}
-    Text for this sub-section \ldots
-
+\section*{Availability and requirements}
+\paragraph{Project name:} Wormtable.
+\paragraph{Project home page:}\url{https://pypi.python.org/pypi/wormtable}
+\paragraph{Operating system(s):} POSIX.
+\paragraph{Programming language:} C, Python.
+\paragraph{Other requirements:} Berkeley DB 4.8 or later.
+\paragraph{License:} GNU GPLv3+.
+\paragraph{Any restrictions to use by non-academics:} None.
 
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{Authors contributions}
     Text for this section \ldots
 
-    
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{Acknowledgements}
