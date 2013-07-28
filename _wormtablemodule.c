@@ -2142,8 +2142,11 @@ Table_open(Table* self, PyObject *args)
         handle_io_error();
         goto out;
     }
-
-
+    if (setvbuf(self->data_file, NULL, _IOFBF, 1024 * 1024) != 0) {
+        handle_io_error();
+        goto out;
+    }
+    
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
