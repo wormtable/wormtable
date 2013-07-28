@@ -108,13 +108,21 @@ class VCFReader(object):
         if vcf_file == '-':
             self.__input_file = sys.stdin
             if sys.version_info[:2] >= (3, 1):
-                self.__input_file = sys.stdin.detach()
+                try:
+                    self.__input_file = sys.stdin.buffer
+                except AttributeError:
+                    # When we're testing, we replace stdin with an ordinary
+                    # file. This does not support buffer, but is also not 
+                    # needed so we can skip this step
+                    pass
             self.__progress_monitor = None
             self.__input_file_size = None
             self.__progress_file = None
         else:
             if vcf_file.endswith(".gz"):
                 # Detect broken GZIP handling in 2.7/3.2 and others and abort
+                # TODO this has been fixed upstream and can be removed at 
+                # some point.
                 f = gzip.open(vcf_file, "rb")
                 try:
                     s = f.readline()

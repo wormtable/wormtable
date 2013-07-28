@@ -29,6 +29,8 @@ import tempfile
 import shutil
 import os.path
 import gzip
+import sys
+import io
 from xml.etree import ElementTree
 
 EXAMPLE_VCF ="test/data/example.vcf"
@@ -52,12 +54,26 @@ class UtilityTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self._homedir)
 
-    def run_command(self, options=[]):
+    def run_command(self, options=[], stdin=None):
         """
         Runs the command and stores the output and exit status.
         """
-        self.get_program()(options)
-      
+        if stdin is not None:
+            sys.stdin = stdin
+        try:
+            # Ugly workaround for Python2/3 behaviour
+            if sys.version_info[0] == 2:
+                import StringIO
+                sys.stdout = StringIO.StringIO()
+            else:
+                sys.stdout = io.StringIO()
+            self.get_program()(options)
+            ret = sys.stdout.getvalue()
+        finally: 
+            sys.stdin = sys.__stdin__ 
+            sys.stdout = sys.__stdout__
+        return ret
+
     def assert_tables_equal(self, t1, t2):
         """
         Compare the specified tables row-by-row and verify that they are 
@@ -149,12 +165,26 @@ class TestInputMethods(Vcf2wtTest):
         shutil.rmtree(self._homedir)
         os.mkdir(self._homedir)
 
+    def __test_stdin_input(self, input_file):
+        to = os.path.join(self._homedir, "original")
+        ts = os.path.join(self._homedir, "stdin")
+        self.run_command([input_file, to, "-q"]) 
+        with open(input_file, "rb") as f:
+            s = self.run_command(["-", ts], stdin=f) 
+        with wt.open_table(to) as t1:
+            with wt.open_table(ts) as t2:
+                self.assert_tables_equal(t1, t2)
+        shutil.rmtree(self._homedir)
+        os.mkdir(self._homedir)
+
+
     def test_gzip(self):
         self.__test_gzipped_input(EXAMPLE_VCF)
         self.__test_gzipped_input(SAMPLE_VCF)
     
     def test_stdin(self):
-        self.assertTrue(False, "not implemented yet")
+        self.__test_stdin_input(EXAMPLE_VCF) 
+        self.__test_stdin_input(SAMPLE_VCF) 
 
 
 class TestSchemaGeneration(Vcf2wtTest):
