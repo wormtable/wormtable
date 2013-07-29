@@ -296,6 +296,7 @@ static datasets.
 \emph{This should include a description of the overall architecture of the software implementation, 
 along with details of any critical issues and how they were addressed.
 }
+
 % what is wormtable?
 Wormtable (write-once read-many table) 
 is a new data format and software library designed specifically
@@ -314,11 +315,14 @@ compact binary format designed specifically for biological applications.
 Each row consists of a fixed number of columns, and each column 
 holds either a fixed or variable number of elements of a fixed type and size.
 Wormtable currently supports signed and unsigned integers, 
-floating point and character data. To ensure that values are 
-stored as compactly as possible, integer sizes can range from  
-$1$ to $8$ bytes. The standard single and double precision 
-floating point values are also supported, along with fixed and 
-variable length strings.
+floating point and character data. To allow data to be stored as 
+efficiently as possible, wormtable supports a wide range of 
+type sizes: integers range from one to eight bytes long,
+and IEEE half, single and double precision floating point 
+are supported. Fixed and variable length character strings 
+are also supported.
+
+% Tables
 
 % why do we use Berkeley DB?
 To take advantage of the data processing capabilities of database
@@ -331,6 +335,8 @@ world~\cite{sb12}. Berkeley DB is a highly modular library, providing the
 means to define a very lightweight read-only database, without the 
 overheads and complexity of a relational database system.
 
+% Indexes
+
 In wormtable, each table corresponds to a directory in the file system
 which is used to store the table, indexes and metadata.
 Indexes over arbitrary combinations of columns are supported, 
@@ -339,12 +345,13 @@ provides several other administration utilities.
 Wormtable files are portable across operating systems 
 and processor architectures.
 
-
+% Layout & implementation.
+Each table corresponds to a single directory in the file system.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Results and Discussion %%
 %%
-\section*{Results and Discussion}
+\section*{Results}
 
 \emph{The Results and Discussion may be combined into a single section or
 presented separately. They may also be broken into subsections with
@@ -356,6 +363,8 @@ use of the software, and the benefits that are envisioned together,
 if possible, with an outline for the planned future development of
 new features.}
 
+\subsection{API}
+
 \subsection*{Examples}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
 as tab-delimited rows in a text file~\cite{da+11}.  
@@ -364,9 +373,6 @@ converted a large
 publicly available VCF file, produced as part of the
 Drosophila genetic reference panel~\cite{mr+12}, to wormtable format.
 This VCF\cite{freeze.vcf}
-%\footnote{\href%
-%{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}
-%{ftp://ftp.hgsc.bcm.edu/DGRP/freeze2\_Feb\_2013/vcf\_files/freeze2.vcf.gz}}
 consists of 15GB of uncompressed text and contains data from the 
 whole genome over 6,146,611 rows.
 Using the included \texttt{vcf2wt} program
@@ -410,13 +416,7 @@ transitions and transversions using this index required
 less than a second.
 
 
-
-%%%%%%%%%%%%%%%%%%%%%%
-\section*{Conclusions}
-
-\emph{This should state clearly the main conclusions of the article and give a clear 
-explanation of the importance and relevance of the software.}
-
+\section{Discussion}
 It is well known that parsing text files is a very inefficient process, 
 and binary file formats are preferable for this reason. The BCF format,
 for example, is a binary version of the VCF format discussed above which 
@@ -458,13 +458,28 @@ Together, these advantages of increased performance and reduced
 code complexity can substantially increase a researcher's 
 productivity and ability to explore their data.
 
-% If we get some help, it could be pretty awesome...
-Wormtable is an open and collaborative project seeking feedback and 
-contributors. The project is in its early stages, currently 
-providing a conversion tool for the VCF format only. With community
-participation it may grow to support many other formats and become
-a powerful common platform for bioinformatics data analysis.
+The library supports efficient access to any data stored in 
+wormtable format, but there is currently a conversion tool for
+the VCF format only. The most important aspect of future development 
+is to develop tools to convert other tabular formats such as 
+PSL, GFF, and SAM to wormtable format [Dan, Rob: does this make sense?
+are there other formats we should chuck in here?]. Since the conversion 
+tool can be written entirely in Python this is not a difficult task.
 
+Other probable directions for future development of wormtable would
+be to incorporate BGZF compression~\cite{li11}, allowing for smaller
+files with efficient random access; to develop a 
+C library and bindings for other popular languages such as 
+Perl and R; and to generally enrich the API with features useful 
+to the community. 
+Wormtable is an open and collaborative project, which would welcome 
+feedback and contributions from the community 
+
+%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusions}
+
+\emph{This should state clearly the main conclusions of the article and give a clear 
+explanation of the importance and relevance of the software.}
 
 
   
