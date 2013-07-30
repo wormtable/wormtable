@@ -98,10 +98,10 @@
  
 
 %Review style settings
-%\newenvironment{bmcformat}{\begin{raggedright}\baselineskip20pt\sloppy\setboolean{publ}{false}}{\end{raggedright}\baselineskip20pt\sloppy}
+\newenvironment{bmcformat}{\begin{raggedright}\baselineskip20pt\sloppy\setboolean{publ}{false}}{\end{raggedright}\baselineskip20pt\sloppy}
 
 %Publication style settings
-\newenvironment{bmcformat}{\fussy\setboolean{publ}{true}}{\fussy}
+%\newenvironment{bmcformat}{\fussy\setboolean{publ}{true}}{\fussy}
 
 
 
@@ -183,14 +183,18 @@ line-by-line, parsing values encoded as text into native types so that
 calculations may be done. This is a time consuming process.
 Furthermore, there is no simple means of indexing these files so that 
 rows containing particular values can be quickly found. 
-        \paragraph*{Results:} 
+\paragraph*{Results:} 
 We introduce a new 
 data format and software library called wormtable, which provides efficient 
 access to tabular data in Python. Wormtable stores data in a compact
 binary format, provides random access to rows, and enables sophisticated
 indexing on columns within these tables. 
 
-        \paragraph*{Conclusions:} \emph{ Conclusions, brief summary and potential implications. }
+\paragraph*{Conclusions:} Using wormtable's simple API users 
+can process tables in a very high performance manner, allowing them
+much greater freedom to explore their data. 
+Since it is no longer necessary to parse complex files,
+data analysis code is also much simpler and less error prone. 
 \end{abstract}
 
 
@@ -258,7 +262,7 @@ many hours to complete.
 
 Another problem with tables stored text files is that it is difficult 
 to index the information within particular columns. 
-This means that most operations on the table require a complete scan 
+This means that most operations on a table require a complete scan 
 through the file. As a result, the only viable means of 
 working with a subset of the data
 is to create another file consisting of the subset of interest. 
@@ -307,46 +311,55 @@ be either written directly via the library, or converted
 from existing formats via command line tools. 
 Wormtable provides a simple Python API to access rows
 in the table, facilitating efficient and convenient access to 
-data.
+data. The core data manipulation and storage facilities 
+are written in C for efficiency.
 
 % Wormtable's binary row format 
-Data is stored using a  
+Data is stored in rows using a  
 compact binary format designed specifically for biological applications.
 Each row consists of a fixed number of columns, and each column 
 holds either a fixed or variable number of elements of a fixed type and size.
 Wormtable currently supports signed and unsigned integers, 
-floating point and character data. To allow data to be stored as 
-efficiently as possible, wormtable supports a wide range of 
-type sizes: integers range from one to eight bytes long,
-and IEEE half, single and double precision floating point 
-are supported. Fixed and variable length character strings 
-are also supported.
+floating point and character data. To store data as 
+compactly as possible, integer sizes range from one to eight bytes,
+and real numbers are stored as IEEE half, single, and double 
+precision floating point values. 
+Fixed and variable length character strings 
+are also supported. 
 
 % Tables
-
-% why do we use Berkeley DB?
-To take advantage of the data processing capabilities of database
-technologies without the overheads and disadvantages of relational databases,
-wormtable uses Berkeley DB~\cite{obs99} for row storage and indexing.
+Rows are stored sequentially in a data file, and the offset and length 
+of each row is stored in a Berkeley DB~\cite{obs99} database. 
+Thus, any given row can be found 
+by first looking up the database for its offset and length, and by then reading
+the required set of bytes from the data file. 
 Berkeley DB is a free and open-source embedded database toolkit that provides a
 scalable key-value store. It is a mature and stable platform, 
 and is currently the most widely deployed database toolkit in the 
-world~\cite{sb12}. Berkeley DB is a highly modular library, providing the 
-means to define a very lightweight read-only database, without the 
-overheads and complexity of a relational database system.
+world~\cite{sb12}. 
 
 % Indexes
+Besides random access to rows, wormtable also provides indexes
+over arbitrary combinations of columns. An index is a database in 
+which the keys are the values from the columns in question concatenated
+together, and the values are pointers to the original row. Indexes make
+many operations much more efficient, since we can directly seek to the 
+rows we are interested in without performing a full table scan. They also 
+provide a very efficient means of calculating a histogram for a given 
+set of columns.
 
-In wormtable, each table corresponds to a directory in the file system
-which is used to store the table, indexes and metadata.
-Indexes over arbitrary combinations of columns are supported, 
-and these are managed using the \texttt{wtadmin} program, which 
-provides several other administration utilities.
-Wormtable files are portable across operating systems 
-and processor architectures.
+% Layout 
+Each table corresponds to a directory in the file system
+which is used to store the data files, indexes and metadata.
+Files within a table's home directory are not intended to be 
+manipulated by users, and the \texttt{wtadmin} program is provided 
+to perform administration tasks such as adding and removing 
+indexes. This approach is 
+very flexible, since no centralised storage is required and 
+tables can be moved around and between systems at will.
+Tables are portable across operating systems and hardware
+architectures.
 
-% Layout & implementation.
-Each table corresponds to a single directory in the file system.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Results and Discussion %%
@@ -363,7 +376,34 @@ use of the software, and the benefits that are envisioned together,
 if possible, with an outline for the planned future development of
 new features.}
 
-\subsection{API}
+\subsection*{API}
+The principle goal of wormtable is to provide efficient access to data 
+using a simple interface. The \texttt{Table} class provides the main interface,
+and implements the standard Python sequence protocols. Efficient 
+iteration over rows is provided by the \texttt{cursor} method, 
+which takes as an argument the list of columns to read (similar to 
+a select list in SQL). Only the values for the columns 
+of interest are then retrieved, leading to considerable
+time savings.
+Providing an index as an argument to the \texttt{cursor} function
+results in the rows being visited in the order defined by the 
+index. The arguments \texttt{start} and \texttt{stop} 
+then stipulate the range of values we are interested in.
+There are several other useful classes and methods, but 
+the \texttt{cursor} method encapsulates the core functionality
+of wormtable: efficient iteration over rows.
+
+The interface is kept as
+simple and similar to the Python standard library as possible,
+to ensure that there is little difficulty in learning the API.
+Similarly, although one can readily imagine defining a 
+query language using these 
+primitive operations, we have deliberately avoided doing so. Adding 
+an SQL-like query language would greatly increase the complexity 
+of wormtable, and would only serve to raise the barrier to entry.
+Less experienced programmers 
+do not need to learn a query language to process data 
+in a very high performance manner.
 
 \subsection*{Examples}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
@@ -378,8 +418,8 @@ whole genome over 6,146,611 rows.
 Using the included \texttt{vcf2wt} program
 the VCF was converted to wormtable format 
 on a standard workstation with a single hard disk. The
-conversion required approximately 68 minutes, and the size of the resulting  
-wormtable file was 10.1GB (using the smallest type required
+conversion required approximately 69 minutes, and the size of the resulting  
+wormtable was 10GB (using the smallest type required
 to represent the data in each column).
 
 Values are stored in wormtable in a portable binary format, so that no parsing is
@@ -392,17 +432,18 @@ row-by-row, examining the REF and ALT columns and
 counting the transitions and transversions we encounter. 
 Using PyVCF this required approximately 126 minutes;
 the wormtable version required
-55 seconds. To compare against methods that are known to be extremely
+57 seconds. To compare against methods that are known to be extremely
 efficient, we repeated the same 
 example using the Unix tools \texttt{cut}, \texttt{grep} 
-and \texttt{awk},  which required 77 seconds. Both the
+and \texttt{awk},  which required 80 seconds. Both the
 Unix pipeline and wormtable were limited by the sequential read
 bandwidth of the hard drive, and would therefore be much 
 faster using modern solid state storage.
-It should be noted, however, that this simple task represents 
-something of a best case scenario for the Unix tools pipeline.
+It should be noted, however, that although Unix 
+pipelines are efficient, it is a difficult and error prone method 
+of processing data when more complex calculations are required.
 
-Another major advantage of wormtable is the ability to create 
+Another advantage of wormtable is the ability to create 
 an index over arbitrary combinations of columns within a table.
 Indexes make many operations much more efficient, as they provide 
 a way to quickly find particular rows and avoid the 
@@ -410,15 +451,15 @@ heavy cost of a full table scan.
 To illustrate this advantage, we repeated the example 
 of counting transitions and transversions using an index 
 on the REF and ALT columns.
-The index required 3m42s to build and 
+The index required 3m40s to build and 
 consumed 66MB of storage space. Counting the number of 
 transitions and transversions using this index required 
 less than a second.
 
 
-\section{Discussion}
+\section*{Discussion}
 It is well known that parsing text files is a very inefficient process, 
-and binary file formats are preferable for this reason. The BCF format,
+and binary file formats are preferable for this reason. BCF,
 for example, is a binary version of the VCF format discussed above which 
 is designed to avoid just this problem. There are significant difficulties,
 however, with having many different binary file formats for bioinformatics 
@@ -433,14 +474,47 @@ separately for several different file formats is surely
 unsustainable.
 
 Wormtable alleviates the need for these different formats and libraries,
-as it is flexible enough to store many different types of data. Python 
-is currently the only programming language supported, but a C library
-and bindings for other languages are planned. Wormtable is portable,
+as it is flexible enough to store many different types of data. Wormtable is portable,
 and has been tested on big- and little-endian platforms with 32 and 64
 bit word sizes, along with many operating system combinations. To 
 take advantage of the advanced data processing features of wormtable
 all that is required is a conversion program, a considerably simpler
 task than designing and supporting a custom binary file format.
+
+The library supports efficient access to any data stored in 
+wormtable format, but there is currently a conversion tool for
+the VCF format only. The most important aspect of future development 
+is to develop tools to convert other tabular formats such as 
+PSL, GFF, and SAM to wormtable format [Dan, Rob: does this make sense?
+are there other formats we should chuck in here?]. 
+
+Other probable directions for future development of wormtable 
+are to incorporate data file compression; to develop a 
+C library and bindings for other popular languages such as 
+Perl and R; and to generally enrich the API with features useful 
+to the community. It is difficult to predict the 
+precise direction of future development since this depends 
+on community involvement.  Wormtable is an open and 
+collaborative project, actively seeking feedback and 
+contributors.
+
+
+%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusions}
+\emph{This should state clearly the main conclusions of the article and give a clear 
+explanation of the importance and relevance of the software.}
+
+The volumes of data being produced and processed in bioinformatics are constantly 
+increasing, but the tools available to end users to 
+process this data are still mostly based on parsing plain text. This 
+approach is very inefficient, and leads to several undesirable outcomes.
+Firstly, and most obviously, a researcher's productivity is inevitably
+reduced by having to wait for several hours to see the result of a 
+simple calculation. There are also some less obvious consequences:
+code quality is reduced, since testing over the entire dataset is 
+infeasible, and it is much less likely that the effects of 
+changing arbitrary quality thresholds (for example) will be 
+systematically examined.
 
 Wormtable is not intended to replace text files as the universal 
 interchange format for biological data. 
@@ -457,29 +531,6 @@ to process data.
 Together, these advantages of increased performance and reduced 
 code complexity can substantially increase a researcher's 
 productivity and ability to explore their data.
-
-The library supports efficient access to any data stored in 
-wormtable format, but there is currently a conversion tool for
-the VCF format only. The most important aspect of future development 
-is to develop tools to convert other tabular formats such as 
-PSL, GFF, and SAM to wormtable format [Dan, Rob: does this make sense?
-are there other formats we should chuck in here?]. Since the conversion 
-tool can be written entirely in Python this is not a difficult task.
-
-Other probable directions for future development of wormtable would
-be to incorporate BGZF compression~\cite{li11}, allowing for smaller
-files with efficient random access; to develop a 
-C library and bindings for other popular languages such as 
-Perl and R; and to generally enrich the API with features useful 
-to the community. 
-Wormtable is an open and collaborative project, which would welcome 
-feedback and contributions from the community 
-
-%%%%%%%%%%%%%%%%%%%%%%
-\section*{Conclusions}
-
-\emph{This should state clearly the main conclusions of the article and give a clear 
-explanation of the importance and relevance of the software.}
 
 
   
