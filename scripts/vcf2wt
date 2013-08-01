@@ -92,13 +92,6 @@ FLAG = b"Flag"
 CHARACTER = b"Character"
 STRING = b"String"
 
-BROKEN_GZIP_MESSAGE = """
-An error occurred reading the input gzip file. This is probably due to a
-bug in recent versions of Python, resulting in an error when trying 
-to read BGZF files. See http://bugs.python.org/issue17666 
-To convert this file to wormtable, you must decompress it first using gunzip.
-"""
-
 class VCFReader(object):
     """
     A class for reading VCF files. 
@@ -471,7 +464,7 @@ class ProgramRunner(object):
         """
         Top level entry point.
         """ 
-        if not self.__schema:
+        if self.__schema is None:
             self.generate_schema()
         
         if os.path.exists(self.__destination):
@@ -512,7 +505,7 @@ class ProgramRunner(object):
             self.__writer.close()
 
 def main(args=None):
-    prog_description = "Convert VCF file to Wormtable format."
+    prog_description = "Convert a VCF file to Wormtable format."
     parser = argparse.ArgumentParser(description=prog_description) 
     parser.add_argument("SOURCE", 
         help="VCF file to convert (use '-' for STDIN)")   
