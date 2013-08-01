@@ -83,8 +83,7 @@ class GTFReader(wt.FileReader):
     """
     def rows(self):
         """
-        Returns an iterator over the rows in this GTF file. Each row is a 
-        dictionary mapping column positions to their encoded string values.
+        Returns an iterator over the rows in this GTF file. 
         """
         num_rows = 0
         input_file = self.get_input_file()

@@ -31,6 +31,7 @@ import os
 import sys
 import time
 import glob
+import gzip
 import collections
 from xml.dom import minidom
 from xml.etree import ElementTree
