@@ -905,22 +905,17 @@ class TestIndexIntegrity(object):
         for j, k in pairs:
             c1 = self._columns[j]
             c2 = self._columns[k]
-            # TODO: variable length columns don't sort the same way
-            # this might be a bug or it might not - this should be 
-            # verified and the correct sorting procedure used here.
-            if c1.num_elements != _wormtable.WT_VAR_1 and \
-                    c2.num_elements != _wormtable.WT_VAR_1:
-                fd, index_file = tempfile.mkstemp("-index-test.db", prefix=TEMPFILE_PREFIX)  
-                index = _wormtable.Index(self._database, index_file.encode(), [j, k], 
-                        cache_size)
-                os.close(fd)
-                index.open(WT_WRITE)
-                index.build()
-                index.close()
-                index_files.append(index_file)
-                indexes.append(index)
-                col_positions.append([j, k])
-                original_values.append([(row[j], row[k]) for row in self.rows])
+            fd, index_file = tempfile.mkstemp("-index-test.db", prefix=TEMPFILE_PREFIX)  
+            index = _wormtable.Index(self._database, index_file.encode(), [j, k], 
+                    cache_size)
+            os.close(fd)
+            index.open(WT_WRITE)
+            index.build()
+            index.close()
+            index_files.append(index_file)
+            indexes.append(index)
+            col_positions.append([j, k])
+            original_values.append([(row[j], row[k]) for row in self.rows])
 
         for index, original, cols in zip(indexes, original_values, col_positions):
             index.open(WT_READ)
@@ -1018,12 +1013,9 @@ class TestMultiColumnIndex(object):
         self._index_files = []
         # generate n indexes each with a random choice of 1,...,k columns.
         v = []
-        # Variable length columns sort differently so we leave them out.
-        # TODO fix this!
         for j in range(1, len(self._columns)):
             c = self._columns[j]
-            if c.num_elements != _wormtable.WT_VAR_1:
-                v.append(j)
+            v.append(j)
         max_columns = 5
         max_indexes = 10 
         for j in range(2, max_columns):

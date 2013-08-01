@@ -462,6 +462,41 @@ class BinnedIndexIntegrityTest(WormtableTest):
                 self.assertEqual(d[k], v)
             i.close()
 
+class StringIndexIntegrityTest(WormtableTest):
+    """
+    Tests the integrity of indexes over variable length length 
+    columns by checking some simple cases over strings.
+    """
+    
+    def test_unique_keys(self):
+        """
+        Test the simplest possible case where we have keys that 
+        cannot be distinguished if we concatentate the values
+        together.
+        """
+        t = wt.Table(self._homedir) 
+        t.add_id_column(1)
+        t.add_char_column("s1")
+        t.add_char_column("s2")
+        t.open("w")
+        t.append([None, b"A", b"AA"])
+        t.append([None, b"AA", b"A"])
+        t.close()
+        t.open("r")
+        i = wt.Index(t, "test")
+        i.add_key_column(t.get_column("s1"))
+        i.add_key_column(t.get_column("s2"))
+        i.open("w")
+        i.build()
+        i.close()
+        i.open("r")
+        c = i.counter()
+        self.assertEqual(c[(b"A", b"AA")], 1)
+        self.assertEqual(c[(b"AA", b"A")], 1)
+        t.close()
+ 
+
+
 class TableCursorTest(WormtableTest):
     """
     Tests the cursor over a table.

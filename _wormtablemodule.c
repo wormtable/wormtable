@@ -2618,6 +2618,8 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
             self->key_buffer_size += col->num_elements * col->element_size;
         }
     }
+    /* Add in space for the column separators */
+    self->key_buffer_size += self->num_columns;
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     if (self->key_buffer == NULL) {
         PyErr_NoMemory();
@@ -2733,7 +2735,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
     Column *col;
     uint32_t j;
     int len;
-    void *v = skey->data;
+    unsigned char *v = skey->data;
     skey->size = 0;
     for (j = 0; j < self->num_columns; j++) {
         col = self->table->columns[self->columns[j]]; 
@@ -2748,8 +2750,14 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         if (len < 0) {
             goto out;
         }
-        skey->size += len;
         v += len;
+        skey->size += len;
+        /* insert the separator between columns */
+        if (j < self->num_columns - 1) {
+            *v = 0;
+            v++;
+            skey->size++;
+        }
     }
     ret = 0;
 out: 
@@ -2770,7 +2778,7 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     Column *col = NULL;
     PyObject *elements = NULL;
     PyObject *v = NULL;
-    void *dest = buffer; 
+    unsigned char *dest = buffer; 
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
@@ -2802,6 +2810,12 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
         col->pack_elements(col, dest);
         dest += m;
         size += m;
+        /* insert the separator between columns */
+        if (j < n - 1) {
+            *dest = 0;
+            dest++;
+            size++; 
+        }
     }
     ret = size;
 out:
