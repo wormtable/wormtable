@@ -22,6 +22,7 @@ from __future__ import division
 
 import wormtable as wt
 import scripts.vcf2wt as vcf2wt
+import scripts.gtf2wt as gtf2wt
 import scripts.wtadmin as wtadmin
 
 import unittest
@@ -35,6 +36,8 @@ from xml.etree import ElementTree
 
 EXAMPLE_VCF ="test/data/example.vcf"
 SAMPLE_VCF ="test/data/sample.vcf"
+EXAMPLE_GTF ="test/data/sample_1.gtf"
+SAMPLE_GTF ="test/data/sample_2.gtf"
 
 # VCF fixed columns
 CHROM = "CHROM"
@@ -42,6 +45,20 @@ POS = "POS"
 ALT = "ALT" 
 REF = "REF"
 FILTER = "FILTER"
+
+# GTF columns
+SEQNAME = "seqname"
+SOURCE = "source"
+FEATURE = "feature"
+START = "start"
+END = "end"
+SCORE = "score"
+STRAND = "strand"
+FRAME = "frame"
+GENE_ID = "gene_id"
+TRANSCRIPT_ID = "transcript_id"
+
+
 
 class UtilityTest(unittest.TestCase):
     """
@@ -82,6 +99,37 @@ class UtilityTest(unittest.TestCase):
         for r1, r2 in zip(t1, t2):
             self.assertEqual(r1, r2)
 
+class TestInputMethods(object):
+    """
+    Test if the various input methods result in the same output file. 
+    """
+    def _test_gzipped_input(self, input_file):
+        original = os.path.join(self._homedir, "original")
+        zipped = os.path.join(self._homedir, "zipped")
+        self.run_command([input_file, original, "-q"]) 
+        zgtf = os.path.join(self._homedir, "gtf.gz") 
+        z = gzip.open(zgtf, "wb")
+        with open(input_file, "rb") as f:
+            z.write(f.read())
+        z.close()
+        self.run_command([zgtf, zipped, "-qf"]) 
+        with wt.open_table(original) as t1:
+            with wt.open_table(zipped) as t2:
+                self.assert_tables_equal(t1, t2)
+        shutil.rmtree(self._homedir)
+        os.mkdir(self._homedir)
+
+    def _test_stdin_input(self, input_file):
+        to = os.path.join(self._homedir, "original")
+        ts = os.path.join(self._homedir, "stdin")
+        self.run_command([input_file, to, "-q"]) 
+        with open(input_file, "rb") as f:
+            s = self.run_command(["-", ts], stdin=f) 
+        with wt.open_table(to) as t1:
+            with wt.open_table(ts) as t2:
+                self.assert_tables_equal(t1, t2)
+        shutil.rmtree(self._homedir)
+        os.mkdir(self._homedir)
 
 
 class Vcf2wtTest(UtilityTest):
@@ -145,46 +193,18 @@ class BuildSampleVCFTest(VcfBuildTest, Vcf2wtTest):
         return SAMPLE_VCF
 
 
-class TestInputMethods(Vcf2wtTest):
+class Vcf2wtTestInputMethods(Vcf2wtTest, TestInputMethods):
     """
     Test if the various input methods result in the same output file. 
     """
-    def __test_gzipped_input(self, input_file):
-        original = os.path.join(self._homedir, "original")
-        zipped = os.path.join(self._homedir, "zipped")
-        self.run_command([input_file, original, "-q"]) 
-        zvcf = os.path.join(self._homedir, "vcf.gz") 
-        z = gzip.open(zvcf, "wb")
-        with open(input_file, "rb") as f:
-            z.write(f.read())
-        z.close()
-        self.run_command([zvcf, zipped, "-qf"]) 
-        with wt.open_table(original) as t1:
-            with wt.open_table(zipped) as t2:
-                self.assert_tables_equal(t1, t2)
-        shutil.rmtree(self._homedir)
-        os.mkdir(self._homedir)
-
-    def __test_stdin_input(self, input_file):
-        to = os.path.join(self._homedir, "original")
-        ts = os.path.join(self._homedir, "stdin")
-        self.run_command([input_file, to, "-q"]) 
-        with open(input_file, "rb") as f:
-            s = self.run_command(["-", ts], stdin=f) 
-        with wt.open_table(to) as t1:
-            with wt.open_table(ts) as t2:
-                self.assert_tables_equal(t1, t2)
-        shutil.rmtree(self._homedir)
-        os.mkdir(self._homedir)
-
-
+    
     def test_gzip(self):
-        self.__test_gzipped_input(EXAMPLE_VCF)
-        self.__test_gzipped_input(SAMPLE_VCF)
+        self._test_gzipped_input(EXAMPLE_VCF)
+        self._test_gzipped_input(SAMPLE_VCF)
     
     def test_stdin(self):
-        self.__test_stdin_input(EXAMPLE_VCF) 
-        self.__test_stdin_input(SAMPLE_VCF) 
+        self._test_stdin_input(EXAMPLE_VCF) 
+        self._test_stdin_input(SAMPLE_VCF) 
 
 
 class TestSchemaGeneration(Vcf2wtTest):
@@ -305,5 +325,90 @@ class WtadminTest(UtilityTest):
                     d2[k] = v
             self.assertEqual(d1, d2)
             
+
+class Gtf2wtTest(UtilityTest):
+    """
+    Class for testing gtf2wt.
+    """
+
+    def get_program(self):
+        return gtf2wt.main
+    
+class GtfBuildTest(object):
+    """
+    Class that tests the build process for a given GTF file,
+    checking the consistency of the resulting table.
+    """
+    def setUp(self):
+        super(GtfBuildTest, self).setUp()
+        gtf = self.get_gtf()
+        self.run_command([gtf, self._homedir, "-qf"]) 
+        self._table = wt.open_table(self._homedir)
+        self._columns = [SEQNAME, SOURCE, FEATURE, START, END, SCORE, STRAND, 
+                FRAME, GENE_ID, TRANSCRIPT_ID]
+        # parse the file
+        self._num_rows = 0
+        f = open(gtf, "r")
+        self._rows = []
+        for l in f:
+            row = {}
+            tokens = l.split("\t")
+            row[SEQNAME] = tokens[0]
+            row[SOURCE] = tokens[1]
+            row[FEATURE] = tokens[2]
+            row[START] = int(tokens[3])
+            row[END] = int(tokens[4])
+            tok = tokens[5]
+            row[SCORE] = float(tok) if tok != "." else None 
+            row[STRAND] = tokens[6]
+            tok = tokens[7]
+            row[FRAME] = int(tok) if tok != "." else None 
+            attrs = tokens[8].split(";")
+            d = {}
+            for s in attrs:
+               spl = s.split()
+               if len(spl) > 0:
+                   d[spl[0]] = spl[1].strip("\"")
+            row[GENE_ID] = d[GENE_ID]
+            row[TRANSCRIPT_ID] = d[TRANSCRIPT_ID]
+            self._rows.append(row)
+            self._num_rows += 1
+  
+    def tearDown(self):
+        self._table.close()
+        super(GtfBuildTest, self).tearDown()
+
+    def test_length(self):
+        self.assertEqual(self._num_rows, len(self._table))
+
+    def test_columns(self):
+        for c in self._columns:
+            col = self._table.get_column(c)
+            self.assertEqual(col.get_name(), c)
+    
+    def test_parsing(self):
+        cursor = self._table.cursor(self._columns)
+        for r, d in zip(cursor, self._rows):
+            r2 = [d[c] for c in self._columns]
+            self.assertEqual(r, tuple(r2))
+        
+
+class BuildExampleGTFTest(GtfBuildTest, Gtf2wtTest):
+    def get_gtf(self):
+        return EXAMPLE_GTF
+
+class BuildSampleGTFTest(GtfBuildTest, Gtf2wtTest):
+    def get_gtf(self):
+        return SAMPLE_GTF
+
+class Gtf2wtTestInputMethods(Gtf2wtTest, TestInputMethods):
+
+    def test_gzip(self):
+        self._test_gzipped_input(EXAMPLE_GTF)
+        self._test_gzipped_input(SAMPLE_GTF)
+    
+    def test_stdin(self):
+        self._test_stdin_input(EXAMPLE_GTF) 
+        self._test_stdin_input(SAMPLE_GTF) 
 
 
