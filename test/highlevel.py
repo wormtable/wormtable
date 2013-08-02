@@ -48,19 +48,6 @@ def histogram(l, width):
             d[v] = 1
     return d
 
-class UITest(unittest.TestCase):
-    """
-    Test cases for the user interface for the command line utilities.
-    """
-    def test_argparse(self):
-        imported = False
-        try:
-           import argparse
-           imported = True
-        except ImportError:
-            pass
-        self.assertTrue(imported)
-
 class WormtableTest(unittest.TestCase):
     """
     Superclass of all wormtable tests. Create a homedir for working in
@@ -80,7 +67,7 @@ class WormtableTest(unittest.TestCase):
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
-        t.add_id_column(1)
+        t.add_id_column(2)
         t.add_uint_column("uint")
         t.add_int_column("int")
         t.add_float_column("float", size=4)
@@ -405,9 +392,8 @@ class IndexIntegrityTest(WormtableTest):
                 self.assertEqual(v, c2[key])
             # now test the cursor
             read_cols = self._table.columns()
-            c = wt.IndexCursor(i, read_cols)
             j = 0
-            for r1 in c:
+            for r1 in i.cursor(read_cols):
                 j = int(r1[0])
                 row = self._table[j]
                 r2 = tuple(row[col.get_position()] for col in read_cols)
@@ -462,6 +448,25 @@ class BinnedIndexIntegrityTest(WormtableTest):
                 self.assertEqual(d[k], v)
             i.close()
 
+class IndexCursorTest(object):
+    """
+    Runs some tests on cursors over the indexes. Assumes the 
+    existence of indexes in self._indexes.
+    """
+    # TODO: write test cases!
+    def test_cursor(self):
+        cols = self._table.columns()
+        for i in self._indexes:
+            i.open("r")
+            for r in i.cursor(cols):
+                pass
+            i.close()
+
+
+class BinnedIndexCursorTest(BinnedIndexIntegrityTest, IndexCursorTest):
+    pass
+
+
 class StringIndexIntegrityTest(WormtableTest):
     """
     Tests the integrity of indexes over variable length length 
@@ -507,13 +512,13 @@ class TableCursorTest(WormtableTest):
 
     def test_all_rows(self):
         t = self._table
-        c = wt.TableCursor(t, t.columns())
         j = 0
-        for r in c:
+        for r in t.cursor(t.columns()):
             self.assertEqual(t[j], r)
             j += 1
         self.assertEqual(len(t), j)
         # TODO more tests - permute the columns, etc.
+
 
     def test_range(self):
         t = self._table
@@ -523,12 +528,30 @@ class TableCursorTest(WormtableTest):
             stop = random.randint(start, len(t))
             v = [r[0] for r in t.cursor(["row_id"], start, stop)]
             self.assertEqual(v, [j for j in range(start, stop)])
+            v = [r[0] for r in t.cursor(["row_id"], start=start)]
+            self.assertEqual(v, [j for j in range(start, len(t))])
+            v = [r[0] for r in t.cursor(["row_id"], stop=stop)]
+            self.assertEqual(v, [j for j in range(stop)])
             c = t.cursor(cols, start, stop)
             k = start
             for r in c:
                 self.assertEqual(t[k], r)
                 k += 1
             self.assertEqual(k, stop)
+        
+    def test_empty(self):
+        t = self._table
+        cols = ["row_id"]
+        v = [r for r in t.cursor(cols, 0, 0)]
+        self.assertEqual(v, [])
+        v = [r for r in t.cursor(cols, 0, -1)]
+        self.assertEqual(v, [])
+        v = [r for r in t.cursor(cols, 1, 1)]
+        self.assertEqual(v, [])
+        v = [r for r in t.cursor(cols, len(t), len(t))]
+        self.assertEqual(v, [])
+        v = [r for r in t.cursor(cols, 2 * len(t), 3 * len(t))]
+        self.assertEqual(v, [])
 
 
 class FloatTest(WormtableTest):

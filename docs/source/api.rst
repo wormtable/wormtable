@@ -137,27 +137,26 @@ must build a tuple containing all of the columns in each row, even though most o
 not be used. It is also inconvenient: we must remember that the `name` column is in position 
 1, and the `born` column is in position 2. 
 
-A much more efficient and convenient approach is to use a :class:`Cursor`. Cursors
+A much more efficient and convenient approach is to use a *cursor*. Cursors
 provide a simple means of iterating over rows, and retrieving values for a given 
 set of columns. Repeating the example above::
 
-    >>> c = t.cursor(["name", "born"])
-    >>> [r for r in c]
+    >>> [r for r in t.cursor(["name", "born"])]
     [(b'John Cleese', 1939), (b'Terry Gilliam', 1940), (b'Eric Idle', 1943), (b'Terry Jones', 1942), (b'Michael Palin', 1943), (b'Graham Chapman', 1941)]
 
-The :meth:`Table.cursor` method returns a :class:`Cursor` object over the required columns. (Cursors are intended to
+The :meth:`Table.cursor` method returns an iterator over the rows in a table 
+for a list of columns. (Cursors are intended to
 be used over very large datasets, and so we would not usually construct a list of the rows.)
-Cursors also provide a way to restrict the rows that are retrieved from the table. This is done using the 
-:meth:`Cursor.set_min` and :meth:`Cursor.set_max` methods. For example, to only retrieve rows 1 to 3, we would
+The :meth:`Table.cursor` method also provides a way to restrict the rows
+retrieved from the table using the *start* and *stop* arguments (this is analogous to the 
+built in :func:`range` function).
+For example, to only retrieve rows 1 to 3, we would
 do the following (rows are zero-indexed in wormtable)::
 
-    >>> c = t.cursor(["name", "born"])
-    >>> c.set_min(1)
-    >>> c.set_max(4)
-    >>> [r for r in c]
+    >>> [r for r in t.cursor(["name", "born"], start=1, stop=4)]
     [(b'Terry Gilliam', 1940), (b'Eric Idle', 1943), (b'Terry Jones', 1942)]
 
-Note here that :meth:`Cursor.set_min` is *inclusive* and :meth:`Cursor.set_max` is *exclusive*.
+Note that *start* is **inclusive** and *stop* is **exclusive**.
 
 ##############
 Simple Indexes
@@ -190,7 +189,7 @@ automatically close indexes::
     # Index i is now closed and cannot be accessed
 
 Indexes sort the *keys* in the columns of interest, and map these keys to the rows
-of the table that they are found. To get the minimum and maximum keys from the
+of the table where they are found. To get the minimum and maximum keys from the
 index, we use the :meth:`Index.min_key` and :meth:`Index.max_key` methods::
 
     >>> i = t.open_index("writer")
@@ -199,9 +198,9 @@ index, we use the :meth:`Index.min_key` and :meth:`Index.max_key` methods::
 
 This tells us that the least productive Python has 25 writing credits on 
 IMDB, and the most has 60. This does not tell us *who* they are though. To 
-get information about other columns, we must use a :class:`Cursor`::
+get information about other columns, we must use a *cursor*::
 
-    >>> for r in t.cursor(["name", "writer"], i):
+    >>> for r in i.cursor(["name", "writer"]):
     ...     print(r)
     ... 
     (b'Terry Gilliam', 25)
@@ -211,17 +210,16 @@ get information about other columns, we must use a :class:`Cursor`::
     (b'Michael Palin', 58)
     (b'John Cleese', 60)
 
-When we provide an index as the second argument to the :meth:`Table.cursor` method, 
-this defines the *order* in which the rows are returned by the :class:`Cursor`
-object.
+Just like the :meth:`Table.cursor` method, :meth:`Index.cursor` iterates over 
+rows in the table for a selection of columns. The difference between the two 
+is that the *order* in which the rows are returned is the order defined by 
+the index. The *start* and *stop* arguments to the function are also now 
+in terms of index keys, and not row positions. This gives us a very flexible 
+method of obtaining rows from the table based on the *values* that they 
+contain.  For example, if we are only interested in the Pythons who have between 30 
+(inclusive) and 50 (exclusive) writing credits, we can write::
 
-If we are only interested in the Pythons who have between 30 (inclusive) and 50 (exclusive)
-writing credits, we can write::
-
-    >>> c = t.cursor(["name", "writer"], i)
-    >>> c.set_min(30)
-    >>> c.set_max(50)
-    >>> for r in c:
+    >>> for r in i.cursor(["name", "writer"], start=30, stop=50):
     ...     print(r)
     ... 
     (b'Eric Idle', 38)
@@ -270,7 +268,7 @@ we can make an index on the columns ``director`` and ``producer``, which we call
 ``director+producer``::
 
     >>> i = t.open_index("director+producer")
-    >>> for r in t.cursor(["name", "director", "producer"], i):
+    >>> for r in i.cursor(["name", "director", "producer"]):
     ...     print(r)
     ... 
     (b'Michael Palin', 0, 1)
@@ -302,13 +300,22 @@ with a given prefix::
     >>> i.max_key(0)
     (0, 43)
 
-The :meth:`Cursor.set_min` and :meth:`Cursor.set_max` methods also support this 
-flexible key prefixing::
+The *start* and *stop* arguments to the :meth:`Index.cursor` method 
+also support this flexible key prefixing. Suppose we wish to 
+find all the Pythons with at least 7 directorial credits::
 
-    >>> c = t.cursor(["name", "director", "producer"], i)
-    >>> c.set_min(7)
-    >>> [r for r in c]
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=7)
     [(b'Eric Idle', 7, 5), (b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
+
+We get the same answer if we specify 5 or less for the ``producer`` column::
+
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 0))
+    [(b'Eric Idle', 7, 5), (b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
+
+But, we lose Eric Idle if we require 6 or more production credits::
+
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 6))
+    [(b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
 
 
 .. _api-reference:
@@ -351,26 +358,6 @@ Module reference
 
     .. automethod:: get_column
 
-#####################
-:class:`Cursor` class
-#####################
-
-.. class:: Cursor
-
-    Cursors provide an efficient means of iterating over the rows in a table, 
-    retrieving a subset of the columns in the row. This is much more efficient 
-    that iterating over the table directly and retrieving the values of 
-    interest from the tuples returned because only the values that we are 
-    interested in are converted into Python values and passed back. 
-
-    Cursors are instantiated using the :meth:`Table.cursor` method
-    which provide the interface for choosing the columns that we
-    are interested in. Cursors also provide methods to set the 
-    maximum and minimum values of the row keys we wish to examine.
-
-    .. automethod:: Cursor.set_min
-
-    .. automethod:: Cursor.set_max
 
 ####################
 :class:`Index` class
@@ -383,6 +370,8 @@ Module reference
     from the columns in question together (the *keys*) and storing the mapping 
     of these keys to the rows in the table in which the key occurs.
 
+    .. automethod:: cursor
+    
     .. automethod:: Index.open
 
     .. automethod:: Index.close
