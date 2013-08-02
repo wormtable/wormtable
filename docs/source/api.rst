@@ -186,15 +186,15 @@ the `context manager <http://www.python.org/dev/peps/pep-0343/>`_ protocol to
 automatically close indexes::
 
     with t.open_index("writer") as i:
-        print(i.get_max())
+        print(i.max_key())
     # Index i is now closed and cannot be accessed
 
 Indexes sort the *keys* in the columns of interest, and map these keys to the rows
 of the table that they are found. To get the minimum and maximum keys from the
-index, we use the :meth:`Index.get_min` and :meth:`Index.get_max` methods::
+index, we use the :meth:`Index.min_key` and :meth:`Index.max_key` methods::
 
     >>> i = t.open_index("writer")
-    >>> (i.get_min(), i.get_max())
+    >>> (i.min_key(), i.max_key())
     (25, 60)
 
 This tells us that the least productive Python has 25 writing credits on 
@@ -286,20 +286,20 @@ column we then sort on the second column. Here, for example, we have Michael Pal
 Chapman and John Cleese have all directed 0 films. But since this is a compound index, 
 we then sort on the producer column, giving the ordering that we see.
 
-Since keys now contain values from multiple columns, the :meth:`Index.get_min` and 
-:meth:`Index.get_max` now return tuples::
+Since keys now contain values from multiple columns, the :meth:`Index.min_key` and 
+:meth:`Index.max_key` now return tuples::
 
-    >>> i.get_min()
+    >>> i.min_key()
     (0, 1)
-    >>> i.get_max()
+    >>> i.max_key()
     (18, 8)
 
 These are also more flexible now, however, as we can get the minimum and maximum keys 
 with a given prefix::
 
-    >>> i.get_min(7)
+    >>> i.min_key(7)
     (7, 5)
-    >>> i.get_max(0)
+    >>> i.max_key(0)
     (0, 43)
 
 The :meth:`Cursor.set_min` and :meth:`Cursor.set_max` methods also support this 
@@ -387,10 +387,12 @@ Module reference
 
     .. automethod:: Index.close
 
-    .. automethod:: Index.get_min
+    .. automethod:: Index.min_key
 
-    .. automethod:: Index.get_max
+    .. automethod:: Index.max_key
 
+    .. automethod:: Index.keys
+    
     .. automethod:: Index.counter
 
 #####################

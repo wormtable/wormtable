@@ -213,10 +213,10 @@ the sections on :ref:`performance tuning <performance-index>`.
 The wormtable module offers a number of methods to interact with an 
 :class:`Index` ::
 
-    >>> # Print the minimum and maximum value of an index
-    >>> position_index.get_min()
+    >>> # Print the minimum and maximum keys in an index
+    >>> position_index.min_key()
     14370
-    >>> position_index.get_max()
+    >>> position_index.max_key()
     1234567
     >>> # Use keys() to iterate through sorted value in the index
     >>> for k in position_index.keys():

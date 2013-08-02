@@ -860,7 +860,7 @@ class Table(Database):
             self.__column_name_map = {}
     
     
-    def cursor(self, columns, index=None):
+    def cursor(self, columns, start=None, stop=None, index=None):
         """
         Returns a cursor over the rows in this database, retrieving the specified 
         columns. If index is provided, the cursor will iterate over the rows in 
@@ -892,6 +892,10 @@ class Table(Database):
         else:
             index.verify_open(WT_READ)
             c = IndexCursor(index, cols)
+        if start is not None:
+            c.set_start(start)
+        if stop is not None:
+            c.set_stop(stop)
         return c
 
     def indexes(self):
@@ -1075,9 +1079,37 @@ class Index(Database):
         Returns an iterator over all the keys in this Index in sorted 
         order.
         """
+        self.verify_open(WT_READ)
         dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
         for k in dvi:
             yield self.translate_value(k)
+
+    
+    def min_key(self, *k):
+        """
+        Returns the smallest key greater than or equal to the specified 
+        prefix.
+        """
+        key = self.translate_key(k)
+        v = self.get_ll_object().get_min(key)
+        return self.translate_value(v) 
+
+    def max_key(self, *k):
+        """
+        Returns the largest index key less than the specified prefix. 
+        """
+        key = self.translate_key(k)
+        v = self.get_ll_object().get_max(key)
+        return self.translate_value(v) 
+
+    def counter(self):
+        """
+        Returns an IndexCounter object for this index. This provides an efficient 
+        method of iterating over the keys in the index.
+        """
+        self.verify_open(WT_READ)
+        return IndexCounter(self)
+    
 
     def translate_key(self, v):
         """
@@ -1105,32 +1137,7 @@ class Index(Database):
                 ret = v[0]
         return ret
 
-    def get_min(self, *k):
-        """
-        Returns the smallest index key greater than or equal to the specified 
-        prefix.
-        """
-        key = self.translate_key(k)
-        v = self.get_ll_object().get_min(key)
-        return self.translate_value(v) 
 
-    def get_max(self, *k):
-        """
-        Returns the largest index key less than the specified prefix. 
-        """
-        key = self.translate_key(k)
-        v = self.get_ll_object().get_max(key)
-        return self.translate_value(v) 
-
-    def counter(self):
-        """
-        Returns an IndexCounter object for this index. This provides an efficient 
-        method of iterating over the keys in the index.
-        """
-        self.verify_open(WT_READ)
-        return IndexCounter(self)
-    
- 
 class IndexCounter(collections.Mapping):
     """
     A counter for Indexes, based on the collections.Counter class. This class 
@@ -1190,11 +1197,11 @@ class TableCursor(Cursor):
         self._row_iterator = _wormtable.TableRowIterator(table.get_ll_object(), 
                 col_positions)
 
-    def set_min(self, v):
+    def set_start(self, v):
         if v < 0:
             raise ValueError("negative row_ids not supported")
         self._row_iterator.set_min(v)
-    def set_max(self, v):
+    def set_stop(self, v):
         if v < 0:
             raise ValueError("negative row_ids not supported")
         self._row_iterator.set_max(v)
@@ -1210,11 +1217,11 @@ class IndexCursor(Cursor):
         self._row_iterator = _wormtable.IndexRowIterator(
                 self.__index.get_ll_object(), col_positions)
     
-    def set_min(self, *v):
+    def set_start(self, *v):
         key = self.__index.translate_key(v)
         self._row_iterator.set_min(key)
     
-    def set_max(self, *v):
+    def set_stop(self, *v):
         key = self.__index.translate_key(v)
         self._row_iterator.set_max(key)
 

@@ -383,8 +383,8 @@ class IndexIntegrityTest(WormtableTest):
                 t = [ColumnValue(c, r) for c in cols for r in self._table] 
             else:
                 t = [tuple(ColumnValue(c, r) for c in cols) for r in self._table] 
-            self.assertEqual(i.get_min(), min(t)) 
-            self.assertEqual(i.get_max(), max(t)) 
+            self.assertEqual(i.min_key(), min(t)) 
+            self.assertEqual(i.max_key(), max(t)) 
             keys = [k for k in i.keys()]
             c1 = {}
             for k in t:
@@ -515,6 +515,20 @@ class TableCursorTest(WormtableTest):
         self.assertEqual(len(t), j)
         # TODO more tests - permute the columns, etc.
 
+    def test_range(self):
+        t = self._table
+        cols = [c.get_name() for c in t.columns()]
+        for j in range(10):
+            start = random.randint(0, len(t))
+            stop = random.randint(start, len(t))
+            v = [r[0] for r in t.cursor(["row_id"], start, stop)]
+            self.assertEqual(v, [j for j in range(start, stop)])
+            c = t.cursor(cols, start, stop)
+            k = start
+            for r in c:
+                self.assertEqual(t[k], r)
+                k += 1
+            self.assertEqual(k, stop)
 
 
 class FloatTest(WormtableTest):
