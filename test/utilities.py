@@ -288,7 +288,7 @@ class WtadminTest(UtilityTest):
             i.close()
             i.open("r")
             s = self.run_dump(["0", "--index=" + i.get_name()])         
-            c = self._table.cursor([0], i)
+            c = i.cursor([0])
             n = 0
             for line, r in zip(s.splitlines(), c): 
                 n += 1
@@ -371,7 +371,13 @@ class GtfBuildTest(object):
                    d[spl[0]] = spl[1].strip("\"")
             row[GENE_ID] = d[GENE_ID]
             row[TRANSCRIPT_ID] = d[TRANSCRIPT_ID]
-            self._rows.append(row)
+            # if the type is str, encode it.
+            r = {}
+            for k, v in row.items():
+                r[k] = v
+                if isinstance(v, str):
+                    r[k] = v.encode()
+            self._rows.append(r)
             self._num_rows += 1
   
     def tearDown(self):

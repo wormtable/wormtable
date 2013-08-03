@@ -95,12 +95,12 @@ class GTFReader(wt.FileReader):
         transcript_id_index = all_columns.index(TRANSCRIPT_ID)
         for line in input_file:
             row = list(empty_row)
-            tokens = line.split("\t")
+            tokens = line.split(b"\t")
             for j in range(num_fixed_cols):
                 if tokens[j] != MISSING_VALUE:
                     row[j] = tokens[j]
             # parse out the attributes
-            attrs = tokens[num_fixed_cols].split(";")
+            attrs = tokens[num_fixed_cols].split(b";")
             # GENE_ID and TRANSCRIPT_ID must be the first two attributes,
             # not necessarily in that order.
             for s in attrs[:2]:
@@ -110,7 +110,7 @@ class GTFReader(wt.FileReader):
                     index = gene_id_index
                 else:
                     index = transcript_id_index
-                row[index] = v.strip("\"") 
+                row[index] = v.strip(b"\"") 
             yield row 
             num_rows += 1
             if num_rows % update_rows == 0: 
