@@ -8,10 +8,11 @@ storing, processing and searching datasets of essentially unlimited
 size. A wormtable consists of a set of rows, each of which contains 
 values belonging to a fixed number of columns. Rows are encoded 
 in a custom binary format, designed to be flexible, compact and 
-portable. These rows are then stored on disc using Berkeley DB,
-a highly respected embedded database toolkit. Wormtable also 
+portable. Rows are stored in a data file, and the offsets and lengths
+of these rows are stored in a Berkeley DB database 
+to support efficient random access.  Wormtable also 
 supports efficient searching and retrieval of rows with particular
-values through the use of indexes.
+values through the use of indexes, also based on Berkeley DB.
 
 The Variant Call Format (VCF) is supported directly by wormtable
 through a command line conversion program, vcf2wt. There is also a
@@ -22,7 +23,8 @@ dump values and add, remove and view indexes.
 Documentation
 -------------
 
-Full documentation for ``wormtable`` is available at `<http://jeromekelleher.github.io/wormtable>`_.
+Full documentation for ``wormtable`` is available at 
+`<http://pythonhosted.org/wormtable>`_.
 
 ------------
 Installation
