@@ -40,7 +40,7 @@ import _wormtable
 
 __version__ = '0.1.0b2'
 TABLE_METADATA_VERSION = "0.1"
-INDEX_METADATA_VERSION = "0.1.1"
+INDEX_METADATA_VERSION = "0.1.2"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
@@ -641,11 +641,9 @@ class Table(Database):
         ret = None
         if isinstance(col_id, int):
             ret = self.__columns[col_id]
-        elif isinstance(col_id, str):
+        else:
             k = self.__column_name_map[col_id]
             ret = self.__columns[k]
-        else:
-            raise TypeError("column ids must be strings or integers")
         return ret
     
     def translate_columns(self, columns):
@@ -1220,66 +1218,6 @@ class IndexCounter(collections.Mapping):
         for v in dvi:
             n += 1
         return n
-
-class Cursor(object):
-    """
-    Superclass of Cursor objects. Subclasses are responsible for allocating 
-    an iterator.
-    """
-    def __iter__(self):
-        for r in self._row_iterator:
-            yield r
-
-    def set_min(self, *v):
-        """
-        Sets the minimum row key to retrieve to the specified value.
-        """
-        raise NotImplementedError
-
-    def set_max(self, *v):
-        """
-        Sets the maximum row key to retrieve to the specified value.
-        """
-        raise NotImplementedError
-
-class DELTableCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, table, columns):
-        self._columns = columns
-        col_positions = [c.get_position() for c in columns]
-        self._row_iterator = _wormtable.TableRowIterator(table.get_ll_object(), 
-                col_positions)
-
-    def set_start(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_min(v)
-    def set_stop(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_max(v)
-
-class DELIndexCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, index, columns):
-        self.__index = index
-        self._columns = columns
-        col_positions = [c.get_position() for c in columns]
-        self._row_iterator = _wormtable.IndexRowIterator(
-                self.__index.get_ll_object(), col_positions)
-    
-    def set_start(self, *v):
-        key = self.__index.key_to_ll(v)
-        self._row_iterator.set_min(key)
-    
-    def set_stop(self, *v):
-        key = self.__index.key_to_ll(v)
-        self._row_iterator.set_max(key)
-
 
 #
 # Utilities for the command line programs.

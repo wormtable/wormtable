@@ -500,6 +500,35 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertEqual(c[(b"AA", b"A")], 1)
         t.close()
  
+    def test_max_prefix(self):
+        """
+        Test the simplest possible case where we must get the maximum 
+        key for a given prefix.
+        """
+        t = wt.Table(self._homedir) 
+        t.add_id_column(1)
+        t.add_char_column("s1")
+        t.add_char_column("s2")
+        t.open("w")
+        t.append([None, b"A", b"A"])
+        t.append([None, b"A", b"AA"])
+        t.append([None, b"A", b"B"])
+        t.append([None, b"AA", b""])
+        t.append([None, b"B", b"A"])
+        t.close()
+        t.open("r")
+        i = wt.Index(t, "test")
+        i.add_key_column(t.get_column("s1"))
+        i.add_key_column(t.get_column("s2"))
+        i.open("w")
+        i.build()
+        i.close()
+        i.open("r")
+        self.assertEqual(i.max_key(), (b"B", b"A"))
+        self.assertEqual(i.max_key("A"), (b"A", b"B"))
+        self.assertEqual(i.max_key("AA"), (b"AA", b""))
+        t.close()
+ 
 
 
 class TableCursorTest(WormtableTest):

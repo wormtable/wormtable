@@ -332,11 +332,14 @@ class DumpRunner(ProgramRunner):
                 self._columns.append(c)
 
     def run(self):
-        cursor = self._table.cursor(self._columns, self._index)
-        if self._min_value is not None:
-            cursor.set_min(*self._min_value)
-        if self._max_value is not None:
-            cursor.set_max(*self._max_value)
+        start = self._min_value
+        stop = self._max_value
+        if self._index is None:
+            if start is None:
+                start = 0
+            cursor = self._table.cursor(self._columns, start, stop)
+        else:
+            cursor = self._index.cursor(self._columns, start, stop)
         for row in cursor:
             s = ""
             for c, v in zip(self._columns, row): 

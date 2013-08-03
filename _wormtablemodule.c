@@ -2753,11 +2753,9 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         v += len;
         skey->size += len;
         /* insert the separator between columns */
-        if (j < self->num_columns - 1) {
-            *v = 0;
-            v++;
-            skey->size++;
-        }
+        *v = 0;
+        v++;
+        skey->size++;
     }
     ret = 0;
 out: 
@@ -2766,19 +2764,20 @@ out:
 
 /* 
  * Reads the arguments and sets a key in the specified buffer, returning 
- * its length.
+ * its length. If increment is equal to 1, increment the key so that it
+ * is equal to the next key larger than the specified value.
  */
 static int 
-Index_set_key(Index *self, PyObject *args, void *buffer)
+Index_set_key(Index *self, PyObject *args, void *buffer, int increment)
 {
     int ret = -1;
     int j, m;
-    int size = 0;
+    int key_size = 0;
     Py_ssize_t n;
     Column *col = NULL;
     PyObject *elements = NULL;
     PyObject *v = NULL;
-    unsigned char *dest = buffer; 
+    unsigned char *key_buffer = buffer; 
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
@@ -2803,24 +2802,42 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
-        if (size + m > self->key_buffer_size) {
-            PyErr_Format(PyExc_SystemError, "Max key size exceeded."); 
+        if (key_size + m + 1 > self->key_buffer_size) {
+            PyErr_Format(PyExc_SystemError, "Max key key_size exceeded."); 
             goto out;
         }
-        col->pack_elements(col, dest);
-        dest += m;
-        size += m;
+        col->pack_elements(col, key_buffer);
+        key_buffer += m;
+        key_size += m;
         /* insert the separator between columns */
-        if (j < n - 1) {
-            *dest = 0;
-            dest++;
-            size++; 
-        }
+        *key_buffer = 0;
+        key_buffer++;
+        key_size++; 
     }
-    ret = size;
+    ret = key_size;
 out:
     return ret;
 }
+
+
+static void
+Index_increment_key(Index *self, void *buffer, u_int32_t key_size)
+{
+    int j;
+    unsigned char *key_buffer = (unsigned char *) buffer;
+    /* find the last non-zero value in the key buffer and increment it */
+    j = key_size - 1;
+    while (j > 0 && key_buffer[j] == 0) {
+        j--;
+    }
+    /* add one to the buffer, making sure to carry base 256 */
+    while (j > 0 && key_buffer[j] == 255) {
+        key_buffer[j] = 0;
+        j--;
+    }
+    key_buffer[j] += 1;
+}
+
 
 /*
  * Unpacks value for the columns in this index in the row pointed to in the 
@@ -2874,7 +2891,7 @@ Index_get_num_rows(Index *self, PyObject *args)
     DB *db = NULL;
     DBC *cursor = NULL;
     DBT key, data;
-    key_size = Index_set_key(self, args, self->key_buffer);
+    key_size = Index_set_key(self, args, self->key_buffer, 0);
     if (key_size < 0) {
         goto out;
     }
@@ -2922,7 +2939,7 @@ Index_get_min(Index* self, PyObject *args)
     int db_ret;
     DBC *cursor = NULL;
     DBT primary_key, primary_data, secondary_key;
-    int key_size = Index_set_key(self, args, self->key_buffer);
+    int key_size = Index_set_key(self, args, self->key_buffer, 0);
     if (key_size < 0) {
         goto out;
     }
@@ -2967,13 +2984,11 @@ static PyObject *
 Index_get_max(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    u_int32_t j;
-    u_int32_t flags;
     int db_ret;
     DBC *cursor = NULL;
     DBT primary_key, primary_data, secondary_key;
-    int key_size = Index_set_key(self, args, self->key_buffer);
-    unsigned char *key_buffer = self->key_buffer;
+    unsigned char *search_key = NULL;
+    int key_size = Index_set_key(self, args, self->key_buffer, 0);
     if (key_size < 0) {
         goto out;
     }
@@ -2987,7 +3002,7 @@ Index_get_max(Index* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    secondary_key.data = key_buffer;
+    secondary_key.data = self->key_buffer;
     secondary_key.size = (u_int32_t) key_size; 
     if (key_size == 0) {
         /* An empty list has been passed so we want the last value */
@@ -2998,33 +3013,38 @@ Index_get_max(Index* self, PyObject *args)
             goto out;    
         }
     } else {
-        /* find the last non-zero value in the key buffer and increment it */
-        j = secondary_key.size - 1;
-        while (j > 0 && key_buffer[j] == 0) {
-            j--;
+        search_key = PyMem_Malloc(key_size + 1);
+        if (search_key == NULL) {
+            PyErr_NoMemory();
+            goto out;
         }
-        /* add one to the buffer, making sure to carry base 256 */
-        while (j > 0 && key_buffer[j] == 255) {
-            key_buffer[j] = 0;
-            j--;
-        }
-        key_buffer[j] += 1;
-        /* Seek to the first record >= to this */
+        memcpy(search_key, self->key_buffer, key_size);
+        Index_increment_key(self, self->key_buffer, key_size);
+        /* Seek to the first key prefix >= to this */
         db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
                 &primary_data, DB_SET_RANGE);
-        /* If this is not found, we want the last record in the 
-         * index; otherwise, we want the record immediately before
+        /* If this is not found, we want the last key in the index 
          */
-        flags = DB_PREV;
         if (db_ret == DB_NOTFOUND) {
-            flags = DB_LAST;
-        } else if (db_ret != 0) {
-            handle_bdb_error(db_ret);
-            goto out;    
-        }
-        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                &primary_data, flags);
-        if (db_ret != 0) {
+            db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
+                    &primary_data, DB_LAST);
+            if (db_ret != 0) {
+                handle_bdb_error(db_ret);
+                goto out;    
+            }
+        } else if (db_ret == 0) {
+           /* We need to seek backwards from here until the prefix mathes
+            * the provided key
+            */
+            do {
+                db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
+                        &primary_data, DB_PREV);
+                if (db_ret != 0) {
+                    handle_bdb_error(db_ret);
+                    goto out;    
+                }
+            } while (memcmp(search_key, secondary_key.data, key_size) != 0);
+        } else {
             handle_bdb_error(db_ret);
             goto out;    
         }
@@ -3037,7 +3057,9 @@ out:
     if (cursor != NULL) {
         cursor->close(cursor);
     }
-   
+    if (search_key != NULL) {
+        PyMem_Free(search_key);
+    }       
     return ret;
 }
 
@@ -3863,7 +3885,7 @@ static PyObject *
 IndexRowIterator_set_min(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = Index_set_key(self->index, args, self->min_key);
+    int size = Index_set_key(self->index, args, self->min_key, 0);
     if (size < 0) {
         goto out;
     }
@@ -3877,7 +3899,7 @@ static PyObject *
 IndexRowIterator_set_max(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = Index_set_key(self->index, args, self->max_key);
+    int size = Index_set_key(self->index, args, self->max_key, 0);
     if (size < 0) {
         goto out;
     }
