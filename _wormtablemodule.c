@@ -2764,11 +2764,10 @@ out:
 
 /* 
  * Reads the arguments and sets a key in the specified buffer, returning 
- * its length. If increment is equal to 1, increment the key so that it
- * is equal to the next key larger than the specified value.
+ * its length. 
  */
 static int 
-Index_set_key(Index *self, PyObject *args, void *buffer, int increment)
+Index_set_key(Index *self, PyObject *args, void *buffer)
 {
     int ret = -1;
     int j, m;
@@ -2891,7 +2890,7 @@ Index_get_num_rows(Index *self, PyObject *args)
     DB *db = NULL;
     DBC *cursor = NULL;
     DBT key, data;
-    key_size = Index_set_key(self, args, self->key_buffer, 0);
+    key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
     }
@@ -2939,7 +2938,7 @@ Index_get_min(Index* self, PyObject *args)
     int db_ret;
     DBC *cursor = NULL;
     DBT primary_key, primary_data, secondary_key;
-    int key_size = Index_set_key(self, args, self->key_buffer, 0);
+    int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
     }
@@ -2988,7 +2987,7 @@ Index_get_max(Index* self, PyObject *args)
     DBC *cursor = NULL;
     DBT primary_key, primary_data, secondary_key;
     unsigned char *search_key = NULL;
-    int key_size = Index_set_key(self, args, self->key_buffer, 0);
+    int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
     }
@@ -3885,7 +3884,7 @@ static PyObject *
 IndexRowIterator_set_min(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = Index_set_key(self->index, args, self->min_key, 0);
+    int size = Index_set_key(self->index, args, self->min_key);
     if (size < 0) {
         goto out;
     }
@@ -3899,7 +3898,7 @@ static PyObject *
 IndexRowIterator_set_max(IndexRowIterator *self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int size = Index_set_key(self->index, args, self->max_key, 0);
+    int size = Index_set_key(self->index, args, self->max_key);
     if (size < 0) {
         goto out;
     }
