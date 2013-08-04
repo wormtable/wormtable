@@ -26,6 +26,7 @@ import scripts.gtf2wt as gtf2wt
 import scripts.wtadmin as wtadmin
 
 import unittest
+import random
 import tempfile
 import shutil
 import os.path
@@ -277,6 +278,19 @@ class WtadminTest(UtilityTest):
             for u, v in zip(l, r):
                 self.assertEqual(u.encode(), v)
         self.assertEqual(n, len(self._table))
+        # Now check it over a range
+        for j in range(10):
+            start = random.randint(0, len(self._table))
+            stop = random.randint(start, len(self._table))
+            s = self.run_dump(cols + [ "--start=" + str(start), 
+                    "--stop=" + str(stop)])         
+            c = self._table.cursor(cols)
+            for line, r in zip(s.splitlines(), c): 
+                l = line.split()
+                for u, v in zip(l, r):
+                    self.assertEqual(u.encode(), v)
+            
+
     
     def test_dump_index(self):
         cols = ["CHROM", "REF", "ALT"]
