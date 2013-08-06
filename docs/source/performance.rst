@@ -15,6 +15,8 @@ in most cases, there are a few things which can
 improve performance considerably when working with very large 
 tables.
 
+.. _performance-schema:
+
 -------------
 Schema tuning
 -------------
@@ -106,18 +108,54 @@ schema, to save another 14 bytes per row.
 
 This tweaking makes a considerable difference.
 The source VCF file is 2.8GB when gzip compressed, and 15GB uncompressed. When we
-use the automatic schema from ``vcf2wt`` the resulting wormtable is 23.5GB.
-However, when we make the changes mentioned above, the wormtable requires only
-10.2GB. 
+use the automatic schema from ``vcf2wt`` the resulting wormtable data file 
+is 21.4GB. When we make the changes mentioned above, however,
+the data file requires only 9.7GB. 
 
-.. warning:: It is very important that rows are less than approximately 16K. Over this 
-   threshold, performance degrades considerably.
+*********************
+Half precision floats
+*********************
+
+Half precision floats provide a useful means of saving space when we have a 
+lot of floating point data. A good example of this are the VCF files from the 
+`1000 Genomes <http://www.1000genomes.org/>`_ project. These VCF files have a 
+very large number of samples, and use floating point columns for each sample.
+For example, for  
+`this VCF <ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20110521/ALL.chr1.phase1_release_v3.20101123.snps_indels_svs.genotypes.vcf.gz>`_
+``vcf2wt`` generates the following schema fragment:
+
+.. code-block:: xml 
+    
+    <column description="Genotype" element_size="1" element_type="char" name="HG00096.GT" num_elements="var(1)"/>
+    <column description="Genotype dosage from MaCH/Thunder" element_size="4" element_type="float" name="HG00096.DS" num_elements="1"/>
+    <column description="Genotype Likelihoods" element_size="4" element_type="float" name="HG00096.GL" num_elements="var(1)"/>
+
+Each of the ``.DS`` and ``.GL`` columns uses 4 byte floating point values, even
+though the input values are small with very low precision. In this case, half precision 
+floats are perfect, and save a great deal of space. Changing the variable length 
+columns to fixed length columns again and using 2 byte floats, we get the 
+following schema fragment:
+
+.. code-block:: xml 
+
+    <column description="Genotype" element_size="1" element_type="char" name="HG00096.GT" num_elements="3"/>
+    <column description="Genotype dosage from MaCH/Thunder" element_size="2" element_type="float" name="HG00096.DS" num_elements="1"/>
+    <column description="Genotype Likelihoods" element_size="2" element_type="float" name="HG00096.GL" num_elements="3"/>
+
+Applying these changes to all samples makes a considerable difference: using the default 
+schema, the wormtable datafile is 77GB, but using the modified schema gives us
+a data file of 34GB. It should be emphasised here that there is no loss of information 
+in this case. All the floating point values in the input VCF have at most three decimal 
+places of precision, which half precision floats can represent exactly.
+
 
 .. _performance-cache:
 
 ------------
 Cache tuning
 ------------
+
+
 
 It is very important to provide a large cache when creating a 
 new table or index. The cache size in wormtable roughly controls 

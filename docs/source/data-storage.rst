@@ -92,13 +92,16 @@ Floating point columns
 **********************
 Floating point columns represent real numbers using the 
 `IEEE floating point <https://en.wikipedia.org/wiki/IEEE_floating_point>`_
-format. Currently, :math:`4` and :math:`8` byte floating point values 
-are supported, corresponding to IEEE single and double precision values,
-respectively. 
+format. Floating point values that require 2, 4 and 8 bytes of storage
+are supported, corresponding to IEEE half, single and double precision,
+respectively. Half precision floats are useful for storing 
+small numbers with low precision, and can lead to substantial savings
+(see :ref:`performance-schema` for an example).
 
 ============    =======      ===================
 Element size    C type       Details 
 ============    =======      ===================
+2               N/A          `float 16 <https://en.wikipedia.org/wiki/Half_precision_floating-point_format>`_ 
 4               float        `float 32 <https://en.wikipedia.org/wiki/Single_precision_floating-point_format>`_ 
 8               double       `float 64 <https://en.wikipedia.org/wiki/Double_precision_floating-point_format>`_ 
 ============    =======      ===================
