@@ -262,7 +262,7 @@ Compound Indexes
 ################
 
 Wormtable also supports indexes over more than one column. These differ from simple 
-indexes in that the keys for each index and constructed by concatenating the
+indexes in that the keys for each index are constructed by concatenating the
 values from the constituent columns, in the order that they are specified. For example, 
 we can make an index on the columns ``director`` and ``producer``, which we call
 ``director+producer``::
@@ -304,17 +304,17 @@ The *start* and *stop* arguments to the :meth:`Index.cursor` method
 also support this flexible key prefixing. Suppose we wish to 
 find all the Pythons with at least 7 directorial credits::
 
-    >>> [r for r in i.cursor(["name", "director", "producer"], start=7)
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=7)]
     [(b'Eric Idle', 7, 5), (b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
 
 We get the same answer if we specify 5 or less for the ``producer`` column::
 
-    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 0))
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 0))]
     [(b'Eric Idle', 7, 5), (b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
 
 But, we lose Eric Idle if we require 6 or more production credits::
 
-    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 6))
+    >>> [r for r in i.cursor(["name", "director", "producer"], start=(7, 6))]
     [(b'Terry Jones', 16, 1), (b'Terry Gilliam', 18, 8)]
 
 

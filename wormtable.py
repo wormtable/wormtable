@@ -1170,7 +1170,7 @@ class Index(Database):
         """
         cols = self.__key_columns
         u = v
-        if len(cols) == 1 and not isinstance(v, tuple):
+        if not isinstance(v, tuple):
             u = v,
         n = len(u)
         l = [None for j in range(n)]
