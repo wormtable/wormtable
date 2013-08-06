@@ -39,7 +39,7 @@ class ProgramRunner(object):
     """
     def __init__(self, args):
         self._homedir = args.HOMEDIR 
-        self._cache_size = wt.DEFAULT_CACHE_SIZE
+        self._db_cache_size = wt.DEFAULT_CACHE_SIZE
         self._table = wt.Table(self._homedir) 
        
     def init(self):
@@ -48,7 +48,7 @@ class ProgramRunner(object):
         """
         if not self._table.exists():
             self.error("Table '{0}' not found".format(self._homedir))
-        self._table.set_cache_size(self._cache_size)
+        self._table.set_db_cache_size(self._db_cache_size)
         self._table.open("r")
 
     def format_size(self, n):
@@ -218,7 +218,7 @@ class AddRunner(ProgramRunner):
             self._index_name = self._colspec
         self._quiet = args.quiet
         self._force = args.force
-        self._index_cache_size = args.cache_size
+        self._index_db_cache_size = args.cache_size
         self._index = None
 
     def init(self):
@@ -279,7 +279,7 @@ class DumpRunner(ProgramRunner):
     """
     def __init__(self, args):
         super(DumpRunner, self).__init__(args)
-        self._cache_size = args.cache_size
+        self._db_cache_size = args.cache_size
         self._index = None 
         self._start = args.start
         self._stop = args.stop

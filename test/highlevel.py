@@ -100,21 +100,21 @@ class DatabaseClassTests(WormtableTest):
     """
     Tests the functionality of the database superclass of Index and Table.
     """ 
-    def test_cache_size(self):
+    def test_db_cache_size(self):
         db = wt.Database(self._homedir, "test") 
-        self.assertEqual(db.get_cache_size(), wt.DEFAULT_CACHE_SIZE)
+        self.assertEqual(db.get_db_cache_size(), wt.DEFAULT_CACHE_SIZE)
         # Test integer interface
         for j in range(10):
-            db.set_cache_size(j)
-            self.assertEqual(db.get_cache_size(), j)
+            db.set_db_cache_size(j)
+            self.assertEqual(db.get_db_cache_size(), j)
         # Test suffixes
         for j in range(10):
-            db.set_cache_size("{0}K".format(j))
-            self.assertEqual(db.get_cache_size(), j * 1024)
-            db.set_cache_size("{0}M".format(j))
-            self.assertEqual(db.get_cache_size(), j * 1024 * 1024)
-            db.set_cache_size("{0}G".format(j))
-            self.assertEqual(db.get_cache_size(), j * 1024 * 1024 * 1024)
+            db.set_db_cache_size("{0}K".format(j))
+            self.assertEqual(db.get_db_cache_size(), j * 1024)
+            db.set_db_cache_size("{0}M".format(j))
+            self.assertEqual(db.get_db_cache_size(), j * 1024 * 1024)
+            db.set_db_cache_size("{0}G".format(j))
+            self.assertEqual(db.get_db_cache_size(), j * 1024 * 1024 * 1024)
 
     def test_names(self):
         names = ["some", "example", "names"]

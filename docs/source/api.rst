@@ -351,8 +351,6 @@ Module reference
     .. automethod:: open
     
     .. automethod:: close 
-
-    .. automethod:: set_cache_size 
    
     .. automethod:: columns
 

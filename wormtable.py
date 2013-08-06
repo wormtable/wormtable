@@ -54,23 +54,25 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 WT_VAR_1  = _wormtable.WT_VAR_1
 
-def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE_STR):
+def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
     Returns a table opened in read mode with cache size 
     set to the specified value. This is the recommended 
     interface when opening tables for reading.
    
     See :ref:`performance-cache` for details on setting cache sizes. 
+    The cache size may be either an integer specifying the size in 
+    bytes or a string with the optional suffixes K, M or G.
 
     :param homedir: the filesystem path for the wormtable home directory
     :type homedir: str
-    :param cache_size: The Berkeley DB cache size for the table.
-    :type cache_size: str or int. 
+    :param db_cache_size: The Berkeley DB cache size for the table.
+    :type db_cache_size: str or int. 
     """
     t = Table(homedir)
     if not t.exists():
         raise IOError("table '" + homedir + "' not found")
-    t.set_cache_size(cache_size)
+    t.set_db_cache_size(db_cache_size)
     t.open("r")
     return t   
 
@@ -240,7 +242,7 @@ class Database(object):
         """
         self.__homedir = homedir
         self.__db_name = db_name
-        self.__cache_size = DEFAULT_CACHE_SIZE
+        self.__db_cache_size = DEFAULT_CACHE_SIZE
         self.__ll_object = None
         self.__open_mode = None
 
@@ -290,11 +292,11 @@ class Database(object):
         """
         return self.__db_name
 
-    def get_cache_size(self):
+    def get_db_cache_size(self):
         """
         Returns the cache size for this database in bytes.
         """
-        return self.__cache_size
+        return self.__db_cache_size
 
     def get_db_path(self):
         """
@@ -325,10 +327,10 @@ class Database(object):
         """
         return os.path.join(self.get_homedir(), self.get_db_name() + ".xml")
 
-    def set_cache_size(self, cache_size):
+    def set_db_cache_size(self, db_cache_size):
         """
         Sets the cache size to the specified value. 
-        If cache_size is a string, it can be suffixed with 
+        If db_cache_size is a string, it can be suffixed with 
         K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.
         
         This must be called before a table is opened, and has no effect 
@@ -336,11 +338,11 @@ class Database(object):
     
         See :ref:`performance-cache` for details on setting cache sizes. 
 
-        :param cache_size: the size of the cache
-        :type cache_size: str or int 
+        :param db_cache_size: the size of the cache
+        :type db_cache_size: str or int 
         """
-        if isinstance(cache_size, str):
-            s = cache_size
+        if isinstance(db_cache_size, str):
+            s = db_cache_size
             d = {"K":2**10, "M":2**20, "G":2**30}
             multiplier = 1
             value = s
@@ -348,9 +350,9 @@ class Database(object):
                 value = s[:-1]
                 multiplier = d[s[-1]] 
             n = int(value)
-            self.__cache_size = n * multiplier 
+            self.__db_cache_size = n * multiplier 
         else:
-            self.__cache_size = int(cache_size)
+            self.__db_cache_size = int(db_cache_size)
 
     def write_metadata(self, filename):
         """
@@ -550,7 +552,7 @@ class Table(Database):
             data_file = self.get_data_path().encode() 
         ll_cols = [c.get_ll_object() for c in self.__columns]
         t = _wormtable.Table(db_file, data_file, ll_cols, 
-                self.get_cache_size())
+                self.get_db_cache_size())
         return t
 
     def get_fixed_region_size(self):
@@ -919,10 +921,10 @@ class Table(Database):
             yield name 
 
 
-    def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE_STR):
+    def open_index(self, index_name, db_cache_size=DEFAULT_CACHE_SIZE_STR):
         """
         Returns an index with the specified name opened in read mode with 
-        the specified cache_size.
+        the specified db_cache_size.
         
         See :ref:`performance-cache` for details on setting cache sizes. 
         The cache size may be either an integer specifying the size in 
@@ -930,14 +932,14 @@ class Table(Database):
 
         :param index_name: the name of the index to open
         :type index_name: str
-        :param cache_size: the size of the cache on the index
-        :type cache_size: str or int. See :meth:`Table.set_cache_size` for details.  
+        :param db_cache_size: the size of the cache on the index
+        :type db_cache_size: str or int. 
         """
         self.verify_open(WT_READ)
         index = Index(self, index_name) 
         if not index.exists():
             raise IOError("index '" + index_name + "' not found")
-        index.set_cache_size(cache_size)
+        index.set_db_cache_size(db_cache_size)
         index.open("r")
         return index
 
@@ -1002,7 +1004,7 @@ class Index(Database):
             filename = self.get_db_build_path().encode() 
         cols = [c.get_position() for c in self.__key_columns]
         i = _wormtable.Index(self.__table.get_ll_object(), filename, 
-                cols, self.get_cache_size())
+                cols, self.get_db_cache_size())
         i.set_bin_widths(self.__bin_widths)
         return i
     

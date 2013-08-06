@@ -195,7 +195,7 @@ from any position in the genome ::
 Note that if you have not already added the index using ``wtadmin add`` you will not 
 be able to open the index in python. Also, worth noting is that, like cache sizes
 when building tables or adding indexes, we can assign memory to both the table 
-and index when we open them by including the ``cache_size`` as a second argument in 
+and index when we open them by including the ``db_cache_size`` as a second argument in 
 :func:`open_table` or :meth:`Table.open_index`. For more details see 
 the sections on :ref:`performance tuning <performance-index>`.
 The wormtable module offers a number of methods to interact with an 

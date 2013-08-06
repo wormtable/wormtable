@@ -37,9 +37,9 @@ class SlidingWindow(object):
     A class representing a sliding window over statistics in a VCF 
     wormtable.
     """
-    def __init__(self, homedir, chrs, cols, wsize=10000, cache_size="256M"):
-        self.__table = wt.open_table(homedir, cache_size=cache_size)
-        self.__index = self.__table.open_index("CHROM+POS", cache_size=cache_size)
+    def __init__(self, homedir, chrs, cols, wsize=10000, db_cache_size="256M"):
+        self.__table = wt.open_table(homedir, db_cache_size=db_cache_size)
+        self.__index = self.__table.open_index("CHROM+POS", db_cache_size=db_cache_size)
         self.__wsize = wsize
         self.__chrs = chrs
         self.__cols = cols
