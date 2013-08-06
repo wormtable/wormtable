@@ -50,24 +50,21 @@ class SlidingWindow(object):
                 yield window
 
     def __chriter(self, chrom):        
-        cursor = self.__table.cursor(["POS"]+self.__cols, self.__index)
-    
-        start = self.__index.get_min(chrom)[1]
-        end = self.__index.get_max(chrom)[1]
+        cols = ["POS"] + self.__cols
+        start = self.__index.min_key(chrom)[1]
+        end = self.__index.max_key(chrom)[1]
+        stop = chrom, end + 1
         n = 1 + math.ceil((end - start) / self.__wsize)
-        cursor.set_min(chrom, start)
-        cursor.set_max(chrom, end + 1)
-    
         dat = {n:{'c':0, 't':0} for n in self.__cols}
         j = 0
-        for row in cursor:
+        for row in self.__index.cursor(cols, start=(chrom,start), stop=stop):
             pos = row[0]
             vals = row[1:]
             for i in range(len(self.__cols)):
                 increment(vals[i], dat[self.__cols[i]])
             if pos >= start + j * self.__wsize:
                 yield([chrom, start+j * self.__wsize] + 
-                      [getmean(dat[n]['t'], dat[n]['c']) for n in dat])
+                        [getmean(dat[n]['t'], dat[n]['c']) for n in dat])
                 dat = {n:{'c':0, 't':0} for n in self.__cols}
                 j += 1
     

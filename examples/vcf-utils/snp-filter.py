@@ -3,6 +3,8 @@
 """
 Filter variant calls and print selected columns
 """
+from __future__ import print_function
+from __future__ import division 
 
 import re
 import sys
@@ -21,19 +23,23 @@ ops = {
 }
 
 class DictCursor(object):
-    def __init__(self, table, cols, index):
-        self.__cursor = table.cursor(cols, index)
+    def __init__(self, index, cols):
+        self.__index = index
         self.__cols = cols
+        self.__start = None
+        self.__stop = None
         
     def __iter__(self):
+        self.__cursor = self.__index.cursor(self.__cols, start=self.__start,
+               stop=self.__stop)
         for row in self.__cursor:
             yield {self.__cols[i]:row[i] for i in range(len(row))}
 
-    def set_min(self, *args):
-        self.__cursor.set_min(*args)
+    def set_start(self, *args):
+        self.__start = args 
 
-    def set_max(self, *args):
-        self.__cursor.set_max(*args)
+    def set_stop(self, *args):
+        self.__stop = args 
 
 
 def make_filter(s):
@@ -76,17 +82,17 @@ def snp_filter(t, i, args):
             fns.append(lambda row: not isindel(row))
             
     # parse user specified functions
-    if 'cf' in args and args['cf'] is not None:
-        fns, fcols = parse_cf(args['cf'])
+    if 'f' in args and args['f'] is not None:
+        fns, fcols = parse_cf(args['f'])
         allcols = allcols+fcols
     
     # open cursor and set region if defined
     # Note that end position cursor in wormtable is exclusive but we want to include
-    dc = DictCursor(t, list(set(allcols)), i)
+    dc = DictCursor(i, list(set(allcols)))
     if 'r' in args and args['r'] is not None:
         chrom,start,end = re.split('\W', args['r'])
-        dc.set_min(chrom, int(start))
-        dc.set_max(chrom, int(end)+1) 
+        dc.set_start(chrom, int(start))
+        dc.set_stop(chrom, int(end)+1) 
     
     for row in dc:
         if all([fn(row) for fn in fns]):
