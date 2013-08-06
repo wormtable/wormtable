@@ -359,9 +359,9 @@ class IndexIntegrityTest(WormtableTest):
             self._indexes.append(i)
 
 
-    def test_accessors(self):
+    def test_keys(self):
         """
-        Test if the accessor operations are working properly.
+        Test if the key operations are working properly.
         """
         for i in self._indexes:
             i.open("r")
@@ -390,15 +390,49 @@ class IndexIntegrityTest(WormtableTest):
                 else:
                     key = tuple(kk.get_value() for kk in k)
                 self.assertEqual(v, c2[key])
-            # now test the cursor
-            read_cols = self._table.columns()
-            j = 0
-            for r1 in i.cursor(read_cols):
-                j = int(r1[0])
-                row = self._table[j]
-                r2 = tuple(row[col.get_position()] for col in read_cols)
-                self.assertEqual(r1, r2)
             i.close()
+
+    def test_cursors(self):
+        read_cols = self._table.columns()
+        for i in self._indexes:
+            i.open("r")
+            cols = i.key_columns()
+            t = [[tuple(ColumnValue(c, r) for c in cols), r] for r in self._table] 
+            t.sort(key=lambda x: x[0])
+            for (k, r1), r2  in zip(t, i.cursor(read_cols)):
+                self.assertEqual(r1, r2)
+            if len(cols) == 1:
+                keys = [(k,) for k in i.keys()]
+            else:
+                keys = [k for k in i.keys()]
+            key_rows = [tuple(v.get_value() for v in k) for k, r in t]
+            # Now generate some slices
+            for j in range(10):
+                k = random.randint(0, len(keys) - 1)
+                start_key = keys[k]
+                start_index = key_rows.index(start_key)
+                k = random.randint(k, len(keys) - 1)
+                stop_key = keys[k]
+                stop_index = key_rows.index(stop_key)
+                l = [r for k, r in t[start_index:stop_index]]
+                c = 0
+                for r1, r2 in zip(i.cursor(read_cols, start_key, stop_key), l):
+                    self.assertEqual(r1, r2)
+                    c += 1
+                self.assertEqual(c, stop_index - start_index)
+                # If we have a single column index we also support passing the 
+                # values directly
+                if len(cols) == 1:
+                    l = [r for k, r in t[start_index:stop_index]]
+                    c = 0
+                    for r1, r2 in zip(i.cursor(read_cols, start_key[0], stop_key[0]), l):
+                        self.assertEqual(r1, r2)
+                        c += 1
+                    self.assertEqual(c, stop_index - start_index)
+                  
+
+            i.close()
+            
 
 class BinnedIndexIntegrityTest(WormtableTest):
     """
@@ -447,24 +481,6 @@ class BinnedIndexIntegrityTest(WormtableTest):
                 self.assertTrue(k in d)
                 self.assertEqual(d[k], v)
             i.close()
-
-class IndexCursorTest(object):
-    """
-    Runs some tests on cursors over the indexes. Assumes the 
-    existence of indexes in self._indexes.
-    """
-    # TODO: write test cases!
-    def test_cursor(self):
-        cols = self._table.columns()
-        for i in self._indexes:
-            i.open("r")
-            for r in i.cursor(cols):
-                pass
-            i.close()
-
-
-class BinnedIndexCursorTest(BinnedIndexIntegrityTest, IndexCursorTest):
-    pass
 
 
 class StringIndexIntegrityTest(WormtableTest):
@@ -555,13 +571,13 @@ class TableCursorTest(WormtableTest):
         for j in range(10):
             start = random.randint(0, len(t))
             stop = random.randint(start, len(t))
-            v = [r[0] for r in t.cursor(["row_id"], start, stop)]
+            v = [r[0] for r in t.cursor(["row_id"], start=start, stop=stop)]
             self.assertEqual(v, [j for j in range(start, stop)])
             v = [r[0] for r in t.cursor(["row_id"], start=start)]
             self.assertEqual(v, [j for j in range(start, len(t))])
             v = [r[0] for r in t.cursor(["row_id"], stop=stop)]
             self.assertEqual(v, [j for j in range(stop)])
-            c = t.cursor(cols, start, stop)
+            c = t.cursor(cols, start=start, stop=stop)
             k = start
             for r in c:
                 self.assertEqual(t[k], r)
@@ -571,15 +587,15 @@ class TableCursorTest(WormtableTest):
     def test_empty(self):
         t = self._table
         cols = ["row_id"]
-        v = [r for r in t.cursor(cols, 0, 0)]
+        v = [r for r in t.cursor(cols, start=0, stop=0)]
         self.assertEqual(v, [])
-        v = [r for r in t.cursor(cols, 0, -1)]
+        v = [r for r in t.cursor(cols, start=0, stop=-1)]
         self.assertEqual(v, [])
-        v = [r for r in t.cursor(cols, 1, 1)]
+        v = [r for r in t.cursor(cols, start=1, stop=1)]
         self.assertEqual(v, [])
-        v = [r for r in t.cursor(cols, len(t), len(t))]
+        v = [r for r in t.cursor(cols, start=len(t), stop=len(t))]
         self.assertEqual(v, [])
-        v = [r for r in t.cursor(cols, 2 * len(t), 3 * len(t))]
+        v = [r for r in t.cursor(cols, start=2 * len(t), stop=3 * len(t))]
         self.assertEqual(v, [])
 
 

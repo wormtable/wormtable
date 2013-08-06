@@ -1163,16 +1163,19 @@ class Index(Database):
         return iri
 
 
-
     def key_to_ll(self, v):
         """
         Translates the specified tuple as a key to a tuple ready to 
         for use in the low-level API.
         """
-        n = len(v)
+        cols = self.__key_columns
+        u = v
+        if len(cols) == 1 and not isinstance(v, tuple):
+            u = v,
+        n = len(u)
         l = [None for j in range(n)]
         for j in range(n):
-            l[j] = v[j]
+            l[j] = u[j]
             if isinstance(l[j], str):
                 l[j] = l[j].encode()
         return tuple(l)
