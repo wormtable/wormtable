@@ -4,4 +4,5 @@ include tests.py
 recursive-include scripts *.py
 recursive-include test *.py
 recursive-include test/data *.vcf
+recursive-include test/data *.gtf
 recursive-include examples *.py
