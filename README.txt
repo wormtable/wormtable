@@ -59,7 +59,7 @@ Or, we can manually download the package, unpack it and then run::
 Most of the time this will compile and install the module without difficulty.
 
 It is also possible to download the latest development version of 
-``wormtable`` from `github <https://github.com/jeromekelleher/wormtable>`_. 
+``wormtable`` from `github <https://github.com/wormtable/wormtable>`_. 
 
 
 **************
