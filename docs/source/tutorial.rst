@@ -81,24 +81,13 @@ command line options and arguments can be displayed using "--help" flag ::
 
 Building a wormtable from a vcf file is easy::
 
-    $ vcf2wt sample.vcf sample_wt
+    $ vcf2wt sample.vcf sample.wt
 
 In this command the VCF file (sample.vcf) converted into a wormtable stored in 
-the directory sample_wt. If the directory already exists you will have to use 
+the directory sample.wt. If the directory already exists you will have to use 
 the "--force" (or -f) argument to tell vcf2wt to overwrite the old wormtable::
 
-    $ vcf2wt -f sample.vcf sample_wt
-
-For large tables, it is very important to set cache size parameter in ``vcf2wt``.
-The cache size determines how much of the table is held in memory,
-and a large cache can make building a table much faster. In 
-general the more RAM you give the process the better it will perform. As as a 
-rule of thumb try to give it half the available RAM. Later in this tutorial we 
-will return to the issue of cache size as it can affect a number of performance 
-components. To alter the cache size while making your wormtable use the 
---cache-size (-c) option ::
-
-    $ vcf2wt -f -c 4G sample.vcf sample_wt
+    $ vcf2wt -f sample.vcf sample.wt
 
 --------------
 Using a cursor
@@ -107,15 +96,14 @@ Now that we have built our wormtable we can use the Python :mod:`wormtable` modu
 (within a python shell) to interact with it::
 
     >>> import wormtable
-    >>> table = wormtable.open_table('sample_wt') # open the wormtable
+    >>> table = wormtable.open_table('sample.wt') # open the wormtable
 
-A convenient feature of Wormtable is the :class:`Cursor`, 
+A convenient feature of Wormtable is the :meth:`Table.cursor` method 
 which allows us to retrieve information from any column in the table. In 
-our case, we will create a cursor to return the genome position column "CHROM" 
+our case, we use a cursor to return the genome position column "CHROM" 
 and "POS". The cursor allows us to walk through the wormtable row by row ::
 
-    >>> c = table.cursor(['CHROM', 'POS'])
-    >>> for row in c:
+    >>> for row in table.cursor(['CHROM', 'POS']):
     ...     print(row)
     ... 
     (b'20', 14370)
@@ -145,14 +133,14 @@ for any position in the genome by creating an index on genomic position. Adding
 an index for a column can be accomplished with the ``wtadmin`` utility. In this 
 example, to index the position column called "*POS*" we use::
 
-    $ wtadmin add sample_wt POS
+    $ wtadmin add sample.wt POS
 
-Here, sample_wt is the "home directory" which contains our wormtable and POS 
+Here, ``sample.wt`` is the "home directory" which contains our wormtable and POS 
 is the name of the column to be indexed. This utility also allows us to remove 
 indexes (``wtadmin rm``) or list the columns already indexed (``wtadmin ls``).
 If you want to list the columns that are available to index use ::
 
-    $ wtadmin show sample_wt
+    $ wtadmin show sample.wt
     ==============================================================
            name         type     size   n        |   description
     ==============================================================
@@ -188,11 +176,11 @@ individual samples have been represented as separate columns and named as
 [COLUMN].[FIELD]. This allows the user to create indexes on individual fields from these
 compound columns.
 
-Similar to the cache size when building our wormtable, we can set the cache size 
-when building an index. A large cache size can reduce the time it takes to 
-build an index ::
+When building an index over a large table it can be useful to set the 
+cache size to improve performance. A large cache size allows more of the 
+index to fit into memory, therefore making the process more efficient.  ::
 
-    $ wtadmin add --index-cache-size 4G sample_wt POS 
+    $ wtadmin add --cache-size=4G sample.wt POS 
 
 --------------
 Using an index
@@ -201,22 +189,22 @@ Now that we have built our wormtable and indexed on POS we can retrieve informat
 from any position in the genome ::
 
     >>> import wormtable
-    >>> table = wormtable.open_table('sample_wt') # open the wormtable
+    >>> table = wormtable.open_table('sample.wt') # open the wormtable
     >>> position_index = table.open_index('POS')  # open the index on POS
 
 Note that if you have not already added the index using ``wtadmin add`` you will not 
 be able to open the index in python. Also, worth noting is that, like cache sizes
 when building tables or adding indexes, we can assign memory to both the table 
-and index when we open them by including the ``cache_size`` as a second argument in 
+and index when we open them by including the ``db_cache_size`` as a second argument in 
 :func:`open_table` or :meth:`Table.open_index`. For more details see 
 the sections on :ref:`performance tuning <performance-index>`.
 The wormtable module offers a number of methods to interact with an 
 :class:`Index` ::
 
-    >>> # Print the minimum and maximum value of an index
-    >>> position_index.get_min()
+    >>> # Print the minimum and maximum keys in an index
+    >>> position_index.min_key()
     14370
-    >>> position_index.get_max()
+    >>> position_index.max_key()
     1234567
     >>> # Use keys() to iterate through sorted value in the index
     >>> for k in position_index.keys():
@@ -228,33 +216,21 @@ The wormtable module offers a number of methods to interact with an
     1230237
     1234567
 
-Cursors can be used to iterate through the rows in a table in the order
-defined by an index by providing an index as the second argument 
-to the :meth:`Table.cursor` method. We can also use a cursor to 
-set the range of the keys we are interested in using the 
-:meth:`Cursor.set_min` and :meth:`Cursor.set_max` method. For 
-example, to retrieve the reference nucleotides we can use a cursor to return the REF 
-column for specific genomic positions ::
+The :class:`Index` class also provides a :meth:`Index.cursor` method 
+to iterate over rows in a table. In the case of an index, however,
+we visit the rows in the order defined by the index and can access 
+rows based on the index keys using the *start* and *stop* parameters.
+For example, to retrieve the reference nucleotides we can use a cursor to return the REF 
+column for genomic positions in the range 1--1150000 using::
 
-    >>> c = table.cursor(["REF"], position_index)
-
-We can set the minimum and maximum values for which the cursor will return 
-columns::
-
-    >>> c.set_min(1)
-    >>> c.set_max(1150000)
-
-and then iterate through positions in this range (1-1150000), returning 
-the *REF* column for each row of the table::
-
-    >>> for p in c: 
+    >>> for p in position_index.cursor(["REF"], start=1, stop=1150000): 
     ...     print(p[0]) 
     ... 
     b'G'
     b'T'
     b'A'
 
-Note that by default the cursor will return a tuple and we just 
+Note that the cursor always returns a tuple and we just 
 print the first element here. It is also worth noting that like other 
 ranges in Python, the maximum value is not included. For example, 
 1 to 100 would return 1 to 99 and not include 100.
@@ -271,28 +247,28 @@ wormtable. For example, we can make a compound index of chromosome (*CHROM*) and
 position (*POS*) to retrieve unique genomic positions. To add a compound column 
 we can again use the ``wtadmin`` utility ::
 
-    $ wtadmin add sample_wt CHROM+POS
+    $ wtadmin add sample.wt CHROM+POS
 
 The names of multiple columns in a compound index are joined using "+" which 
 indicates to ``wtadmin`` to make a compound index. It is important to realise that 
 the order that the columns are listed matters (CHROM+POS does not equal 
-POS+CHROM). With this new compound column we can specify a region of the genome 
-(chromosome 1, positions 1 to 1150000) unambiguously and iterate 
+POS+CHROM). With this new compound index we can specify a region of the genome 
+(chromosome 20, positions 1 to 1150000) unambiguously and iterate 
 through rows in this region, printing CHROM, POS and REF for each::
 
     >>> import wormtable
-    >>> table = wormtable.open_table('sample_wt')
+    >>> table = wormtable.open_table('sample.wt')
     >>> chrompos_index = table.open_index('CHROM+POS')
-    >>> c = table.cursor(['REF'], chrompos_index)
-    >>> c.set_min('20',1)
-    >>> c.set_max('20',1150000)
-    >>> for p in c:
-    ...     print(p[0])
+    >>> cols = ["CHROM", "POS", "REF"]
+    >>> for c, p, r in chrompos_index.cursor(cols, start=("20", 1), stop=("20", 1150000)):
+    ...     print(c, p, r)
     ... 
-    b'G'
-    b'T'
-    b'A'
+    b'20' 14370 b'G'
+    b'20' 17330 b'T'
+    b'20' 1110696 b'A'
 
+Since we need to specify values for several columns, the *start* and *stop* arguments 
+are tuples.
 
 ---------------
 Using a counter
@@ -304,12 +280,12 @@ key occurs in the table. For example, we can quickly and efficiently calculate t
 fraction of reference sites that are G or C (the GC content) by first creating
 an index on the *REF* column::
 
-    $ wtadmin add sample_wt REF
+    $ wtadmin add sample.wt REF
 
 Then in python: ::
 
     >>> import wormtable
-    >>> table = wormtable.open_table('sample_wt')
+    >>> table = wormtable.open_table('sample.wt')
     >>> ref_index = table.open_index('REF')
     >>> ref_counts = ref_index.counter()
     >>> gc = ref_counts[b'G'] + ref_counts[b'C']
@@ -329,7 +305,7 @@ necessary to discern between sites with quality of 50.1 from sites with quality
 of 50.2. Using ``wtadmin`` you can index a column binning indexes into equal sized 
 bins of size ``n`` like this ::
 
-    $ wtadmin add sample_wt QUAL[n]
+    $ wtadmin add sample.wt QUAL[n]
 
 where n is an integer or float. This will make a new index on QUAL where all the QUAL 
 values are grouped into bins of size n. We can then use this binned index 
@@ -337,7 +313,7 @@ to interact with our wormtable and print the number of rows matching QUAL scores
 in bins between 0 and 70 using the :meth:`Index.counter` function.
 For example, to create an index with bin size 5, we use:: 
 
-    $ wtadmin add sample_wt QUAL[5]
+    $ wtadmin add sample.wt QUAL[5]
 
 Then, we can quickly count the number of rows falling into each bin::
 
@@ -391,7 +367,7 @@ are closed when we finish.
 Using this function we can easily print out all of the values in the 
 REF column and their counts::
 
-    >>> for k, v in count_distinct("sample_wt", "REF"): 
+    >>> for k, v in count_distinct("sample.wt", "REF"): 
     ...     print(k, "\t", v)
     ... 
     b'A'     1
@@ -401,7 +377,7 @@ REF column and their counts::
 
 This functionality is also provided by the ``wtadmin hist`` command::
 
-    $ wtadmin hist sample_wt REF
+    $ wtadmin hist sample.wt REF
     # n REF
     1    A
     1    G
@@ -444,7 +420,7 @@ instances of each change in our data ::
 we can then use this function to very quickly count the number of 
 transitions and transversions: ::
 
-    >>> count_Ts_Tv('sample_wt')
+    >>> count_Ts_Tv('sample.wt')
     (1, 1)
 
 *****************
@@ -460,18 +436,16 @@ that fulfil the given quality requirements. ::
     import wormtable as wt
     def hq_snps(homedir, minq, cols):
         with wt.open_table(homedir) as t, t.open_index("QUAL[1]") as i:
-            cursor = t.cursor(cols, i)
-            cursor.set_min(minq)
-            for row in cursor:
+            for row in i.cursor(cols, start=minq):
                 yield row 
 
 First we must create the required index::
 
-    $ wtadmin add sample_wt QUAL[1] 
+    $ wtadmin add sample.wt QUAL[1] 
 
 We can then use this function in to iterate over the rows of interest: ::
 
-    >>> for row in hq_snps('sample_wt',30, ['CHROM', 'POS', 'REF', 'ALT', 'QUAL']):
+    >>> for row in hq_snps('sample.wt', 30, ['CHROM', 'POS', 'REF', 'ALT', 'QUAL']):
     ...     print(row)
     ... 
     (b'20', 1230237, b'T', b'', 47.0)
@@ -496,10 +470,10 @@ the user to extract (a comma separated list of) specific VCF fields using an
 arbitrary set of filters on numeric or text columns. For example, to 
 find variants with a QUAL score > 500, depth of coverage (stored as DP in the 
 INFO column) > 20, a genotype in sample "S1" of "0/1" and print out CHROM and 
-POS for variants in a wormtable stored in sample_wt, the user can 
+POS for variants in a wormtable stored in sample.wt, the user can 
 use the following call ::
 
-    snp-filter.py --f 'QUAL>500;INFO.DP>20;S1.GT==0/1' CHROM,POS sample_wt
+    snp-filter.py -f 'QUAL>500;INFO.DP>20;S1.GT==0/1' CHROM,POS sample.wt
     
 The user can also optionally specify a particular region of the VCF using the
 CHROM:START-END syntax and either exclude, include or find indels.
@@ -514,9 +488,9 @@ numeric columns within non-overlapping windows (using an optionally specified
 window size and list of chromosomes). The output is in tab separated column 
 format allowing the results to be easily plotted. For example, to calculate the
 mean of QUAL and depth of coverage (INFO.DP) in window sizes of 1Mb for 
-chromosomes 1,2 and 3 from a wormtable stored in sample_wt, run ::
+chromosomes 1,2 and 3 from a wormtable stored in sample.wt, run ::
 
-    sliding-mean.py QUAL,INFO_DP 1,2,3 -w 1000000 sample_wt
+    sliding-mean.py QUAL,INFO.DP 20 -w 1000000 sample.wt
 
 ***************
 hq-snps-bygt.py
@@ -526,9 +500,9 @@ This script takes a sample name and a specific genotype code, then builds a
 compound index on the sample genotype columns and quality score allowing the
 user to find, for example, high quality heterozygotes for the first sample. For 
 example, to very efficiently obtain high quality heterozygotes (QUAL>10000) from 
-sample S1, run ::
+sample NA00001, run ::
 
-    get-hq-gts.py -s S1 -g '0/1' -q 1000 sample.wt/ 
+    hq-snps-bygt.py -s NA00001 -g '0/1' -q 50 sample.wt 
 
 
 

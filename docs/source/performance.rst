@@ -1,5 +1,7 @@
 .. _performance-index:
 
+.. py:currentmodule:: wormtable 
+
 ==========================
 Performance tuning 
 ==========================
@@ -14,6 +16,8 @@ While wormtable should be quite efficient
 in most cases, there are a few things which can 
 improve performance considerably when working with very large 
 tables.
+
+.. _performance-schema:
 
 -------------
 Schema tuning
@@ -106,12 +110,46 @@ schema, to save another 14 bytes per row.
 
 This tweaking makes a considerable difference.
 The source VCF file is 2.8GB when gzip compressed, and 15GB uncompressed. When we
-use the automatic schema from ``vcf2wt`` the resulting wormtable is 23.5GB.
-However, when we make the changes mentioned above, the wormtable requires only
-10.2GB. 
+use the automatic schema from ``vcf2wt`` the resulting wormtable data file 
+is 21.4GB. When we make the changes mentioned above, however,
+the data file requires only 9.7GB. 
 
-.. warning:: It is very important that rows are less than approximately 16K. Over this 
-   threshold, performance degrades considerably.
+*********************
+Half precision floats
+*********************
+
+Half precision floats provide a useful means of saving space when we have a 
+lot of floating point data. A good example of this are the VCF files from the 
+`1000 Genomes <http://www.1000genomes.org/>`_ project. These VCF files have a 
+very large number of samples, and use floating point columns for each sample.
+For example, for  
+`this VCF <ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20110521/ALL.chr1.phase1_release_v3.20101123.snps_indels_svs.genotypes.vcf.gz>`_
+``vcf2wt`` generates the following schema fragment:
+
+.. code-block:: xml 
+    
+    <column description="Genotype" element_size="1" element_type="char" name="HG00096.GT" num_elements="var(1)"/>
+    <column description="Genotype dosage from MaCH/Thunder" element_size="4" element_type="float" name="HG00096.DS" num_elements="1"/>
+    <column description="Genotype Likelihoods" element_size="4" element_type="float" name="HG00096.GL" num_elements="var(1)"/>
+
+Each of the ``.DS`` and ``.GL`` columns uses 4 byte floating point values, even
+though the input values are small with very low precision. In this case, half precision 
+floats are perfect, and save a great deal of space. Changing the variable length 
+columns to fixed length columns again and using 2 byte floats, we get the 
+following schema fragment:
+
+.. code-block:: xml 
+
+    <column description="Genotype" element_size="1" element_type="char" name="HG00096.GT" num_elements="3"/>
+    <column description="Genotype dosage from MaCH/Thunder" element_size="2" element_type="float" name="HG00096.DS" num_elements="1"/>
+    <column description="Genotype Likelihoods" element_size="2" element_type="float" name="HG00096.GL" num_elements="3"/>
+
+Applying these changes to all samples makes a considerable difference: using the default 
+schema, the wormtable datafile is 77GB, but using the modified schema gives us
+a data file of 34GB. It should be emphasised here that there is no loss of information 
+in this case. All the floating point values in the input VCF have at most three decimal 
+places of precision, which half precision floats can represent exactly.
+
 
 .. _performance-cache:
 
@@ -119,42 +157,31 @@ However, when we make the changes mentioned above, the wormtable requires only
 Cache tuning
 ------------
 
-It is very important to provide a large cache when creating a 
-new table or index. The cache size in wormtable roughly controls 
-the amount of the table that is stored in memory. This 
-is one of the advanced features offered by Berkeley DB, 
-and greatly reduces the amount of time required to write 
-large tables.
+Wormtable uses Berkeley DB databases to store the locations of 
+rows in the datafile and to create indexes on columns. An 
+important performance tuning factor is the ``db_cache_size`` 
+for the :class:`Table` and :class:`Index` classes. The 
+``db_cache_size`` essentially determines how much of these 
+databases is held in memory, and typically, for performance 
+purposes we would like to have the entire database in 
+memory if possible. 
 
-As a rule of thumb, it 
-is a good idea to set aside half of available RAM for cache 
-when writing new tables.
-So, for example, in a system with 16GB of RAM, a good amount of 
-cache to allocate would be 8GB. This may seem like a very large 
-amount of memory to dedicate to cache, but the more of the 
-underlying Berkeley DB that fits into the cache the better 
-performance will be as we avoid the costly process of writing 
-pages to disc which may need to be read back in later.
-Ideally, we would like to fit the entire DB into memory
-while we are generating it, which means we only need to 
-write each page to disc once. 
+In many cases, such as a sequential full table scan, a large
+cache size will make very little difference, so it is 
+not a good idea to have a large cache size by default. There 
+are certain situations, however, when a large db cache is 
+definitely a good idea. 
 
-It is also important to allocate a large cache then creating a new 
-index, although we rarely need as much as when creating a table.
-Most of the time the entire index will fit comfortably in 
-RAM, which makes writing the index much faster. The cache 
-size specified is the *maximum* amount to use, and so 
-if the index will fit into less memory than we have allocated
-for cache, the remaining memory will not be used.
-
-When reading tables, we rarely need as much cache as when 
-we are writing them  The amount of cache to allocate 
-to different indexes and to the main table is a subtle issue
-and depends very much on the workload. Generally,
-for a linear scan of a table very little cache is 
-required. However, in situations where we are iterating 
-over rows that are not in table order using an index, 
-it can be helpful to have a large cache.
+When we are building an index, performance can suffer quite badly 
+if sufficient cache is not provided, since Berkeley DB will 
+need to write pages to disk and subsequently read them back. 
+It if therefore a good idea to provide a large cache size 
+when creating an index (several gigabytes is usually a good 
+choice). There is no harm in specifiying a cache size larger 
+than is required, since the ``db_cache_size`` is an upper
+limit on the amount of memory used. Berkeley DB will only
+use as much memory as is needed to keep the database 
+in memory.
 
 For further information, see the discussion on setting cache 
 sizes for

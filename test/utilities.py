@@ -26,6 +26,7 @@ import scripts.gtf2wt as gtf2wt
 import scripts.wtadmin as wtadmin
 
 import unittest
+import random
 import tempfile
 import shutil
 import os.path
@@ -277,7 +278,40 @@ class WtadminTest(UtilityTest):
             for u, v in zip(l, r):
                 self.assertEqual(u.encode(), v)
         self.assertEqual(n, len(self._table))
-    
+        # Now check it over a range
+        for j in range(10):
+            start = random.randint(0, len(self._table))
+            stop = random.randint(start, len(self._table))
+            s = self.run_dump(cols + [ "--start=" + str(start), 
+                    "--stop=" + str(stop)])         
+            c = self._table.cursor(cols, start, stop)
+            for line, r in zip(s.splitlines(), c): 
+                l = line.split()
+                for u, v in zip(l, r):
+                    self.assertEqual(u.encode(), v)
+   
+    def verify_dump(self, index, start=None, stop=None):
+        cols = [col.get_name() for col in index.key_columns()]
+        args = cols + ["--index=" + index.get_name()]
+        if start is not None:
+            args += ["--start=" + start.decode()]
+        if stop is not None:
+            args += ["--stop=" + stop.decode()]
+        s = self.run_dump(args)
+        n1 = 0
+        for r in index.cursor(cols, start, stop):
+            n1 += 1
+        n2 = 0
+        for line in s.splitlines():
+            n2 += 1
+        c = index.cursor(cols, start, stop)
+        for line, r in zip(s.splitlines(), c): 
+            l = line.split()
+            for u, v in zip(l, r):
+                self.assertEqual(u.encode(), v)
+        self.assertEqual(n1, n2)
+
+
     def test_dump_index(self):
         cols = ["CHROM", "REF", "ALT"]
         indexes = [wt.Index(self._table, col) for col in cols]
@@ -288,15 +322,41 @@ class WtadminTest(UtilityTest):
             i.close()
             i.open("r")
             s = self.run_dump(["0", "--index=" + i.get_name()])         
-            c = self._table.cursor([0], i)
+            c = i.cursor([0])
             n = 0
             for line, r in zip(s.splitlines(), c): 
                 n += 1
                 self.assertEqual(int(line), r[0])
             self.assertEqual(n, len(self._table))
+            keys = [k for k in i.keys()]
+            for j in range(10):
+                k = random.randint(0, len(keys) - 1)
+                start = keys[k]
+                stop = keys[random.randint(k, len(keys) - 1)]
+                self.verify_dump(i, start, stop)
+                self.verify_dump(i, stop=stop)
+                self.verify_dump(i, start=start)
             i.close()
             i.delete() 
-    
+   
+    def test_dump_multi_index(self):
+        i = wt.Index(self._table, "REF+ALT") 
+        i.add_key_column(self._table.get_column("REF"))
+        i.add_key_column(self._table.get_column("ALT"))
+        i.open("w")
+        i.build()
+        i.close()
+        i.open("r")
+        s = self.run_dump(["0", "--index=" + i.get_name()])         
+        c = i.cursor([0])
+        n = 0
+        for line, r in zip(s.splitlines(), c): 
+            n += 1
+            self.assertEqual(int(line), r[0])
+        self.assertEqual(n, len(self._table))
+        self.verify_dump(i)
+
+
     def test_add_index(self):
         cols = ["CHROM", "REF", "ALT"]
         for c in cols:
@@ -371,7 +431,13 @@ class GtfBuildTest(object):
                    d[spl[0]] = spl[1].strip("\"")
             row[GENE_ID] = d[GENE_ID]
             row[TRANSCRIPT_ID] = d[TRANSCRIPT_ID]
-            self._rows.append(row)
+            # if the type is str, encode it.
+            r = {}
+            for k, v in row.items():
+                r[k] = v
+                if isinstance(v, str):
+                    r[k] = v.encode()
+            self._rows.append(r)
             self._num_rows += 1
   
     def tearDown(self):

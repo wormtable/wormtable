@@ -39,7 +39,7 @@ class ProgramRunner(object):
     """
     def __init__(self, args):
         self._homedir = args.HOMEDIR 
-        self._cache_size = wt.DEFAULT_CACHE_SIZE
+        self._db_cache_size = wt.DEFAULT_CACHE_SIZE
         self._table = wt.Table(self._homedir) 
        
     def init(self):
@@ -48,7 +48,7 @@ class ProgramRunner(object):
         """
         if not self._table.exists():
             self.error("Table '{0}' not found".format(self._homedir))
-        self._table.set_cache_size(self._cache_size)
+        self._table.set_db_cache_size(self._db_cache_size)
         self._table.open("r")
 
     def format_size(self, n):
@@ -218,7 +218,7 @@ class AddRunner(ProgramRunner):
             self._index_name = self._colspec
         self._quiet = args.quiet
         self._force = args.force
-        self._index_cache_size = args.cache_size
+        self._index_db_cache_size = args.cache_size
         self._index = None
 
     def init(self):
@@ -279,10 +279,10 @@ class DumpRunner(ProgramRunner):
     """
     def __init__(self, args):
         super(DumpRunner, self).__init__(args)
-        self._cache_size = args.cache_size
+        self._db_cache_size = args.cache_size
         self._index = None 
-        self._min_value = args.min 
-        self._max_value = args.max 
+        self._start = args.start
+        self._stop = args.stop
         self._columns = None
         self._index_name = args.index
         self._column_ids = args.columns
@@ -298,27 +298,27 @@ class DumpRunner(ProgramRunner):
         """
         l = []
         for c, k in zip(self._index.key_columns(), key.split(",")):
-            v = k
+            v = str(k).encode()
             if c.get_type() == wt.WT_FLOAT:
                 v = float(k)
             elif c.get_type() in [wt.WT_INT, wt.WT_UINT]:
                 v = int(k)
             l.append(v)
-        return l 
+        return tuple(l)
 
     def init(self):
         super(DumpRunner, self).init()
         if self._index is not None:
             self._index.open("r")
-            if self._min_value is not None:
-                self._min_value = self.parse_index_key(self._min_value)
-            if self._max_value is not None:
-                self._max_value = self.parse_index_key(self._max_value)
+            if self._start is not None:
+                self._start = self.parse_index_key(self._start)
+            if self._stop is not None:
+                self._stop = self.parse_index_key(self._stop)
         else:
-            if self._min_value is not None:
-                self._min_value = [int(self._min_value)]
-            if self._max_value is not None:
-                self._max_value = [int(self._max_value)]
+            if self._start is not None:
+                self._start = [int(self._start)]
+            if self._stop is not None:
+                self._stop = [int(self._stop)]
         
         self._columns = self._table.columns()
         if len(self._column_ids) > 0:
@@ -332,11 +332,16 @@ class DumpRunner(ProgramRunner):
                 self._columns.append(c)
 
     def run(self):
-        cursor = self._table.cursor(self._columns, self._index)
-        if self._min_value is not None:
-            cursor.set_min(*self._min_value)
-        if self._max_value is not None:
-            cursor.set_max(*self._max_value)
+        if self._index is None:
+            v = self._start
+            start = 0 if v is None else v[0]
+            v = self._stop
+            stop = v if v is None else v[0]
+            cursor = self._table.cursor(self._columns, start, stop)
+        else:
+            start = self._start
+            stop = self._stop
+            cursor = self._index.cursor(self._columns, start, stop)
         for row in cursor:
             s = ""
             for c, v in zip(self._columns, row): 
@@ -444,10 +449,12 @@ def main(cmdline_args=None):
             help="cache size in bytes; suffixes K, M and G also supported.")   
     dump_parser.add_argument("--index", "-i", default=None,
             help="index to sort by when dumping rows")
-    dump_parser.add_argument("--min", "-m", default=None,
-            help="minimum value to print")
-    dump_parser.add_argument("--max", "-x", default=None,
-            help="maximum value to print")
+    dump_parser.add_argument("--start", "-s", default=None,
+            help="""start value to print. This is a comma delimited series
+                of values for each column in the index. Eg. --start=AA,A""")
+    dump_parser.add_argument("--stop", "-t", default=None,
+            help="""stop value to print. This is a comma delimited series 
+                of values for each column in the index.""")
     dump_parser.set_defaults(runner=DumpRunner)
     
     # Set signal handler for SIGPIPE to quietly kill the program.

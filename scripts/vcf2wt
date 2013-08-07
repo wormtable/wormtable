@@ -323,7 +323,7 @@ class ProgramRunner(object):
     """
     def __init__(self, args):
         self.__destination = args.DEST 
-        self.__cache_size = args.cache_size
+        self.__db_cache_size = args.cache_size
         self.__force = args.force
         self.__generate_schema = args.generate_schema
         self.__progress = not args.quiet
@@ -365,7 +365,7 @@ class ProgramRunner(object):
         os.mkdir(self.__destination)
         self.__table = wt.Table(self.__destination)
         self.__table.read_schema(self.__schema)
-        self.__table.set_cache_size(self.__cache_size)
+        self.__table.set_db_cache_size(self.__db_cache_size)
         self.__table.open("w")
         self.__column_map = {}
         for c in self.__table.columns():

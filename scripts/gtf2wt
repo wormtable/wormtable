@@ -95,12 +95,12 @@ class GTFReader(wt.FileReader):
         transcript_id_index = all_columns.index(TRANSCRIPT_ID)
         for line in input_file:
             row = list(empty_row)
-            tokens = line.split("\t")
+            tokens = line.split(b"\t")
             for j in range(num_fixed_cols):
                 if tokens[j] != MISSING_VALUE:
                     row[j] = tokens[j]
             # parse out the attributes
-            attrs = tokens[num_fixed_cols].split(";")
+            attrs = tokens[num_fixed_cols].split(b";")
             # GENE_ID and TRANSCRIPT_ID must be the first two attributes,
             # not necessarily in that order.
             for s in attrs[:2]:
@@ -110,7 +110,7 @@ class GTFReader(wt.FileReader):
                     index = gene_id_index
                 else:
                     index = transcript_id_index
-                row[index] = v.strip("\"") 
+                row[index] = v.strip(b"\"") 
             yield row 
             num_rows += 1
             if num_rows % update_rows == 0: 
@@ -123,7 +123,7 @@ class ProgramRunner(object):
     """
     def __init__(self, args):
         self.__destination = args.DEST 
-        self.__cache_size = args.cache_size
+        self.__db_cache_size = args.cache_size
         self.__force = args.force
         self.__progress = not args.quiet
         self.__quiet = args.quiet
@@ -163,7 +163,7 @@ class ProgramRunner(object):
         os.mkdir(self.__destination)
         self.__table = wt.Table(self.__destination)
         self.__define_schema()           
-        self.__table.set_cache_size(self.__cache_size)
+        self.__table.set_db_cache_size(self.__db_cache_size)
         self.__table.open("w")
         self.__reader.set_progress(self.__progress)
         for r in self.__reader.rows():

@@ -40,7 +40,7 @@ import _wormtable
 
 __version__ = '0.1.0b2'
 TABLE_METADATA_VERSION = "0.1"
-INDEX_METADATA_VERSION = "0.1.1"
+INDEX_METADATA_VERSION = "0.1.2"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
@@ -54,23 +54,25 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 WT_VAR_1  = _wormtable.WT_VAR_1
 
-def open_table(homedir, cache_size=DEFAULT_CACHE_SIZE_STR):
+def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
     Returns a table opened in read mode with cache size 
     set to the specified value. This is the recommended 
     interface when opening tables for reading.
    
     See :ref:`performance-cache` for details on setting cache sizes. 
+    The cache size may be either an integer specifying the size in 
+    bytes or a string with the optional suffixes K, M or G.
 
     :param homedir: the filesystem path for the wormtable home directory
     :type homedir: str
-    :param cache_size: The Berkeley DB cache size for the table.
-    :type cache_size: str or int. 
+    :param db_cache_size: The Berkeley DB cache size for the table.
+    :type db_cache_size: str or int. 
     """
     t = Table(homedir)
     if not t.exists():
         raise IOError("table '" + homedir + "' not found")
-    t.set_cache_size(cache_size)
+    t.set_db_cache_size(db_cache_size)
     t.open("r")
     return t   
 
@@ -240,7 +242,7 @@ class Database(object):
         """
         self.__homedir = homedir
         self.__db_name = db_name
-        self.__cache_size = DEFAULT_CACHE_SIZE
+        self.__db_cache_size = DEFAULT_CACHE_SIZE
         self.__ll_object = None
         self.__open_mode = None
 
@@ -290,11 +292,11 @@ class Database(object):
         """
         return self.__db_name
 
-    def get_cache_size(self):
+    def get_db_cache_size(self):
         """
         Returns the cache size for this database in bytes.
         """
-        return self.__cache_size
+        return self.__db_cache_size
 
     def get_db_path(self):
         """
@@ -325,10 +327,10 @@ class Database(object):
         """
         return os.path.join(self.get_homedir(), self.get_db_name() + ".xml")
 
-    def set_cache_size(self, cache_size):
+    def set_db_cache_size(self, db_cache_size):
         """
         Sets the cache size to the specified value. 
-        If cache_size is a string, it can be suffixed with 
+        If db_cache_size is a string, it can be suffixed with 
         K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.
         
         This must be called before a table is opened, and has no effect 
@@ -336,11 +338,11 @@ class Database(object):
     
         See :ref:`performance-cache` for details on setting cache sizes. 
 
-        :param cache_size: the size of the cache
-        :type cache_size: str or int 
+        :param db_cache_size: the size of the cache
+        :type db_cache_size: str or int 
         """
-        if isinstance(cache_size, str):
-            s = cache_size
+        if isinstance(db_cache_size, str):
+            s = db_cache_size
             d = {"K":2**10, "M":2**20, "G":2**30}
             multiplier = 1
             value = s
@@ -348,9 +350,9 @@ class Database(object):
                 value = s[:-1]
                 multiplier = d[s[-1]] 
             n = int(value)
-            self.__cache_size = n * multiplier 
+            self.__db_cache_size = n * multiplier 
         else:
-            self.__cache_size = int(cache_size)
+            self.__db_cache_size = int(db_cache_size)
 
     def write_metadata(self, filename):
         """
@@ -550,7 +552,7 @@ class Table(Database):
             data_file = self.get_data_path().encode() 
         ll_cols = [c.get_ll_object() for c in self.__columns]
         t = _wormtable.Table(db_file, data_file, ll_cols, 
-                self.get_cache_size())
+                self.get_db_cache_size())
         return t
 
     def get_fixed_region_size(self):
@@ -641,13 +643,27 @@ class Table(Database):
         ret = None
         if isinstance(col_id, int):
             ret = self.__columns[col_id]
-        elif isinstance(col_id, str):
+        else:
             k = self.__column_name_map[col_id]
             ret = self.__columns[k]
-        else:
-            raise TypeError("column ids must be strings or integers")
         return ret
     
+    def translate_columns(self, columns):
+        """
+        Translates the specified list of column identifiers into a list 
+        of Column instances. Column identifiers may be strings, integers 
+        or Column instances.
+        """
+        cols = []
+        for col_id in columns:
+            if isinstance(col_id, Column):
+                cols.append(col_id)
+            elif isinstance(col_id, int):
+                cols.append(self.__columns[col_id])
+            else:
+                cols.append(self.get_column(col_id))
+        return cols
+
     def read_schema(self, filename):
         """
         Reads the schema from the specified file and sets up the columns 
@@ -860,39 +876,37 @@ class Table(Database):
             self.__column_name_map = {}
     
     
-    def cursor(self, columns, index=None):
+    def cursor(self, columns, start=0, stop=None):
         """
-        Returns a cursor over the rows in this database, retrieving the specified 
-        columns. If index is provided, the cursor will iterate over the rows in 
-        the order defined by the index.
+        Returns a cursor over the rows in this table, retrieving only 
+        the specified columns. Rows are returned as Tuple objects, with the 
+        value for each column in the same position as the corresponding 
+        column in the list of columns provided. 
 
         The columns specified may be either :class:`Column` instances, integers 
         or strings. If an integer is provided, the column
         at the specified position is used and if a string is provided, the column 
         with the specified identifier is used. These may be mixed arbitrarily.
 
+        The *start* and *stop* arguments are directly analogous to the built in 
+        :func:`range` function. The cursor will iterate over all rows such that 
+        the *start* <= row_id < stop. Note that *start* is inclusive, and 
+        *stop* is exclusive. 
+
         :param columns: columns to retrieve from the table
         :type columns: sequence of column identifiers
-        :param index: index defining the order in which rows are retrieved 
-        :type index: :class:`Index`
-        :rtype: :class:`Cursor`
+        :param start: the row id of the first row returned 
+        :type start: int 
+        :param stop: the row id of the last row returned, minus 1. 
+        :type stop: int 
         """
         self.verify_open(WT_READ)
-        c = None
-        cols = []
-        for col_id in columns:
-            if isinstance(col_id, Column):
-                cols.append(col_id)
-            elif isinstance(col_id, int):
-                cols.append(self.__columns[col_id])
-            else:
-                cols.append(self.get_column(col_id))
-        if index is None:
-            c = TableCursor(self, cols) 
-        else:
-            index.verify_open(WT_READ)
-            c = IndexCursor(index, cols)
-        return c
+        col_pos = [c.get_position() for c in self.translate_columns(columns)]
+        tri = _wormtable.TableRowIterator(self.get_ll_object(), col_pos) 
+        tri.set_min(start)
+        if stop is not None:
+            tri.set_max(stop)
+        return tri
 
     def indexes(self):
         """
@@ -907,10 +921,10 @@ class Table(Database):
             yield name 
 
 
-    def open_index(self, index_name, cache_size=DEFAULT_CACHE_SIZE_STR):
+    def open_index(self, index_name, db_cache_size=DEFAULT_CACHE_SIZE_STR):
         """
         Returns an index with the specified name opened in read mode with 
-        the specified cache_size.
+        the specified db_cache_size.
         
         See :ref:`performance-cache` for details on setting cache sizes. 
         The cache size may be either an integer specifying the size in 
@@ -918,14 +932,14 @@ class Table(Database):
 
         :param index_name: the name of the index to open
         :type index_name: str
-        :param cache_size: the size of the cache on the index
-        :type cache_size: str or int. See :meth:`Table.set_cache_size` for details.  
+        :param db_cache_size: the size of the cache on the index
+        :type db_cache_size: str or int. 
         """
         self.verify_open(WT_READ)
         index = Index(self, index_name) 
         if not index.exists():
             raise IOError("index '" + index_name + "' not found")
-        index.set_cache_size(cache_size)
+        index.set_db_cache_size(db_cache_size)
         index.open("r")
         return index
 
@@ -990,7 +1004,7 @@ class Index(Database):
             filename = self.get_db_build_path().encode() 
         cols = [c.get_position() for c in self.__key_columns]
         i = _wormtable.Index(self.__table.get_ll_object(), filename, 
-                cols, self.get_cache_size())
+                cols, self.get_db_cache_size())
         i.set_bin_widths(self.__bin_widths)
         return i
     
@@ -1055,7 +1069,11 @@ class Index(Database):
 
     def open(self, mode):
         """
-        Opens this index in the specified mode.
+        Opens this index in the specified mode. Mode must be one of 
+        'r' or 'w'.
+
+        :param: mode: The mode to open the index in.
+        :type: mode: str
         """
         self.__table.verify_open(WT_READ)
         Database.open(self, mode)
@@ -1075,26 +1093,98 @@ class Index(Database):
         Returns an iterator over all the keys in this Index in sorted 
         order.
         """
+        self.verify_open(WT_READ)
         dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
         for k in dvi:
-            yield self.translate_value(k)
+            yield self.ll_to_key(k)
 
-    def translate_key(self, v):
+    
+    def min_key(self, *k):
         """
-        Translates the specified arguments tuple as a key to a tuple ready to 
+        Returns the smallest key greater than or equal to the specified 
+        prefix.
+        """
+        key = self.key_to_ll(k)
+        v = self.get_ll_object().get_min(key)
+        return self.ll_to_key(v) 
+
+    def max_key(self, *k):
+        """
+        Returns the largest index key less than the specified prefix. 
+        """
+        key = self.key_to_ll(k)
+        v = self.get_ll_object().get_max(key)
+        return self.ll_to_key(v) 
+
+    def counter(self):
+        """
+        Returns an IndexCounter object for this index. This provides an efficient 
+        method of iterating over the keys in the index.
+        """
+        self.verify_open(WT_READ)
+        return IndexCounter(self)
+   
+
+    def cursor(self, columns, start=None, stop=None):
+        """
+        Returns a cursor over the rows in the table in the order defined 
+        by this index, retrieving only the specified columns. Rows are 
+        returned as Tuple objects, with the value for each column in the same 
+        position as the corresponding column in the list of columns provided. 
+
+        The columns specified may be either :class:`Column` instances, integers 
+        or strings. If an integer is provided, the column
+        at the specified position is used and if a string is provided, the column 
+        with the specified identifier is used. These may be mixed arbitrarily.
+
+        The *start* and *stop* arguments are analogous to the built in 
+        :func:`range` function. The cursor will iterate over all rows such that 
+        the *start* <= key < stop. Note that *start* is inclusive, and 
+        *stop* is exclusive. These parameters may specified values for up to 
+        n columns, for an n column index. For multiple values, a tuple must 
+        be provided; a single value of the relevant type is considered to 
+        be the same as a singleton tuple consisting of this value.
+
+        :param columns: columns to retrieve from the table
+        :type columns: sequence of column identifiers
+        :param start: the key prefix that is less than or equal to all keys 
+            in returned rows.
+        :param stop: the key prefix that is greater than all keys in returned 
+            rows.
+        """
+        self.verify_open(WT_READ)
+        col_pos = [c.get_position() for c in 
+                self.__table.translate_columns(columns)]
+        iri = _wormtable.IndexRowIterator(self.get_ll_object(), col_pos) 
+        if start is not None:
+            key = self.key_to_ll(start)
+            iri.set_min(key)
+        if stop is not None:
+            key = self.key_to_ll(stop)
+            iri.set_max(key)
+        return iri
+
+
+    def key_to_ll(self, v):
+        """
+        Translates the specified tuple as a key to a tuple ready to 
         for use in the low-level API.
         """
-        n = len(v)
+        cols = self.__key_columns
+        u = v
+        if not isinstance(v, tuple):
+            u = v,
+        n = len(u)
         l = [None for j in range(n)]
         for j in range(n):
-            l[j] = v[j]
+            l[j] = u[j]
             if isinstance(l[j], str):
                 l[j] = l[j].encode()
         return tuple(l)
     
-    def translate_value(self, v):
+    def ll_to_key(self, v):
         """ 
-        Translates the specified value from the low-level value to its
+        Translates the specified value from the low-level key value to its
         high-level equivalent.
         """
         ret = v
@@ -1105,32 +1195,7 @@ class Index(Database):
                 ret = v[0]
         return ret
 
-    def get_min(self, *k):
-        """
-        Returns the smallest index key greater than or equal to the specified 
-        prefix.
-        """
-        key = self.translate_key(k)
-        v = self.get_ll_object().get_min(key)
-        return self.translate_value(v) 
 
-    def get_max(self, *k):
-        """
-        Returns the largest index key less than the specified prefix. 
-        """
-        key = self.translate_key(k)
-        v = self.get_ll_object().get_max(key)
-        return self.translate_value(v) 
-
-    def counter(self):
-        """
-        Returns an IndexCounter object for this index. This provides an efficient 
-        method of iterating over the keys in the index.
-        """
-        self.verify_open(WT_READ)
-        return IndexCounter(self)
-    
- 
 class IndexCounter(collections.Mapping):
     """
     A counter for Indexes, based on the collections.Counter class. This class 
@@ -1142,15 +1207,15 @@ class IndexCounter(collections.Mapping):
     
     def __getitem__(self, key):
         if isinstance(key, tuple):
-            k = self.__index.translate_key(key)
+            k = self.__index.key_to_ll(key)
         else:
-            k = self.__index.translate_key((key,))
+            k = self.__index.key_to_ll((key,))
         return self.__index.get_ll_object().get_num_rows(k) 
    
     def __iter__(self):
         dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
         for v in dvi:
-            yield self.__index.translate_value(v)
+            yield self.__index.ll_to_key(v)
 
     def __len__(self):
         n = 0
@@ -1158,66 +1223,6 @@ class IndexCounter(collections.Mapping):
         for v in dvi:
             n += 1
         return n
-
-class Cursor(object):
-    """
-    Superclass of Cursor objects. Subclasses are responsible for allocating 
-    an iterator.
-    """
-    def __iter__(self):
-        for r in self._row_iterator:
-            yield r
-
-    def set_min(self, *v):
-        """
-        Sets the minimum row key to retrieve to the specified value.
-        """
-        raise NotImplementedError
-
-    def set_max(self, *v):
-        """
-        Sets the maximum row key to retrieve to the specified value.
-        """
-        raise NotImplementedError
-
-class TableCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, table, columns):
-        self._columns = columns
-        col_positions = [c.get_position() for c in columns]
-        self._row_iterator = _wormtable.TableRowIterator(table.get_ll_object(), 
-                col_positions)
-
-    def set_min(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_min(v)
-    def set_max(self, v):
-        if v < 0:
-            raise ValueError("negative row_ids not supported")
-        self._row_iterator.set_max(v)
-
-class IndexCursor(Cursor):
-    """
-    A cursor over the rows of the table in the order defined by an index. 
-    """
-    def __init__(self, index, columns):
-        self.__index = index
-        self._columns = columns
-        col_positions = [c.get_position() for c in columns]
-        self._row_iterator = _wormtable.IndexRowIterator(
-                self.__index.get_ll_object(), col_positions)
-    
-    def set_min(self, *v):
-        key = self.__index.translate_key(v)
-        self._row_iterator.set_min(key)
-    
-    def set_max(self, *v):
-        key = self.__index.translate_key(v)
-        self._row_iterator.set_max(key)
-
 
 #
 # Utilities for the command line programs.
