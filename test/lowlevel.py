@@ -131,6 +131,7 @@ class TestDatabase(unittest.TestCase):
         self._row_buffer = self._database 
         self.num_random_test_rows = num_random_test_rows 
         self.num_columns = len(self._columns) 
+        self.rows = []
 
     def open_reading(self):
         """
@@ -143,7 +144,7 @@ class TestDatabase(unittest.TestCase):
         self._database.close()
         os.unlink(self._db_file)
         os.unlink(self._data_file)
-
+        self.rows = None
 
     def assertRowListsEqual(self, l1, l2):
         """
@@ -1312,7 +1313,8 @@ class TestIndex(unittest.TestCase):
         os.unlink(self._table_db_file)
         os.unlink(self._table_data_file)
         os.unlink(self._index_db_file)
-
+        self._table = None
+        self._columns = None
 
 class TestIndexInitialisation(TestIndex):
     """ 
