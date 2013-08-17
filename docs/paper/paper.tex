@@ -180,7 +180,7 @@ These tables are produced by
 programs and exported to plain text files, which are often very large. 
 Researchers must process these files 
 line-by-line, parsing values encoded as text into native types so that 
-calculations may be done. This is a time consuming process.
+calculations may be done. This is an error prone and time consuming process.
 Furthermore, there is no simple means of indexing these files so that 
 rows containing particular values can be quickly found. 
 \paragraph*{Results:} 
@@ -237,38 +237,37 @@ data analysis code is also much simpler and less error prone.
 %%
 \section*{Background} 
 
-\emph{The Background section should be written in a
-way that is accessible to researchers without specialist knowledge in
-that area and must clearly state - and, if helpful, illustrate - the
-background to the research and its aims. It should clearly described the
-relevant context and the specific issue which the software described is
-intended to address.}
-
+%\emph{The Background section should be written in a
+%way that is accessible to researchers without specialist knowledge in
+%that area and must clearly state - and, if helpful, illustrate - the
+%background to the research and its aims. It should clearly described the
+%relevant context and the specific issue which the software described is
+%intended to address.}
+%
 Despite the ever increasing volumes of data being processed in bioinformatics,
 the methods used are almost entirely based on plain text files. Data is 
 usually encoded in lines of text, with each row consisting of a series of tab-delimited 
 values.
 These files are easy to view and interpret and can be processed on 
 any platform with the minimum of library dependencies. Using compression,
-text files can be quite compact, and Tabix~\cite{li11} provides  
-fast retrieval of rows from arbitrary locations in the table.
-% DAN: tabix is just for tables that have CHROM and POS values though right?
-% This is a limitation that it might be worth pointing out. 
+text files can be quite compact, and specialised indexing methods 
+are available to quickly retrieve rows intersecting with a 
+given genomic interval~\cite{li11}.
 
 It is not sufficient, however, to simply store and retrieve data. To use data
 it must be \emph{processed}. This is the major flaw in 
 using text files as a data format: before we can perform calculations, we 
 must first parse the encoded information into native 
 machine values. This is an expensive process, and 
-compression (if it is used) adds another substantial overhead. The result 
-of this is that simple calculations over a large dataset may take 
+compression (if it is used) adds another substantial overhead. 
+As a result,  simple calculations over a large dataset may take 
 many hours to complete.
 
 Another problem with tables stored as text files is that it is difficult 
 to index the information within particular columns. 
 This means that many operations on a table require a complete scan 
-through the file. As a result, the only viable means of 
-working with a subset of the data
+through the file. The only viable means of 
+working with a subset of the data, therefore, 
 is to create another file consisting of the subset of interest. 
 This is inflexible and error prone, and multiplies already significant  
 storage requirements.
@@ -301,9 +300,9 @@ static datasets.
 %% Implementation 
 %%
 \section*{Implementation}
-\emph{This should include a description of the overall architecture of the software implementation, 
-along with details of any critical issues and how they were addressed.
-}
+%\emph{This should include a description of the overall architecture of the software implementation, 
+%along with details of any critical issues and how they were addressed.
+%}
 
 % what is wormtable?
 Wormtable (write-once read-many table) 
@@ -311,7 +310,7 @@ is a new data format and software library designed specifically
 to deal with the challenges of data processing in bioinformatics.
 It provides a portable, compact, read-only store for tabular
 data of essentially unlimited size. Tables can
-be either written directly via the library, or converted
+be either written directly using the library, or converted
 from existing formats via command line tools. 
 Wormtable provides a simple Python API to access rows
 in the table, facilitating efficient and convenient access to 
@@ -319,18 +318,28 @@ data. The core data manipulation and storage facilities
 are written in C for efficiency.
 
 % Wormtable's binary row format 
-Data is stored in rows using a  
-compact binary format designed specifically for biological applications.
-% DAN: what exactly does this mean - what makes it specific to biology??
+Data is stored in rows using a compact binary format.
 Each row consists of a fixed number of columns, and each column 
 holds either a fixed or variable number of elements of a fixed type and size.
+Each column is allocated a fixed number of bytes within the `fixed region' of 
+a row. For fixed
+length columns, the encoded elements are stored entirely within the
+fixed region; for variable length columns, the encoded elements are 
+stored in the `variable region' of the row, and the location and number 
+of elements stored in the fixed region. The type, size and number 
+of elements of 
+each column are specified in the table schema, which is defined 
+in XML as part of the table's metadata.
+
 Wormtable currently supports signed and unsigned integers, 
-floating point and character data. To store data as 
-compactly as possible, integer sizes range from one to eight bytes,
-and real numbers are stored as IEEE half, single, and double 
-precision floating point values. % DAN: as necessary? Or is this manually specified?
+floating point and character data. Integer sizes range 
+from one to eight bytes, and real numbers are stored as 
+IEEE half, single, and double precision~\cite{ieee08}
+floating point values.  
 Fixed and variable length character strings 
-are also supported. 
+are also supported. Using this flexible type system, columns can 
+be assigned the most appropriate type and size for the range of
+values to be represented.
 
 % Tables
 Rows are stored sequentially in a data file, and the offset and length 
@@ -345,8 +354,9 @@ world~\cite{sb12}.
 
 % Indexes
 Besides random access to rows, wormtable also provides indexes
-over arbitrary combinations of columns. An index is a database in 
-which the keys are the values from the columns in question concatenated
+over arbitrary combinations of columns. An index is a 
+Berkeley DB database in 
+which the keys are the elements from the columns in question concatenated
 together, and the values are pointers to the original row. Indexes make
 many operations much more efficient, since we can directly seek to the 
 rows we are interested in without performing a full table scan. They also 
@@ -374,16 +384,16 @@ architectures.
 %%
 \section*{Results}
 
-\emph{The Results and Discussion may be combined into a single section or
-presented separately. They may also be broken into subsections with
-short, informative headings. In any case what should be described is the
-functionality of the software together with data on how its performance
-and functionality compare with and improve on functionally similar
-existing software. There should then be a discussion of the intended
-use of the software, and the benefits that are envisioned together,
-if possible, with an outline for the planned future development of
-new features.}
-
+%\emph{The Results and Discussion may be combined into a single section or
+%presented separately. They may also be broken into subsections with
+%short, informative headings. In any case what should be described is the
+%functionality of the software together with data on how its performance
+%and functionality compare with and improve on functionally similar
+%existing software. There should then be a discussion of the intended
+%use of the software, and the benefits that are envisioned together,
+%if possible, with an outline for the planned future development of
+%new features.}
+%
 \subsection*{API}
 The principle goal of wormtable is to provide efficient access to data 
 using an easy to learn interface. 
@@ -413,9 +423,9 @@ key.
 
 The API is straightforward, but it is flexible, powerful and 
 extensible. This simplicity ensures that 
-programmer of all experience levels  
+programmers of all experience levels  
 can take full advantage of the powerful data 
-processing that wormtable provides. In the following subsections 
+processing facilities that wormtable provides. In the following subsections 
 we illustrate the performance advantages of wormtable via some 
 examples. These are not intended to be definitive benchmarks
 and are simply concrete examples to demonstrate the type of improvements 
@@ -442,7 +452,7 @@ to represent the data in each column).
 Values are stored in wormtable in a portable binary format, so that no parsing is
 required when reading in rows. To illustrate this advantage, we
 wrote a script to count the number of transitions and transversions
-in the dataset using wormtable and PyVCF~\cite{pyvcf}
+in the dataset using wormtable and PyVCF~\cite{pyvcf},
 a Python VCF parser.  In this example we proceed 
 row-by-row, examining the REF and ALT columns and
 counting the transitions and transversions we encounter. 
@@ -484,14 +494,8 @@ efficiently retrieve all of the rows within a given genomic range.
 
 To compare the seek performance of wormtable with Tabix, we compressed
 the VCF file mentioned in the previous subsection using \texttt{bgzip}
-and indexed it with \texttt{tabix}. Since the VCF file was not 
-strictly in order of genome position (in violation of the VCF format),
-we first needed to sort the VCF file, which required 5m13s. 
-% I'm not sure its necessary to include the time to sort this - my guess is that
-% most VCFs will be sorted, and for simplicity we could skip over this.
-Afterwards,
-compression required 11m8s, and indexing with \texttt{tabix} required
-1m12s. The size of the resulting compressed file was 2.9GB and 
+(which required 11m8s) and indexed it with \texttt{tabix} (1m12s). 
+The size of the resulting compressed file was 2.9GB and 
 the size of the index file was 106KB.
 To duplicate the functionality of Tabix on VCF data, we simply need to 
 create an index on the CHROM and POS columns using \texttt{wtadmin add}. 
@@ -514,9 +518,11 @@ seconds. For wormtable, the elapsed time was 181 seconds
 with a processor time of 5 seconds. Thus, the time required 
 to perform this test is dominated by waiting for I/O in both 
 cases. Since the wormtable file is considerably larger than the 
-compressed file used by Tabix, more and larger seeks were required 
-to bring the required pages into memory. However, once the 
-pages were in memory, Tabix needed to do much more work to 
+compressed file used by Tabix, more and larger hard drive
+seeks were required 
+to bring the required pages into memory (solid state 
+storage does not suffer from this problem). Once the 
+pages were in memory, however, Tabix needed to do much more work to 
 decompress then and make them usable, as shown by the 
 difference in processor times.
 
@@ -529,32 +535,20 @@ required.  On the other hand, however, decompression is expensive and must
 be repeated each time a block is accessed unless some sophisticated
 caching mechanism is devised. 
 
-The penalty for random seeks is exceedingly high in this 
-example, however, since we have used a hard disk for storage.
-Repeating the cold cache example on a laptop equipped with 
-solid state storage, the elapsed time for Tabix was 76 seconds
-with a CPU time of 72 seconds, whereas the elapsed time for 
-wormtable was 31 seconds with a CPU time of 6.5 seconds. Thus, using 
-solid state storage negates the advantage of smaller files, since 
-seeks are much less expensive.  
- With the rapidly reducing cost and 
-increasing capacity of solid state storage, it seems likely 
-that it will soon be routinely used for all but the largest 
-of bulk storage. Wormtable takes much better advantage of
-modern hardware and large cache sizes, allowing the full bandwidth 
-and random seek performance to be utilised. Compression based 
-techniques will always be limited by the CPU time required to 
-decompress data.
-
-% DAN: At the moment, a reader might conclude that if they have a standard
-% hard disk, they should probably choose tabix rather than womrtable.
-% It would be good to point out here what other benefits wormtable has over
-% tabix. These would probably be: 1. flexbilility (not limitied to CHOM, POS
-% indexed files) and the ability to index over other columns. 2. Similar 
-% performance on a hard disk could be achieved by compressing the wormtable data
-% 3. For VCFs and GTFs, information in compound columns can be parsed in advance 
-% making access to it much faster - basically tabix only returns matching rows
-% whereas wormtable provides parsed data for each row. Any other points??
+The test used here is also highly synthetic, and unlikely to be 
+indicative of most real-world applications. The majority of 
+workloads have strong locality of reference~\cite{d05}, 
+and such large and extreme seeks across genomic regions 
+are unlikely to occur. In this case, wormtable 
+is  much faster than Tabix, since there
+is no CPU overhead of decompression. Furthermore, since 
+Tabix returns rows of text, the problem of parsing rows
+must still be solved. This is expensive (as illustrated 
+in the previous subsection), and creates extra code 
+complexity. Wormtable, by providing a simple API to 
+access both rows and columns, gives a 
+unified interface for accessing data that is 
+both straightforward to use and highly efficient.
 
 
 \section*{Discussion}
@@ -580,14 +574,9 @@ different processor architectures and operating systems
 is a complex software engineering task. Maintaining this ecosystem 
 separately for many different file formats is surely 
 unsustainable.
-% DAN: Bindings can be less flexbile - for example tabix only returns 
-% rows rather than fully parsed data. They might not allow sorting etc.
-% Whereas a general solution could provide many more features?
 
 Wormtable alleviates the need for these different formats and libraries,
 as it is flexible enough to store many different types of data. 
-%DAN: essentially any tabular data? What are the restrictions? This might be 
-% a good time to bring it up - limited field size etc?
 Wormtable is portable,
 and has been tested on big- and little-endian platforms with 32 and 64
 bit word sizes, along with many operating system combinations. To 
@@ -600,10 +589,8 @@ wormtable format, and currently provides conversion utilitites
 for the VCF and GTF formats.
 The most important aspect of future development 
 is to develop tools to convert other tabular formats such as 
-PSL, GFF and BED to wormtable format. 
-% SAM format as well?
-Such tools are 
-not difficult to develop, since all that is required is a parser
+PSL, GFF, SAM and BED to wormtable format. 
+Such tools are not difficult to develop, since all that is required is a parser
 for the format in question written in Python.
 
 Wormtable is currently limited to supporting Python only, and 
@@ -613,8 +600,6 @@ languages such as Perl, R and PHP.
 Wormtable does not support interval search, and so it is not
 straightforward to find, for example, all rows overlapping 
 a given genomic region in GTF files. 
-% I don't understand this point - isn't this what a cursor does
-% You specify start and end and it gets all matching rows?
 This problem has been 
 solved several times, however, and we aim to adapt existing 
 techniques~\cite{li11,kzbhk10} and incorporate them into 
@@ -631,42 +616,60 @@ contributors.
 
 %%%%%%%%%%%%%%%%%%%%%%
 \section*{Conclusions}
-\emph{This should state clearly the main conclusions of the article and give a clear 
-explanation of the importance and relevance of the software.}
-
-The volumes of data being produced and processed in bioinformatics are constantly 
+%\emph{This should state clearly the main conclusions of the article and give a clear 
+%explanation of the importance and relevance of the software.}
+%
+The volume of data being produced in bioinformatics is constantly 
 increasing, but the tools available to end users to 
-process this data are still mostly based on parsing plain text. This 
+process data are still mostly based on parsing plain text. This 
 approach is very inefficient, and leads to several undesirable outcomes.
 Firstly, and most obviously, a researcher's productivity is inevitably
-reduced by having to wait for several hours to see the result of a 
-simple calculation. There are also some less obvious consequences:
+reduced by being forced to wait for several hours for the result of a 
+simple calculation. Without flexible indexing, working with 
+a subset of a data file usually requires the creation of 
+another file consisting of the subset in question, requiring 
+extra storage and maintenance.
+There are also some less obvious consequences:
 code quality is reduced, since testing over the entire dataset is 
 infeasible, and it is much less likely that the effects of 
 changing arbitrary quality thresholds (for example) will be 
 systematically examined.
-% DAN: I think the major problem is not being able to seek to random parts of the
-% file, which is a major pain when the file is big.
 
-We have concentrated on the VCF format here since it is a widely 
-used and popular format. After converting the VCF format to 
+The classical approach to solving problems of this type 
+is to use a relational database, which provide sophisticated 
+data management techniques. Relational databases are unsuitable 
+for storing static datasets, however, as they are complex to 
+use and incur many unnecessary overheads.
+Wormtable provides the most important features of database
+technologies (packed binary storage of values; random access 
+to rows; general purpose indexing) without their complexities 
+and overheads. Wormtable is also more flexible than 
+relational databases, supporting, for example, columns 
+containing a variable number of integers. Finally, wormtable 
+is far more adaptable than a relational database.
+Any widely used database system today is a hugely complex 
+piece of software, and adding necessary features would be 
+very difficult. Adding new features to wormtable, on the 
+other hand, is straightforward since it is far simpler and 
+does not need to be compatible with the relational model
+and decades worth of existing software.
+
+The most important aspect of wormtable is its efficiency
+and ease of use for end users, and we illustrated these
+points using some examples of VCF data.
+After converting a file in VCF format to 
 wormtable using \texttt{vcf2wt} a user can process the 
 data very efficiently using Python. Accessing data from 
 rows in wormtable is many times faster than is possible 
 by parsing rows encoded as text.
 This is also a very convenient 
 way to access VCF data, since individual columns are already 
-parsed and all that is needed is the name of the columns of 
-interest. For accessing regions of the genome efficiently
+parsed and all that is needed is the name of the column of 
+interest. To access regions of the genome efficiently
 the user simply needs to create an index on the CHROM and POS columns
 using the  \texttt{wtadmin add} command, and can then efficiently
-seek to arbitrary locations. In the worst case, when using a 
-slow hard disk this is somewhat slower than Tabix. In the best
-case, when frequently accessing the same regions or using 
-fast solid state storage, wormtable is many times faster than 
-Tabix. Moreover, wormtable is much more general than Tabix, 
-since it can index any column or combination of columns.
-Similarly, wormtable is not limited to VCF, but can store
+seek to arbitrary locations. Wormtable is not 
+limited to VCF, but can store
 any form of fixed tabular data. We also provide a conversion 
 tool for the GTF format, and several others are planned.
 
@@ -701,7 +704,11 @@ productivity and ability to explore their data.
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{Authors contributions}
-    Text for this section \ldots
+JK conceived the project, developed wormtable source code and associated
+scripts and drafted the manuscript. RN wrote the tutorial and contributed to
+the example scripts and the manuscript. DH wrote the example scripts and vcf-utils,
+and contributed to vcf2wt, the tutorial and the manuscript.
+All authors read and approved the final manuscript.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
