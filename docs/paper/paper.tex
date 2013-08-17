@@ -406,7 +406,7 @@ of interest are then retrieved, leading to considerable
 time savings. The \texttt{cursor} function takes two additional 
 arguments, \texttt{start} and \texttt{stop}, which specify 
 rows of interest. This allows us to efficiently seek to an 
-arbitary location in the table and to read a given number 
+arbitrary location in the table and to read a given number 
 of rows sequentially from this point.
 
 The \texttt{Index} class also has a \texttt{cursor} function
@@ -469,7 +469,7 @@ It should be noted, however, that although Unix
 pipelines are efficient, it is a difficult and error prone method 
 of processing data when more complex calculations are required.
 
-Full table scans are often uneccessary in wormtable. For many tasks,
+Full table scans are often unnecessary in wormtable. For many tasks,
 creating an appropriate index allows us to seek directly to the 
 rows of interest. To illustrate this, we repeated the example 
 of counting transitions and transversions using an index 
@@ -527,7 +527,7 @@ decompress then and make them usable, as shown by the
 difference in processor times.
 
 This difference is well illustrated by immediately repeating 
-the same experiment, so that all the relevent pages are 
+the same experiment, so that all the relevant pages are 
 in cache. In this case, the elapsed time was 56 seconds for Tabix and around 
 2 seconds for wormtable. Thus, compression is a double-edged sword: 
 it does lead to much smaller files, which reduces the number of random seeks 
@@ -558,7 +558,7 @@ and efforts to address them are proceeding in parallel for
 different file formats. 
 BCF, for example, is the binary version of the VCF format discussed 
 above, in which values within rows are stored in a packed binary 
-format.  Similiarly, BigBed and 
+format.  Similarly, BigBed and 
 BigWig~\cite{kzbhk10} are compressed binary versions of the BED 
 and WIG file formats, which offer efficient random access along 
 with the ability to operate over a network. 
@@ -585,7 +585,7 @@ all that is required is a conversion program, a considerably simpler
 task than designing and supporting a custom binary file format.
 
 The library supports efficient access to any data stored in 
-wormtable format, and currently provides conversion utilitites 
+wormtable format, and currently provides conversion utilities 
 for the VCF and GTF formats.
 The most important aspect of future development 
 is to develop tools to convert other tabular formats such as 
