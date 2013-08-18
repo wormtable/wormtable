@@ -226,10 +226,14 @@ class TableBuildTest(WormtableTest):
             t.add_int_column("i_" + str(j),  num_elements=j) 
             t.add_float_column("f_" + str(j), num_elements=j) 
             t.add_char_column("c_" + str(j), num_elements=j) 
-        t.add_uint_column("u_v", num_elements=wt.WT_VAR_1)  
-        t.add_int_column("i_v", num_elements=wt.WT_VAR_1)  
-        t.add_float_column("f_v", num_elements=wt.WT_VAR_1)  
-        t.add_char_column("c_v", num_elements=wt.WT_VAR_1) 
+        t.add_uint_column("u_v1", num_elements=wt.WT_VAR_1)  
+        t.add_int_column("i_v1", num_elements=wt.WT_VAR_1)  
+        t.add_float_column("f_v1", num_elements=wt.WT_VAR_1)  
+        t.add_char_column("c_v1", num_elements=wt.WT_VAR_1) 
+        t.add_uint_column("u_v2", num_elements=wt.WT_VAR_2)  
+        t.add_int_column("i_v2", num_elements=wt.WT_VAR_2)  
+        t.add_float_column("f_v2", num_elements=wt.WT_VAR_2)  
+        t.add_char_column("c_v2", num_elements=wt.WT_VAR_2) 
         t.open("w")
         t.append([])
         t.close()
@@ -859,5 +863,69 @@ class FloatTest(WormtableTest):
             da = np.array([d], dtype=np.float64)
             results.append((float(ha[0]), float(sa[0]), float(da[0])))
         self.assert_tables_equal(values, results)
+
+
+class LargeStringTest(WormtableTest):
+    """
+    Tests the behaviour of large strings in both fixed and variable 
+    sizes.
+    """
+    def test_single_column(self):
+        t = wt.Table(self._homedir)
+        t.add_id_column(1)
+        n = 2**16 - 1 
+        strings = [b"", b"x" * (n // 4), b"x" * (n // 2), b"x" * n]
+        t.add_char_column("s", num_elements=n)
+        t.open("w")
+        for s in strings:
+            t.append([None, s])
+        for s in strings:
+            t.append_encoded([None, s])
+        strings = strings + strings 
+        # try to add longer strings
+        self.assertRaises(ValueError, t.append, [None, b"y" * (n + 1)])
+        self.assertRaises(ValueError, t.append_encoded, [None, b"y" * (n + 1)])
+        self.assertRaises(ValueError, t.append, [None, b"y" * (n + 2)])
+        self.assertRaises(ValueError, t.append_encoded, [None, b"y" * (n + 2)])
+        self.assertRaises(ValueError, t.append, [None, b"y" * (2 * n)])
+        self.assertRaises(ValueError, t.append_encoded, [None, b"y" * (2 * n)])
+        t.close()
+        t.open("r")
+        self.assertEqual(len(t), len(strings))
+        for r, s in zip(t, strings):
+            self.assertEqual(r[1], s)
+        t.close() 
+ 
+    
+    def test_variable_columns(self):
+        t = wt.Table(self._homedir)
+        t.add_id_column(2)
+        t.add_char_column("v1", num_elements=wt.WT_VAR_1)
+        t.add_char_column("v2", num_elements=wt.WT_VAR_2)
+        t.open("w")
+        c1 = t.get_column(1)
+        c2 = t.get_column(2)
+        n1 = c1.get_max_num_elements()
+        n2 = c2.get_max_num_elements()
+        s = b"y"
+        values = [ (b"", b""), (s, s), (s*5, s*5),
+            (s * n1, s * (2 * n1)), (s * (n1 // 2), s * (n2 // 2))]
+        for v in values:
+            l = [None] + list(v)
+            t.append(l)
+        for v in values:
+            l = [None] + list(v)
+            t.append_encoded(l)
+        values = values + values
+        
+        l = [None, s * (n1 + 1), s * (n2 + 1)] 
+        self.assertRaises(ValueError, t.append, l)
+        self.assertRaises(ValueError, t.append_encoded, l)
+        t.close()
+        t.open("r")
+        self.assertEqual(len(t), len(values))
+        for r, v in zip(t, values):
+            self.assertEqual(r[1:], v)
+        t.close()
 
 

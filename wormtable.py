@@ -53,6 +53,7 @@ WT_CHAR = _wormtable.WT_CHAR
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 WT_VAR_1  = _wormtable.WT_VAR_1
+WT_VAR_2  = _wormtable.WT_VAR_2
 
 def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
@@ -145,12 +146,25 @@ class Column(object):
     def get_num_elements(self):
         """
         Returns the number of elements in this column. This is either a 
-        positive integer >= 1 or WT_VAR1. If the number of elements 
-        is WT_VAR1, the number of elements in the column is variable,
-        from 0 to 255.
+        positive integer >= 1, or the symbolic constants WT_VAR_1
+        or WT_VAR_2.
         """
         return self.__ll_object.num_elements
   
+    def get_max_num_elements(self):
+        """
+        Returns the maximum number of elements in this column. If the 
+        column is fixed length, this is the number of elements. If 
+        it is variable, this is the maximum number that can be inserted.
+        """
+        return self.__ll_object.get_max_num_elements()
+
+    def is_variable(self):
+        """
+        Returns True if this column supports a variable number of elements. 
+        """ 
+        return self.__ll_object.is_variable()
+
     def get_missing_value(self):
         """
         Returns the missing value for this column.
@@ -163,7 +177,7 @@ class Column(object):
         if t == WT_CHAR:
             ret = b''
         elif n != 1: 
-            if n == WT_VAR_1:
+            if n == self.is_variable(): 
                 ret = tuple()
             else:
                 ret = tuple(None for j in range(n))
@@ -191,6 +205,8 @@ class Column(object):
         n = self.get_num_elements()
         if n == WT_VAR_1:
             num_elements = "var(1)"
+        elif n == WT_VAR_2:
+            num_elements = "var(2)"
         else:
             num_elements = str(self.get_num_elements())
         d = {
@@ -220,6 +236,8 @@ class Column(object):
         s = xmlcol.get("num_elements")
         if s == "var(1)":
             num_elements = WT_VAR_1
+        elif s == "var(2)":
+            num_elements = WT_VAR_2
         else:
             num_elements = int(s)
         element_type = reverse[xmlcol.get("element_type")]

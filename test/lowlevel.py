@@ -32,7 +32,6 @@ import _wormtable
 from _wormtable import WT_READ 
 from _wormtable import WT_WRITE
 from _wormtable import MAX_ROW_SIZE 
-from _wormtable import WT_VAR_1 as WT_VARIABLE 
 from _wormtable import WormtableError 
 
 __column_id = 0
@@ -112,6 +111,19 @@ def random_string(n):
     """
     s = ''.join(random.choice(string.ascii_letters) for x in range(n)) 
     return s
+
+def get_random_num_elements(col):
+    """
+    Returns a random number of elements of the specified column. If the 
+    column is fixed, return the number of elements. If not, return a 
+    random number.
+    """
+    n = col.num_elements
+    if n == _wormtable.WT_VAR_1:
+        n = random.randint(1, _wormtable.WT_VAR_1_MAX_ELEMENTS)
+    elif n == _wormtable.WT_VAR_2:
+        n = random.randint(1, 2 * _wormtable.WT_VAR_1_MAX_ELEMENTS)
+    return n 
 
 class TestDatabase(unittest.TestCase):
     """
@@ -230,8 +242,6 @@ class TestElementParsers(TestDatabase):
                 self.assertRaises(TypeError, rb.insert_elements, c.position, v)
         
 
-   
-
 class TestListParsers(TestDatabase):
     """
     Test the list parsers to make sure that malformed lists are correctly
@@ -272,7 +282,7 @@ class TestDatabaseLimits(TestDatabase):
     def get_columns(self):
         var_1_overhead = 3
         n = (_wormtable.MAX_ROW_SIZE - self._key_size) // (
-                _wormtable.MAX_NUM_ELEMENTS * 8 + var_1_overhead)
+                _wormtable.WT_VAR_1_MAX_ELEMENTS * 8 + var_1_overhead)
                 
         columns = [get_int_column(8) for j in range(n)]
         return columns
@@ -283,7 +293,7 @@ class TestDatabaseLimits(TestDatabase):
         it should overflow whatever we do.
         """
         rb = self._row_buffer
-        v = [j for j in range(_wormtable.MAX_NUM_ELEMENTS)]
+        v = [j for j in range(_wormtable.WT_VAR_1_MAX_ELEMENTS)]
         n = len(self._columns)
         for k in range(1, n):
             rb.insert_elements(k, v) 
@@ -301,7 +311,7 @@ class TestDatabaseLimits(TestDatabase):
         self.assertRaises(ValueError, get_float_column, -100, 1)
 
         # Test negative num_elements 
-        self.assertRaises(ValueError, get_int_column, 1, -1)
+        self.assertRaises(ValueError, get_int_column, 1, -2)
         self.assertRaises(ValueError, get_float_column, 1, -100)
 
 class TestDatabaseInteger(TestDatabase):
@@ -311,7 +321,9 @@ class TestDatabaseInteger(TestDatabase):
     """ 
     def get_columns(self):
         q = _wormtable.WT_VAR_1
+        r = _wormtable.WT_VAR_2
         columns = [get_int_column(j, q) for j in range(1, 9)] \
+            + [get_int_column(j, r) for j in range(1, 9)] \
             + [get_int_column(j, 1) for j in range(1, 9)] \
             + [get_int_column(j, 2) for j in range(1, 9)] \
             + [get_int_column(j, 3) for j in range(1, 9)] \
@@ -348,9 +360,7 @@ class TestDatabaseInteger(TestDatabase):
                 if c.num_elements == 1:
                     row[k] = v 
                 else:
-                    n = c.num_elements
-                    if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                    n = get_random_num_elements(c)
                     v = tuple([v for l in range(n)])
                     row[k] = v
                 if j % 2 == 0:
@@ -386,9 +396,7 @@ class TestDatabaseInteger(TestDatabase):
                 if c.num_elements == 1:
                     row[k] = random.randint(min_v, max_v) 
                 else:
-                    n = c.num_elements
-                    if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                    n = get_random_num_elements(c)
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     row[k] = v
                 if j % 2 == 1:
@@ -412,7 +420,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_bad_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == _wormtable.WT_VAR_1:
+        if column.is_variable():
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -424,7 +432,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_good_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == _wormtable.WT_VAR_1:
+        if column.is_variable(): 
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -594,8 +602,10 @@ class TestDatabaseFloat(TestDatabase):
     """ 
     def get_columns(self):
         q = _wormtable.WT_VAR_1
+        r = _wormtable.WT_VAR_2
         columns = [
                 get_float_column(2, q), get_float_column(4, q), get_float_column(8, q), 
+                get_float_column(2, r), get_float_column(4, r), get_float_column(8, r), 
                 get_float_column(2, 1), get_float_column(4, 1), get_float_column(8, 1), 
                 get_float_column(2, 2), get_float_column(4, 2), get_float_column(8, 2), 
                 get_float_column(2, 3), get_float_column(4, 3), get_float_column(8, 3), 
@@ -638,9 +648,7 @@ class TestDatabaseFloat(TestDatabase):
                 if c.num_elements == 1:
                     row[k] = f() 
                 else:
-                    n = c.num_elements
-                    if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                    n = get_random_num_elements(c)
                     row[k] = tuple([f() for l in range(n)])
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -688,6 +696,9 @@ class TestDatabaseChar(TestDatabase):
         columns.append(get_char_column(_wormtable.WT_VAR_1))
         columns.append(get_char_column(_wormtable.WT_VAR_1))
         columns.append(get_char_column(_wormtable.WT_VAR_1))
+        columns.append(get_char_column(_wormtable.WT_VAR_2))
+        columns.append(get_char_column(_wormtable.WT_VAR_2))
+        columns.append(get_char_column(_wormtable.WT_VAR_2))
         random.shuffle(columns)
         return columns
     
@@ -706,9 +717,7 @@ class TestDatabaseChar(TestDatabase):
             row[0] = j
             for k in range(1, self.num_columns): 
                 c = self._columns[k]
-                n = c.num_elements
-                if n == _wormtable.WT_VAR_1:
-                    n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                n = get_random_num_elements(c) 
                 row[k] = random_string(n).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -726,9 +735,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         rb = self._row_buffer
         for j in range(1, len(self._columns)):
             c = self._columns[j]
-            n = c.num_elements
-            if n == _wormtable.WT_VAR_1:
-                n = _wormtable.MAX_NUM_ELEMENTS
+            n = c.get_max_num_elements()
             for k in [1, 2, 3, 10, 500, 1000]:
                 s = random_string(n + k).encode() 
                 self.assertRaises(ValueError, rb.insert_elements, j, s)
@@ -740,7 +747,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         db = self._database
         cols = []
         for j in range(1, len(self._columns)):
-            if self._columns[j].num_elements == WT_VARIABLE:
+            if self._columns[j].is_variable():
                 cols.append(j)
         num_rows = self.num_random_test_rows 
         rows = []
@@ -767,7 +774,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         db = self._database
         cols = []
         for j in range(1, len(self._columns)):
-            if self._columns[j].num_elements != WT_VARIABLE:
+            if not self._columns[j].is_variable():
                 cols.append(j)
         num_cols = len(cols)
         num_rows = self.num_random_test_rows 
@@ -1105,7 +1112,7 @@ class TestMissingValues(object):
             r = self._database.get_row(j)
             for k in range(1, len(self._columns)):
                 c = self._columns[k]
-                if c.num_elements == _wormtable.WT_VAR_1:
+                if c.is_variable():
                     self.assertEqual(r[k], tuple())
                 elif c.num_elements < 2:
                     self.assertEqual(r[k], None)
