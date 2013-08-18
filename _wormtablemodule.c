@@ -431,6 +431,15 @@ missing_float(u_int32_t k)
  *==========================================================
  */
 
+/* 
+ * Returns true if this Column is variable length.
+ */
+static int 
+Column_is_variable(Column *self)
+{
+    return self->num_elements == WT_VAR_1;
+}
+
 /**************************************
  *
  * Native values to Python conversion. 
@@ -499,7 +508,7 @@ Column_native_to_python_char(Column *self, int index)
     PyObject *ret = NULL;
     int j = self->num_buffered_elements - 1;
     char *str = (char *) self->element_buffer;
-    if (self->num_elements != WT_VAR_1) {
+    if (!Column_is_variable(self)) {
         /* check for shortened fixed-length strings, which will be padded 
          * with NULLs */
         while (str[j] == '\0' && j >= 0) {
@@ -890,7 +899,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             goto out;
         }
         num_elements = PySequence_Fast_GET_SIZE(seq);
-        if (self->num_elements == WT_VAR_1) {
+        if (Column_is_variable(self)) {
             if (num_elements > MAX_NUM_ELEMENTS) {
                 PyErr_Format(PyExc_ValueError, 
                         "too many elements for column '%s'",
@@ -910,7 +919,7 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             self->input_elements[j] = v; 
         }
     }
-    if (self->num_elements != WT_VAR_1) {
+    if (!Column_is_variable(self)) {
         if (num_elements != self->num_elements) {
             PyErr_Format(PyExc_ValueError, 
                     "incorrect number of elements for column '%s'",
@@ -1095,7 +1104,7 @@ Column_python_to_native_char(Column *self, PyObject *elements)
     }
     memcpy(self->element_buffer, s, length);
     self->num_buffered_elements = length;
-    if (self->num_elements != WT_VAR_1) {
+    if (!Column_is_variable(self)) {
         /* Pad out the remaining space with zeros */
         while (self->num_buffered_elements != self->num_elements) {
             ((char *) self->element_buffer)[self->num_buffered_elements] = '\0';
@@ -1160,7 +1169,7 @@ Column_parse_string_sequence(Column *self, char *s)
             j++;
         }
     }
-    if (self->num_elements != WT_VAR_1) {
+    if (!Column_is_variable(self)) {
         if (num_elements != self->num_elements) {
             Column_encoded_elements_parse_error(self, 
                     "incorrect number of elements", s); 
@@ -1421,7 +1430,7 @@ Column_extract_elements(Column *self, void *row)
     uint32_t offset, num_elements;
     src = row + self->fixed_region_offset; 
     num_elements = self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         if (Column_unpack_variable_elements_address(self, src, &offset, 
                 &num_elements) < 0) {
             goto out;
@@ -1445,7 +1454,7 @@ Column_copy_row_values(Column *self, void *dest, void *src)
     void *v = src + self->fixed_region_offset;
     offset = 0;
     num_elements = self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         if (Column_unpack_variable_elements_address(self, v, &offset, 
                 &num_elements) < 0) {
             goto out;
@@ -1502,7 +1511,7 @@ Column_get_python_elements(Column *self)
              * variable number of elements, we return an empty
              * tuple, otherwise it's None.
              */
-            if (self->num_elements == WT_VAR_1) {
+            if (Column_is_variable(self)) {
                 t = PyTuple_New(0);
                 if (t == NULL) {
                     PyErr_NoMemory();
