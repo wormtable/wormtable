@@ -118,12 +118,12 @@ variables to use the headers and libraries in /opt::
     $ sudo python setup.py install    
     
 For Homebrew, get the current berkeley DB version with and again build wormtable
-after setting CFLAGS and LDFLAGS appropriately:
+after setting CFLAGS and LDFLAGS appropriately::
 
     $ brew install berkeley-db
     $ CFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ LDFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ python setup.py build
     $ sudo python setup.py install
-   
+
 for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
 
 
