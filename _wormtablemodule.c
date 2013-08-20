@@ -36,8 +36,8 @@
 
 #define WT_VAR_1 0 
 #define WT_VAR_2 (-1) 
-#define WT_VAR_1_MAX_ELEMENTS 255
-#define WT_VAR_2_MAX_ELEMENTS 65535 
+#define WT_VAR_1_MAX_ELEMENTS 254
+#define WT_VAR_2_MAX_ELEMENTS 65534 
 #define MAX_ROW_SIZE 65536
 
 #define OFFSET_LEN_RECORD_SIZE 10 
@@ -1350,6 +1350,34 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         uint32_t offset, uint32_t num_elements)
 {
     int ret = -1;
+    void *v = dest;
+
+    //printf("packed %d %d\n", offset, num_elements);
+    if (offset >= MAX_ROW_SIZE) {
+        PyErr_SetString(PyExc_SystemError, "Row overflow");
+        goto out;
+    }
+    pack_uint((u_int64_t) offset, v, 2);
+    v += 2;
+    if (self->num_elements == WT_VAR_1) {
+        if (num_elements > WT_VAR_1_MAX_ELEMENTS) {
+            PyErr_SetString(PyExc_SystemError, "too many elements");
+            goto out;
+        }
+        pack_uint((u_int64_t) num_elements, v, 1);
+    } else {
+        if (num_elements > WT_VAR_2_MAX_ELEMENTS) {
+            PyErr_SetString(PyExc_SystemError, "too many elements");
+            goto out;
+        }
+        pack_uint((u_int64_t) num_elements, v, 2);
+    }
+    ret = 0;
+out:
+    return ret;
+    
+#if 0
+    int ret = -1;
     uint16_t off = (uint16_t) offset;
     uint8_t n_1 = (uint8_t) num_elements;
     uint16_t n_2 = (uint16_t) num_elements;
@@ -1387,6 +1415,7 @@ Column_pack_variable_elements_address(Column *self, void *dest,
     ret = 0;
 out:
     return ret;
+#endif
 }   
 
 /*
@@ -1397,6 +1426,41 @@ static int
 Column_unpack_variable_elements_address(Column *self, void *src, 
         uint32_t *offset, uint32_t *num_elements)
 {
+    int ret = -1;
+    u_int64_t off = 0;
+    u_int64_t n = 0;
+    void *v = src;
+    off = unpack_uint(v, 2);
+    if (off != missing_uint(2)) {
+        if (off > MAX_ROW_SIZE) {
+            PyErr_SetString(PyExc_SystemError, "Offset overflow");
+            goto out;
+        }
+        v += 2;
+        
+        
+        if (self->num_elements == WT_VAR_1) {
+            n = unpack_uint(v, 1);
+            if (n > WT_VAR_1_MAX_ELEMENTS) {
+                PyErr_SetString(PyExc_SystemError, "VAR_1 overflow");
+                goto out;
+            }
+        } else {
+            n = unpack_uint(v, 2);
+            if (n > WT_VAR_2_MAX_ELEMENTS) {
+                PyErr_SetString(PyExc_SystemError, "VAR_2 overflow");
+                goto out;
+            }
+        }
+    }
+    *num_elements = (uint32_t) n;
+    *offset = (uint32_t) off;
+    ret = 0;
+out:
+    //printf("unpacked %d %d\n", off, n);
+    return ret;
+
+#if 0
     int ret = -1;
     void *v = src;
     uint16_t off = 0;
@@ -1431,6 +1495,7 @@ Column_unpack_variable_elements_address(Column *self, void *src,
     ret = 0;
 out: 
     return ret;
+#endif
 }   
 
 /*
