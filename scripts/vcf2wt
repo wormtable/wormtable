@@ -101,7 +101,7 @@ class VCFReader(wt.FileReader):
 
     def set_truncate_REF_ALT(self, truncate):
         """
-        If true, truncate REF and ALT columns to be no more than 254 characters 
+        If true, truncate REF and ALT columns to be no more than 253 characters 
         long. This is a temporary workaround until more sophisticated truncation 
         across all columns is implemented.
         """
@@ -262,8 +262,8 @@ class VCFReader(wt.FileReader):
                         # truncate the REF/ALT column if necessary; this is a 
                         # temporary workaround until more sophisticated 
                         # truncation on a per column basis is implemented.
-                        if len(l[vcf_index]) > 255:
-                            row[wt_index] = l[vcf_index][:254] + b'+'
+                        if len(l[vcf_index]) > 254:
+                            row[wt_index] = l[vcf_index][:253] + b'+'
             # Now process the info columns.
             for mapping in l[7].split(b";"):
                 tokens = mapping.split(b"=")
@@ -447,8 +447,8 @@ def main(args=None):
     parser.add_argument("--truncate", "-t", action="store_true", default=False,
         help="""Truncate values that are too large for a column and store
             the maximum the column will allow. Currently this option 
-            only supports truncating REF and ALT column values more than 255 
-            characters long. REF and ALT values are truncated to 254 characters
+            only supports truncating REF and ALT column values more than 254 
+            characters long. REF and ALT values are truncated to 253 characters
             and suffixed with a '+' to indicate that truncation has 
             occured""")   
     parser.add_argument("--cache-size", "-c", default="64M",

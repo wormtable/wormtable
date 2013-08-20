@@ -35,8 +35,8 @@
 #define WT_CHAR 3
 
 #define WT_VAR_1 0 
-#define MAX_NUM_ELEMENTS 255
-#define MAX_ROW_SIZE 65536
+#define MAX_NUM_ELEMENTS 254
+#define MAX_ROW_SIZE 65535
 
 #define OFFSET_LEN_RECORD_SIZE 10 
 
@@ -1314,9 +1314,11 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         uint32_t offset, uint32_t num_elements)
 {
     int ret = -1;
-    uint16_t off = (uint16_t) offset;
-    uint8_t n = (uint8_t) num_elements;
     void *v = dest;
+    /* these are currently hard coded to 2 and 1 - future versions
+     * will support general address_size and var_size */
+    unsigned int address_size = 2;
+    unsigned int var_size = 1;
     if (offset >= MAX_ROW_SIZE) {
         PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
@@ -1325,13 +1327,9 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         PyErr_SetString(PyExc_SystemError, "too many elements");
         goto out;
     }
-#if WORDS_BIGENDIAN
-    memcpy(v, &off, sizeof(off)); 
-    memcpy(v + sizeof(off), &n, sizeof(n)); 
-#else
-    byteswap_copy(v, &off, sizeof(off)); 
-    byteswap_copy(v + sizeof(off), &n, sizeof(n)); 
-#endif
+    pack_uint((uint64_t) offset, v, address_size);
+    v += address_size;
+    pack_uint((uint64_t) num_elements, v, var_size);
     ret = 0;
 out:
     return ret;
@@ -1347,23 +1345,26 @@ Column_unpack_variable_elements_address(Column *self, void *src,
 {
     int ret = -1;
     void *v = src;
-    uint16_t off = 0;
-    uint8_t n = 0;
-#if WORDS_BIGENDIAN
-    memcpy(&off, v, sizeof(off)); 
-    memcpy(&n, v + sizeof(off), sizeof(n)); 
-#else
-    byteswap_copy(&off, v, sizeof(off)); 
-    byteswap_copy(&n, v + sizeof(off), sizeof(n)); 
-#endif
-    /* this is actually always false now, but will be important in future */
-    if (((u_int32_t) off) >= MAX_ROW_SIZE) {
-        PyErr_SetString(PyExc_SystemError, "Row overflow");
-        goto out;
-    }
-    if (n > MAX_NUM_ELEMENTS) {
-        PyErr_SetString(PyExc_SystemError, "too many elements");
-        goto out;
+    uint64_t off = 0;
+    uint64_t n = 0;
+    /* these are currently hard coded to 2 and 1 - future versions
+     * will support general address_size and var_size */
+    unsigned int address_size = 2;
+    unsigned int var_size = 1;
+    off = unpack_uint(v, address_size);
+    if (off == missing_uint(address_size)) {
+        off = 0;
+    } else {
+        v += address_size;
+        n = unpack_uint(v, var_size);
+        if (off >= MAX_ROW_SIZE) {
+            PyErr_SetString(PyExc_SystemError, "Row overflow");
+            goto out;
+        }
+        if (n > MAX_NUM_ELEMENTS) {
+            PyErr_SetString(PyExc_SystemError, "too many elements");
+            goto out;
+        }
     }
     *offset = (uint32_t) off;
     *num_elements = (uint32_t) n;
@@ -1371,7 +1372,6 @@ Column_unpack_variable_elements_address(Column *self, void *src,
 out: 
     return ret;
 }   
-
 
 /*
  * Inserts the values in the element buffer into the specified row which 

@@ -1213,7 +1213,7 @@ class TestTableInitialisation(TestTable):
         cols = [get_uint_column(8, 1) for k in range(MAX_ROW_SIZE // 8)]
         # This should be fine
         t = _wormtable.Table(f1, f2, cols, 0)
-        cols += [get_uint_column(1, 1)]
+        cols += [get_uint_column(8, 1)]
         self.assertRaises(WormtableError, _wormtable.Table, f1, f2, cols, 0)
 
     def test_open(self):
