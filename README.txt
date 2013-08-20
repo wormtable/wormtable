@@ -111,13 +111,20 @@ For MacPorts, to install e.g. v5.3 ::
 
     $ sudo port install db53
     
-for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
-
-Assuming Berkeley DB is installed with macports then we need to set the CFLAGS
-and LDFLAGS environment variables to use the headers and libraries in /opt::
+Then, to build/install wormtable, we need to set the CFLAGS and LDFLAGS environment 
+variables to use the headers and libraries in /opt::
  
     $ CFLAGS=-I/opt/local/include/db53 LDFLAGS=-L/opt/local/lib/db53/ python setup.py build
+    $ sudo python setup.py install    
+    
+For Homebrew, get the current berkeley DB version with and again build wormtable
+after setting CFLAGS and LDFLAGS appropriately:
+
+    $ brew install berkeley-db
+    $ CFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ LDFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ python setup.py build
     $ sudo python setup.py install
+   
+for more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
 
 
 ***************
