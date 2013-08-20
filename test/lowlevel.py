@@ -230,8 +230,6 @@ class TestElementParsers(TestDatabase):
                 self.assertRaises(TypeError, rb.insert_elements, c.position, v)
         
 
-   
-
 class TestListParsers(TestDatabase):
     """
     Test the list parsers to make sure that malformed lists are correctly
@@ -253,6 +251,11 @@ class TestListParsers(TestDatabase):
             self._float_columns[j] = k
             cols.append(get_float_column(4, j))
             k += 1
+        self._variable_cols = [k]
+        cols.append(get_int_column(1, _wormtable.WT_VAR_1))
+        k += 1
+        self._variable_cols.append(k)
+        cols.append(get_float_column(4, _wormtable.WT_VAR_1))
         return cols
      
     def test_malformed_python_lists(self):
@@ -262,6 +265,26 @@ class TestListParsers(TestDatabase):
         for s in [[1], [1, 2, 3], (1, 2, 3), range(40)]:
             self.assertRaises(ValueError, rb.insert_elements, f2, s)
             self.assertRaises(ValueError, rb.insert_elements, i2, s)
+    
+    def test_long_lists(self):
+        rb = self._row_buffer
+        i2 = self._int_columns[2]
+        f2 = self._int_columns[2]
+        for j in [0, 1, 3, 4, 50]:
+            s = [0 for k in range(j)]
+            self.assertRaises(ValueError, rb.insert_elements, f2, s)
+            self.assertRaises(ValueError, rb.insert_elements, i2, s)
+            ss = ",".join([str(u) for u in s])
+            sse = ss.encode()
+            self.assertRaises(ValueError, rb.insert_encoded_elements, f2, sse)
+            self.assertRaises(ValueError, rb.insert_encoded_elements, i2, sse)
+        for k in self._variable_cols:
+            for l in range(1, 50):
+                s = [0 for j in range(_wormtable.MAX_NUM_ELEMENTS + l)]
+                self.assertRaises(ValueError, rb.insert_elements, k, s)
+                ss = ",".join([str(u) for u in s])
+                sse = ss.encode()
+                self.assertRaises(ValueError, rb.insert_encoded_elements, k, sse)
 
 
 class TestDatabaseLimits(TestDatabase):

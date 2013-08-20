@@ -1135,6 +1135,8 @@ Column_parse_string_sequence(Column *self, char *s)
 {
     int ret = -1;
     int j, num_elements, delimiter;
+    int max_num_elements = self->num_elements == WT_VAR_1 ? MAX_NUM_ELEMENTS
+            : self->num_elements;
     self->num_buffered_elements = 0;
     if (self->num_elements == 1) {
         self->input_elements[0] = s;
@@ -1147,12 +1149,16 @@ Column_parse_string_sequence(Column *self, char *s)
             Column_encoded_elements_parse_error(self, "Empty value", s); 
             goto out;
         }
-        /* TODO this needs lots of error checking! */
         while (s[j] != '\0') {
             if (s[j] == ',' || s[j] == ';') {
                 delimiter = j; 
             }
             if (j == delimiter + 1) {
+                if (num_elements >= max_num_elements) {
+                    Column_encoded_elements_parse_error(self, 
+                            "incorrect number of elements", s); 
+                    goto out;
+                }
                 /* this is the start of a new element */
                 self->input_elements[num_elements] = &s[j];
                 num_elements++;
