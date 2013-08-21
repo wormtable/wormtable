@@ -532,11 +532,10 @@ difference in processor times.
 This difference is well illustrated by immediately repeating 
 the same experiment, so that all the relevant pages are 
 in cache. In this case, the elapsed time was 56 seconds for Tabix and around 
-2 seconds for wormtable. Thus, compression is a double-edged sword: 
-it does lead to much smaller files, which reduces the number of random seeks 
-required.  On the other hand, however, decompression is expensive and must 
-be repeated each time a block is accessed unless some sophisticated
-caching mechanism is devised. 
+2 seconds for wormtable. Thus, the use of compression is a trade-off: 
+it reduces file size, which reduces the number of random seeks 
+required but decompression is expensive and must 
+be repeated each time a block is accessed.
 
 The test used here is also highly synthetic, and unlikely to be 
 indicative of most real-world applications. The majority of 
