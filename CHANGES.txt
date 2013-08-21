@@ -1,3 +1,8 @@
+v0.1.0b3, 2013.08 
+	
+    * Minor change in row format for forward compatability with large rows
+      and columns.
+
 v0.1.0b2, 2013.08 
     
     * This release is not backwards compatible with 0.1.0b1. Several changes
