@@ -175,9 +175,9 @@
 \begin{abstract}
         % Do not use inserted blank lines (ie \\) until main body of text.
 \paragraph*{Background:} 
-Biological research generates large amounts of tabular data.
-These tables are produced by 
-programs and exported to plain text files, which are often very large. 
+Biological research, including genomics generates huge amounts of data.
+The data produced by 
+programs are commonly stored as tables in plain text files and are often very large. 
 Researchers must process these files 
 line-by-line, parsing values encoded as text into native types so that 
 calculations may be done. This is an error prone and time consuming process.
@@ -194,8 +194,9 @@ provide conversion utilities for the VCF and GTF format.
 
 \paragraph*{Conclusions:} Using wormtable's simple API users 
 can process tables in a very high performance manner, allowing them
-much greater freedom to explore their data. 
-Since it is no longer necessary to parse complex files,
+much greater freedom to explore their data. Our comparisons with some 
+alternative software demonstrates a 100-fold increase in speed. Additionally, 
+because it is no longer necessary to parse complex files,
 data analysis code is also much simpler and less error prone. 
 \end{abstract}
 
@@ -251,20 +252,20 @@ values.
 These files are easy to view and interpret and can be processed on 
 any platform with the minimum of library dependencies. Using compression,
 text files can be quite compact, and specialised indexing methods 
-are available to quickly retrieve rows intersecting with a 
+are available to retrieve specific rows, for example rows which intersect with a 
 given genomic interval~\cite{li11}.
 
 It is not sufficient, however, to simply store and retrieve data. To use data
 it must be \emph{processed}. This is the major flaw in 
 using text files as a data format: before we can perform calculations, we 
 must first parse the encoded information into native 
-machine values. This is an expensive process, and 
-compression (if it is used) adds another substantial overhead. 
+machine values. This is a computationally expensive process, and 
+compression (if it is used) adds substantial overhead. 
 As a result,  simple calculations over a large dataset may take 
 many hours to complete.
 
 Another problem with tables stored as text files is that it is difficult 
-to index the information within particular columns. 
+to index the information in a particular columns. 
 This means that many operations on a table require a complete scan 
 through the file. The only viable means of 
 working with a subset of the data, therefore, 
@@ -274,17 +275,18 @@ storage requirements.
 
 The obvious solution to these problems is to load tabular data into a
 relational database. Databases store values in binary form so that parsing is 
-not required, and support efficient retrieval and indexing. There 
-are many problems with this approach, however. Relational databases are 
-extremely complex systems, each supporting different features and SQL 
+not required, and support efficient retrieval and indexing. However, there 
+are many problems with this approach. Relational databases are 
+complex systems, each supporting different features and SQL 
 dialects. It is not a straightforward task to design a schema for a 
 particular data set, particularly not if portability across different 
 databases is required. Similarly, accessing data requires a knowledge
 of SQL. In the most common case, a database server must also be maintained
 and so storage and user permissions must be carefully managed. All of 
-these aspects require significant expertise.
+these aspects require significant expertise which is why so many researchers 
+and programs continue to use tabular data formats.
 
-A relational database server, however, is far more than we require in the 
+A relational database server is far more than we require in the 
 majority of cases. Data files are usually written once and 
 not subsequently expected to change.
 Thus, storing this information 
@@ -312,7 +314,7 @@ It provides a portable, compact, read-only store for tabular
 data of essentially unlimited size. Tables can
 be either written directly using the library, or converted
 from existing formats via command line tools. 
-Wormtable provides a simple Python API to access rows
+Wormtable provides a simple, user friendly Python API to access rows
 in the table, facilitating efficient and convenient access to 
 data. The core data manipulation and storage facilities 
 are written in C for efficiency.
@@ -358,19 +360,19 @@ over arbitrary combinations of columns. An index is a
 Berkeley DB database in 
 which the keys are the elements from the columns in question concatenated
 together, and the values are pointers to the original row. Indexes make
-many operations much more efficient, since we can directly seek to the 
+many operations much more efficient, because we can go directly to the 
 rows we are interested in without performing a full table scan. They also 
 provide a very efficient means of calculating a histogram for a given 
-set of columns. Wormtable also supports binned indexes, in which a range of 
+set of columns. Moreover, wormtable supports binned indexes, in which a range of 
 values is mapped to a single index key. This is very useful for floating 
 point columns, where it may not be necessary to distinguish between
-values that differ by small amounts.
+very similar values.
 
 % Layout 
 Each table corresponds to a directory in the file system
 which is used to store the data files, indexes and metadata.
 Files within a table's home directory are not intended to be 
-manipulated by users, and the \texttt{wtadmin} program is provided 
+manipulated directly by users, and the \texttt{wtadmin} program is provided 
 to perform administration tasks such as adding and removing 
 indexes. This approach is 
 very flexible, since no centralised storage is required and 
