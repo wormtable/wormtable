@@ -399,15 +399,15 @@ architectures.
 \subsection*{API}
 The principle goal of wormtable is to provide efficient access to data 
 using an easy to learn interface. 
-The \texttt{Table} class provides the main interface,
+In Python, the \texttt{Table} class provides the main interface,
 and implements the standard Python sequence protocols. Efficient 
 iteration over rows is provided by the \texttt{cursor} method, 
 which takes as an argument the list of columns to read.
 Only the values for the columns 
 of interest are then retrieved, leading to considerable
-time savings. The \texttt{cursor} function takes two additional 
+time savings. The \texttt{cursor} function can take two additional 
 arguments, \texttt{start} and \texttt{stop}, which specify 
-rows of interest. This allows us to efficiently seek to an 
+the rows of interest. This allows us to efficiently seek to an 
 arbitrary location in the table and to read a given number 
 of rows sequentially from this point.
 
@@ -430,12 +430,13 @@ can take full advantage of the powerful data
 processing facilities that wormtable provides. In the following subsections 
 we illustrate the performance advantages of wormtable via some 
 examples. These are not intended to be definitive benchmarks
-and are simply concrete examples to demonstrate the type of improvements 
+but are simple examples to demonstrate the type of improvements 
 that can be expected by using wormtable over existing methods.
 
 \subsection*{Scan performance}
 The Variant Call Format (VCF) encodes information about variant sites in a genome 
-as tab-delimited rows in a text file~\cite{da+11}.  
+as tab-delimited rows in a text file~\cite{da+11}. The VCF format is one of 
+the most commonly used formats to store genomic data from next generation sequencing.
 To illustrate the advantages of wormtable when performing calculations over 
 a whole table, we converted a large 
 publicly available VCF file (produced as part of the
