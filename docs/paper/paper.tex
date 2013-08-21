@@ -595,7 +595,7 @@ PSL, GFF, SAM and BED to wormtable format.
 Such tools are not difficult to develop, since all that is required is a parser
 for the format in question written in Python.
 
-Wormtable is currently limited to supporting Python only, and 
+Wormtable is currently limited to supporting Python, and 
 another important aspect of future development is to 
 develop a C library along with bindings for other popular
 languages such as Perl, R and PHP. 
@@ -621,38 +621,38 @@ contributors.
 %\emph{This should state clearly the main conclusions of the article and give a clear 
 %explanation of the importance and relevance of the software.}
 %
-The volume of data being produced in bioinformatics is constantly 
-increasing, but the tools available to end users to 
+The volume of data being produced in biological research is growing 
+rapidly, but the tools available to end users to 
 process data are still mostly based on parsing plain text. This 
 approach is very inefficient, and leads to several undesirable outcomes.
 Firstly, and most obviously, a researcher's productivity is inevitably
-reduced by being forced to wait for several hours for the result of a 
+constrained while waiting several hours for the result of a 
 simple calculation. Without flexible indexing, working with 
 a subset of a data file usually requires the creation of 
 another file consisting of the subset in question, requiring 
 extra storage and maintenance.
-There are also some less obvious consequences:
-code quality is reduced, since testing over the entire dataset is 
-infeasible, and it is much less likely that the effects of 
-changing arbitrary quality thresholds (for example) will be 
+Additionally, code quality is reduced, since testing over 
+the entire dataset is 
+infeasible and it is less likely that the effects of 
+changing arbitrary analysis parameters will be 
 systematically examined.
 
 The classical approach to solving problems of this type 
 is to use a relational database, which provide sophisticated 
-data management techniques. Relational databases are unsuitable 
-for storing static datasets, however, as they are complex to 
+data management techniques. However, relational databases are unsuitable 
+for storing static datasets as they are complex to 
 use and incur many unnecessary overheads.
 Wormtable provides the most important features of database
 technologies (packed binary storage of values; random access 
-to rows; general purpose indexing) without their complexities 
+to rows; general purpose indexing) without additional complexities 
 and overheads. Wormtable is also more flexible than 
 relational databases, supporting, for example, columns 
 containing a variable number of integers. Finally, wormtable 
 is far more adaptable than a relational database.
-Any widely used database system today is a hugely complex 
-piece of software, and adding necessary features would be 
+All widely used database systems are complex 
+and adding the necessary features would be 
 very difficult. Adding new features to wormtable, on the 
-other hand, is straightforward since it is far simpler and 
+other hand, is straightforward because it is far simpler and 
 does not need to be compatible with the relational model
 and decades worth of existing software.
 
@@ -668,12 +668,13 @@ This is also a very convenient
 way to access VCF data, since individual columns are already 
 parsed and all that is needed is the name of the column of 
 interest. To access regions of the genome efficiently
-the user simply needs to create an index on the CHROM and POS columns
-using the  \texttt{wtadmin add} command, and can then efficiently
-seek to arbitrary locations. Wormtable is not 
-limited to VCF, but can store
-any form of fixed tabular data. We also provide a conversion 
-tool for the GTF format, and several others are planned.
+the user simply needs to create an index on the chromosome 
+(CHROM) and position (POS) columns
+using the  \texttt{wtadmin add} command. Wormtable is not 
+limited to VCF, but can store 
+any form of fixed tabular data. We provide a conversion 
+tool for the GTF format, and several others are planned or 
+could be contributed by users.
 
 Wormtable is not intended to replace text files as the universal 
 interchange format for biological data. 
