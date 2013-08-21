@@ -67,7 +67,7 @@ this VCF is for diploids, and so the genotype columns (e.g ``DGRP-021.GT`` above
 are always exactly three characters long. Yet, in this schema the number of 
 elements is ``var(1)``, allowing variable sized strings to be stored in this column. Variable 
 sized columns have an overhead of three bytes above the actual values stored, 
-and so in this case we using twice as many bytes as we should be. To rectify this, 
+and so in this case we are using twice as many bytes as we should be. To rectify this, 
 we change the ``num_elements`` to ``3``:
 
 .. code-block:: xml 
