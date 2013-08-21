@@ -175,9 +175,11 @@
 \begin{abstract}
         % Do not use inserted blank lines (ie \\) until main body of text.
 \paragraph*{Background:} 
-Biological research, including genomics generates huge amounts of data.
-The data produced by 
-programs are commonly stored as tables in plain text files and are often very large. 
+Genomics generates huge amounts of tabular data which is 
+usually stored in plain text files.
+%Biological research, including genomics generates huge amounts of data.
+%The data produced by 
+%programs are commonly stored as tables in plain text files and are often very large. 
 Researchers must process these files 
 line-by-line, parsing values encoded as text into native types so that 
 calculations may be done. This is an error prone and time consuming process.
@@ -190,14 +192,20 @@ access to tabular data in Python. Wormtable stores data in a compact
 binary format, provides random access to rows, and enables sophisticated
 indexing on columns within these tables. Files written in existing 
 formats can be easily converted to wormtable format, and we 
-provide conversion utilities for the VCF and GTF format.
+provide conversion utilities for the VCF and GTF formats.
 
-\paragraph*{Conclusions:} Using wormtable's simple API users 
-can process tables in a very high performance manner, allowing them
-much greater freedom to explore their data. Our comparisons with some 
-alternative software demonstrates a 100-fold increase in speed. Additionally, 
-because it is no longer necessary to parse complex files,
-data analysis code is also much simpler and less error prone. 
+\paragraph*{Conclusions:} 
+Wormtable's simple API allows users to process large 
+tables orders of magnitude more quickly than is possible 
+when parsing text. Furthermore, the indexing facilities 
+provide efficient access to subsets of the data along with 
+providing useful methods of summarising columns. Since 
+third-party libraries or custom code are no longer needed 
+to parse complex plain text formats, analysis code 
+can also be substantially simpler as well as being 
+uniform across different data formats. These benefits of 
+reduced code complexity and greatly increased performance
+allow users much greater freedom to explore their data.
 \end{abstract}
 
 
@@ -257,7 +265,7 @@ given genomic interval~\cite{li11}.
 
 It is not sufficient, however, to simply store and retrieve data. To use data
 it must be \emph{processed}. This is the major flaw in 
-using text files as a data format: before we can perform calculations, we 
+using text files as a data format; before we can perform calculations, we 
 must first parse the encoded information into native 
 machine values. This is a computationally expensive process, and 
 compression (if it is used) adds substantial overhead. 
@@ -265,7 +273,7 @@ As a result,  simple calculations over a large dataset may take
 many hours to complete.
 
 Another problem with tables stored as text files is that it is difficult 
-to index the information in a particular columns. 
+to index the information in particular columns. 
 This means that many operations on a table require a complete scan 
 through the file. The only viable means of 
 working with a subset of the data, therefore, 
@@ -279,23 +287,23 @@ not required, and support efficient retrieval and indexing. However, there
 are many problems with this approach. Relational databases are 
 complex systems, each supporting different features and SQL 
 dialects. It is not a straightforward task to design a schema for a 
-particular data set, particularly not if portability across different 
+particular dataset, particularly not if portability across different 
 databases is required. Similarly, accessing data requires a knowledge
-of SQL. In the most common case, a database server must also be maintained
+of SQL. In the most common case, a database server must be maintained
 and so storage and user permissions must be carefully managed. All of 
 these aspects require significant expertise which is why so many researchers 
-and programs continue to use tabular data formats.
+and programs continue to use textual data formats.
 
 A relational database server is far more than we require in the 
 majority of cases. Data files are usually written once and 
 not subsequently expected to change.
 Thus, storing this information 
 in a relational database with its sophisticated concurrency control
-is entirely unnecessary. Centralised storage of data sets
+is entirely unnecessary. Centralised storage of datasets
 creates an unnecessary administration burden, as does an extra
 layer of user management. Therefore, although relational databases
 provide powerful data management technologies, they are complex
-to use and maintain and are therefore rarely used for 
+to use and maintain and are rarely used for 
 static datasets.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -321,11 +329,11 @@ are written in C for efficiency.
 
 % Wormtable's binary row format 
 Data is stored in rows using a compact binary format.
-Each row consists of a fixed number of columns, and each column 
-holds either a fixed or variable number of elements of a fixed type and size.
+Each row consists of a number of columns, and each column 
+holds elements of a specific type and size.
 Each column is allocated a fixed number of bytes within the `fixed region' of 
 a row. For fixed
-length columns, the encoded elements are stored entirely within the
+length columns, the encoded elements are stored entirely within this
 fixed region; for variable length columns, the encoded elements are 
 stored in the `variable region' of the row, and the location and number 
 of elements stored in the fixed region. The type, size and number 
@@ -359,7 +367,7 @@ Besides random access to rows, wormtable also provides indexes
 over arbitrary combinations of columns. An index is a 
 Berkeley DB database in 
 which the keys are the elements from the columns in question concatenated
-together, and the values are pointers to the original row. Indexes make
+together, and the values are pointers to the original rows. Indexes make
 many operations much more efficient, because we can go directly to the 
 rows we are interested in without performing a full table scan. They also 
 provide a very efficient means of calculating a histogram for a given 
@@ -405,13 +413,13 @@ iteration over rows is provided by the \texttt{cursor} method,
 which takes as an argument the list of columns to read.
 Only the values for the columns 
 of interest are then retrieved, leading to considerable
-time savings. The \texttt{cursor} function can take two additional 
+time savings. The \texttt{cursor} method can take two additional 
 arguments, \texttt{start} and \texttt{stop}, which specify 
 the rows of interest. This allows us to efficiently seek to an 
 arbitrary location in the table and to read a given number 
 of rows sequentially from this point.
 
-The \texttt{Index} class also has a \texttt{cursor} function
+The \texttt{Index} class also has a \texttt{cursor} method 
 with the same signature, but in this case, rows 
 are returned in the order defined by the index. The  
 \texttt{start} and \texttt{stop} arguments are now defined 
@@ -444,7 +452,7 @@ Drosophila genetic reference panel~\cite{mr+12}) to wormtable format.
 This VCF\cite{freeze.vcf}
 consists of 15GB of uncompressed text and contains data from the 
 whole genome over 6,146,611 rows.
-Using the included \texttt{vcf2wt} program
+Using the included \texttt{vcf2wt} program,
 the VCF was converted to wormtable format 
 on a workstation with an Intel Xeon processor, 12GB of RAM 
 and a single hard disk. The
@@ -523,8 +531,7 @@ to perform this test is dominated by waiting for I/O in both
 cases. Since the wormtable file is considerably larger than the 
 compressed file used by Tabix, more and larger hard drive
 seeks were required 
-to bring the required pages into memory (solid state 
-storage does not suffer from this problem). Once the 
+to bring the required pages into memory. Once the 
 pages were in memory, however, Tabix needed to do much more work to 
 decompress then and make them usable, as shown by the 
 difference in processor times.
@@ -534,13 +541,17 @@ the same experiment, so that all the relevant pages are
 in cache. In this case, the elapsed time was 56 seconds for Tabix and around 
 2 seconds for wormtable. Thus, the use of compression is a trade-off: 
 it reduces file size, which reduces the number of random seeks 
-required but decompression is expensive and must 
+required, but decompression is expensive and must 
 be repeated each time a block is accessed.
+The advantages of a smaller file in terms of reducing the
+number of seeks incurred would also be largely negated 
+by using solid state storage, where random seeks do not
+incur such a heavy penalty.
 
 The test used here is also highly synthetic, and unlikely to be 
 indicative of most real-world applications. The majority of 
 workloads have strong locality of reference~\cite{d05}, 
-and such large and extreme seeks across genomic regions 
+and such large and extreme jumps across genomic regions 
 are unlikely to occur. In this case, wormtable 
 is  much faster than Tabix, since there
 is no CPU overhead of decompression. Furthermore, since 
@@ -597,7 +608,7 @@ for the format in question written in Python.
 
 Wormtable is currently limited to supporting Python, and 
 another important aspect of future development is to 
-develop a C library along with bindings for other popular
+create a C library along with bindings for other popular
 languages such as Perl, R and PHP. 
 Wormtable does not support interval search, and so it is not
 straightforward to find, for example, all rows overlapping 
