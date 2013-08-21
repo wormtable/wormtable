@@ -94,7 +94,7 @@ On Debian/Ubuntu use::
 
 and on Red Hat/Fedora use::
 
-        # yum install db4-devel
+        # yum install libdb-devel 
 
 Other distributions and package managers should provide a similarly easy
 option to install the DB development files.
