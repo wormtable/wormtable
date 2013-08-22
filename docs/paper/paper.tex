@@ -329,12 +329,11 @@ are written in C for efficiency.
 
 % Wormtable's binary row format 
 Data is stored in rows using a compact binary format.
-Each row consists of a number of columns, and each column 
-holds elements of a specific type and size.
+Each row consists of a defined number of columns, and each column 
+holds elements of a given type and size.
 Each column is allocated a fixed number of bytes within the `fixed region' of 
-a row. For fixed
-length columns, the encoded elements are stored entirely within this
-fixed region; for variable length columns, the encoded elements are 
+a row. For columns with fixed length, the encoded elements are stored entirely within the
+fixed region; for columns of variable length, the encoded elements are 
 stored in the `variable region' of the row, and the location and number 
 of elements stored in the fixed region. The type, size and number 
 of elements of 
