@@ -972,7 +972,7 @@ class TestIndexIntegrity(object):
             index = self._indexes[k]
             index.open(WT_READ)
             u = sorted(distinct_values.keys())
-            dvi = _wormtable.DistinctValueIterator(index)
+            dvi = _wormtable.IndexKeyIterator(index)
             v = list(t[0] for t in dvi)
             self.assertEqual(u, v)
             for key, count in distinct_values.items():
@@ -1481,7 +1481,7 @@ class TestIndexInitialisation(TestIndex):
         self._table.open(WT_READ)
         for j in range(n):
             r = self._table.get_row(j)
-        g = _wormtable.DistinctValueIterator
+        g = _wormtable.IndexKeyIterator
         self.assertRaises(TypeError, g) 
         self.assertRaises(TypeError, g, None) 
         self.assertRaises(TypeError, g, self._table) 
@@ -1494,7 +1494,7 @@ class TestIndexInitialisation(TestIndex):
         index.close()
         self.assertRaises(WormtableError, g, index) 
         index.open(WT_READ)
-        dvi = _wormtable.DistinctValueIterator(index)
+        dvi = _wormtable.IndexKeyIterator(index)
         index.close()
         def f():
             for x in dvi:

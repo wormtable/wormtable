@@ -1094,7 +1094,7 @@ class Index(Database):
         order.
         """
         self.verify_open(WT_READ)
-        dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.get_ll_object())
         for k in dvi:
             yield self.ll_to_key(k)
 
@@ -1213,13 +1213,13 @@ class IndexCounter(collections.Mapping):
         return self.__index.get_ll_object().get_num_rows(k) 
    
     def __iter__(self):
-        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.__index.get_ll_object())
         for v in dvi:
             yield self.__index.ll_to_key(v)
 
     def __len__(self):
         n = 0
-        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.__index.get_ll_object())
         for v in dvi:
             n += 1
         return n

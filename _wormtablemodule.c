@@ -138,7 +138,7 @@ typedef struct {
     PyObject_HEAD
     Index *index;
     DBC *cursor;
-} DistinctValueIterator;
+} IndexKeyIterator;
 
 
 static void 
@@ -1415,6 +1415,61 @@ out:
     return ret;
 }
 
+
+/*
+ * Extract values from the specified key buffer starting at the specified 
+ * offset. Return the number of elements read, or < 0 in case of an error. 
+ */
+static int 
+Column_extract_key(Column *self, void *key_buffer, uint32_t offset, 
+        uint32_t key_size)
+{
+    int ret = -1;
+    unsigned char *v;
+    uint32_t j, k, s;
+    uint32_t element_size = self->element_size;
+    uint32_t num_elements = self->num_elements;
+    int not_done;
+    if (num_elements == WT_VAR_1) {
+        /* count the number of elements until we hit the sentinel */
+        num_elements = 0;
+        not_done = 1;
+        j = offset;
+        v = key_buffer;
+        while (not_done) {
+            s = 0;
+            k = j + element_size;
+            while (j < k) {
+                if (j >= key_size) {
+                    PyErr_SetString(PyExc_SystemError, "Key buffer overflow");
+                    goto out; 
+                }
+                s += v[j];
+                j++;
+            }
+            if (s == 0) {
+                not_done = 0;
+            } else {
+                num_elements++;
+            }
+        }
+        v = key_buffer;
+    } 
+    if (offset + num_elements * element_size >= key_size) {
+        PyErr_SetString(PyExc_SystemError, "Key offset too long");
+        goto out; 
+    }
+    v = key_buffer + offset;
+    self->num_buffered_elements = num_elements;
+    ret = self->unpack_elements(self, v);
+    if (ret < 0) {
+        goto out;
+    }
+    ret = num_elements;
+out:
+    return ret;
+}
+
 /*
  * Extracts elements from the specified row and inserts them into the 
  * element buffer. 
@@ -2568,6 +2623,8 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
     PyObject *db_filename = NULL;
     PyObject *columns = NULL;
     Table *table = NULL;
+    uint32_t n;
+
     self->db = NULL;
     self->table = NULL;
     self->db_filename = NULL;
@@ -2618,14 +2675,13 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         }
         self->columns[j] = (u_int32_t) k;
         col = self->table->columns[k];
+        n = col->num_elements;
         if (col->num_elements == WT_VAR_1) {
-            self->key_buffer_size += MAX_NUM_ELEMENTS * col->element_size;
-        } else {
-            self->key_buffer_size += col->num_elements * col->element_size;
+            n = MAX_NUM_ELEMENTS;
         }
+        /* allow space for separator */
+        self->key_buffer_size += (n + 1) * col->element_size;
     }
-    /* Add in space for the column separators */
-    self->key_buffer_size += self->num_columns;
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     if (self->key_buffer == NULL) {
         PyErr_NoMemory();
@@ -2739,7 +2795,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
 {
     int ret = -1;
     Column *col;
-    uint32_t j;
+    uint32_t j, k;
     int len;
     unsigned char *v = skey->data;
     skey->size = 0;
@@ -2759,9 +2815,11 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         v += len;
         skey->size += len;
         /* insert the separator between columns */
-        *v = 0;
-        v++;
-        skey->size++;
+        for (k = 0; k < col->element_size; k++) {
+            *v = 0;
+            v++;
+            skey->size++;
+        }
     }
     ret = 0;
 out: 
@@ -2776,7 +2834,7 @@ static int
 Index_set_key(Index *self, PyObject *args, void *buffer)
 {
     int ret = -1;
-    int j, m;
+    int j, m, k;
     int key_size = 0;
     Py_ssize_t n;
     Column *col = NULL;
@@ -2815,9 +2873,11 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
         key_buffer += m;
         key_size += m;
         /* insert the separator between columns */
-        *key_buffer = 0;
-        key_buffer++;
-        key_size++; 
+        for (k = 0; k < col->element_size; k++) {
+            *key_buffer = 0;
+            key_buffer++;
+            key_size++;
+        }
     }
     ret = key_size;
 out:
@@ -2844,6 +2904,44 @@ Index_increment_key(Index *self, void *buffer, u_int32_t key_size)
 }
 
 
+
+static PyObject *
+Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
+{
+    PyObject *ret = NULL;
+    PyObject *value;
+    uint32_t j, offset;
+    Column *col;
+    int n;
+    PyObject *t = PyTuple_New(self->num_columns);
+    if (t == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
+    if (Index_check_read_mode(self) != 0) {
+        goto out;
+    }
+    offset = 0;
+    for (j = 0; j < self->num_columns; j++) {
+        col = self->table->columns[self->columns[j]]; 
+        n = Column_extract_key(col, key_buffer, offset, key_size);
+        if (n < 0) {
+            Py_DECREF(t);
+            goto out;
+        }
+        offset += (n + 1) * col->element_size;
+        value = Column_get_python_elements(col); 
+        if (value == NULL) {
+            Py_DECREF(t);
+            goto out;
+        }
+        PyTuple_SET_ITEM(t, j, value);
+    }
+    ret = t;
+out:
+    return ret;
+}
+          
 /*
  * Unpacks value for the columns in this index in the row pointed to in the 
  * specified DBT, truncates them as necessary, and then generates Python 
@@ -3962,12 +4060,12 @@ static PyTypeObject IndexRowIteratorType = {
 };
 
 /*==========================================================
- * DistinctValueIterator object 
+ * IndexKeyIterator object 
  *==========================================================
  */
 
 static void
-DistinctValueIterator_dealloc(DistinctValueIterator* self)
+IndexKeyIterator_dealloc(IndexKeyIterator* self)
 {
     if (self->cursor != NULL) {
         if (self->index != NULL) {
@@ -3981,7 +4079,7 @@ DistinctValueIterator_dealloc(DistinctValueIterator* self)
 }
 
 static int
-DistinctValueIterator_init(DistinctValueIterator *self, PyObject *args, PyObject *kwds)
+IndexKeyIterator_init(IndexKeyIterator *self, PyObject *args, PyObject *kwds)
 {
     int ret = -1;
     static char *kwlist[] = {"index", NULL}; 
@@ -4002,23 +4100,24 @@ out:
     return ret;
 }
 
-static PyMemberDef DistinctValueIterator_members[] = {
+static PyMemberDef IndexKeyIterator_members[] = {
     {NULL}  /* Sentinel */
 };
 
 
 static PyObject *
-DistinctValueIterator_next(DistinctValueIterator *self)
+IndexKeyIterator_next(IndexKeyIterator *self)
 {
     PyObject *ret = NULL;
     int db_ret;
     DB *db;
-    DBT primary_key, primary_data, secondary_key;
+    DBT key, data; 
     if (Index_check_read_mode(self->index) != 0) {
         goto out;
     }
-    Index_init_dbts(self->index, &primary_key, &primary_data);
-    memset(&secondary_key, 0, sizeof(DBT));
+    //Index_init_dbts(self->index, &primary_key, &primary_data);
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
         db = self->index->db;
@@ -4028,13 +4127,18 @@ DistinctValueIterator_next(DistinctValueIterator *self)
             goto out;    
         }
     }
-    db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
-            &primary_data, DB_NEXT_NODUP);
+    db_ret = self->cursor->get(self->cursor, &key, &data, DB_NEXT_NODUP);
     if (db_ret == 0) {
+        /*
         if (Table_retrieve_row(self->index->table) != 0) {
             goto out;
         }
         ret = Index_row_to_python(self->index, self->index->table->row_buffer);
+        if (ret == NULL) {
+            goto out;
+        }
+        */
+        ret = Index_key_to_python(self->index, key.data, key.size);
         if (ret == NULL) {
             goto out;
         }
@@ -4051,17 +4155,17 @@ out:
     return ret;
 }
 
-static PyMethodDef DistinctValueIterator_methods[] = {
+static PyMethodDef IndexKeyIterator_methods[] = {
     {NULL}  /* Sentinel */
 };
 
 
-static PyTypeObject DistinctValueIteratorType = {
+static PyTypeObject IndexKeyIteratorType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_wormtable.DistinctValueIterator",             /* tp_name */
-    sizeof(DistinctValueIterator),             /* tp_basicsize */
+    "_wormtable.IndexKeyIterator",             /* tp_name */
+    sizeof(IndexKeyIterator),             /* tp_basicsize */
     0,                         /* tp_itemsize */
-    (destructor)DistinctValueIterator_dealloc, /* tp_dealloc */
+    (destructor)IndexKeyIterator_dealloc, /* tp_dealloc */
     0,                         /* tp_print */
     0,                         /* tp_getattr */
     0,                         /* tp_setattr */
@@ -4077,22 +4181,22 @@ static PyTypeObject DistinctValueIteratorType = {
     0,                         /* tp_setattro */
     0,                         /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,        /* tp_flags */
-    "DistinctValueIterator objects",           /* tp_doc */
+    "IndexKeyIterator objects",           /* tp_doc */
     0,                     /* tp_traverse */
     0,                     /* tp_clear */
     0,                     /* tp_richcompare */
     0,                     /* tp_weaklistoffset */
     PyObject_SelfIter,               /* tp_iter */
-    (iternextfunc) DistinctValueIterator_next, /* tp_iternext */
-    DistinctValueIterator_methods,             /* tp_methods */
-    DistinctValueIterator_members,             /* tp_members */
+    (iternextfunc) IndexKeyIterator_next, /* tp_iternext */
+    IndexKeyIterator_methods,             /* tp_methods */
+    IndexKeyIterator_members,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
     0,                         /* tp_dict */
     0,                         /* tp_descr_get */
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
-    (initproc)DistinctValueIterator_init,      /* tp_init */
+    (initproc)IndexKeyIterator_init,      /* tp_init */
 };
 
 
@@ -4160,22 +4264,24 @@ init_wormtable(void)
         INITERROR;
     }
     Py_INCREF(&TableRowIteratorType);
-    PyModule_AddObject(module, "TableRowIterator", (PyObject *) &TableRowIteratorType);
+    PyModule_AddObject(module, "TableRowIterator", 
+            (PyObject *) &TableRowIteratorType);
     /* TableRowIterator */
     IndexRowIteratorType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&IndexRowIteratorType) < 0) {
         INITERROR;
     }
     Py_INCREF(&IndexRowIteratorType);
-    PyModule_AddObject(module, "IndexRowIterator", (PyObject *) &IndexRowIteratorType);
-    /* DistinctValueIterator */
-    DistinctValueIteratorType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&DistinctValueIteratorType) < 0) {
+    PyModule_AddObject(module, "IndexRowIterator", 
+            (PyObject *) &IndexRowIteratorType);
+    /* IndexKeyIterator */
+    IndexKeyIteratorType.tp_new = PyType_GenericNew;
+    if (PyType_Ready(&IndexKeyIteratorType) < 0) {
         INITERROR;
     }
-    Py_INCREF(&DistinctValueIteratorType);
-    PyModule_AddObject(module, "DistinctValueIterator", 
-            (PyObject *) &DistinctValueIteratorType);
+    Py_INCREF(&IndexKeyIteratorType);
+    PyModule_AddObject(module, "IndexKeyIterator",
+            (PyObject *) &IndexKeyIteratorType);
     
     WormtableError = PyErr_NewException("_wormtable.WormtableError", 
             NULL, NULL);

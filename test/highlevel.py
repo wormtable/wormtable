@@ -477,6 +477,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
             w = i.bin_widths()[0]
             t = [r[c.get_position()] for r in self._table] 
             d = histogram(t, w)
+            d2 = dict(i.counter().items())
             for k, v in i.counter().items():
                 self.assertTrue(k in d)
                 self.assertEqual(d[k], v)
