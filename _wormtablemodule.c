@@ -2929,6 +2929,7 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
             Py_DECREF(t);
             goto out;
         }
+        /* skip the sentinel */
         offset += (n + 1) * col->element_size;
         value = Column_get_python_elements(col); 
         if (value == NULL) {
@@ -4115,7 +4116,6 @@ IndexKeyIterator_next(IndexKeyIterator *self)
     if (Index_check_read_mode(self->index) != 0) {
         goto out;
     }
-    //Index_init_dbts(self->index, &primary_key, &primary_data);
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
     if (self->cursor == NULL) {
@@ -4129,15 +4129,6 @@ IndexKeyIterator_next(IndexKeyIterator *self)
     }
     db_ret = self->cursor->get(self->cursor, &key, &data, DB_NEXT_NODUP);
     if (db_ret == 0) {
-        /*
-        if (Table_retrieve_row(self->index->table) != 0) {
-            goto out;
-        }
-        ret = Index_row_to_python(self->index, self->index->table->row_buffer);
-        if (ret == NULL) {
-            goto out;
-        }
-        */
         ret = Index_key_to_python(self->index, key.data, key.size);
         if (ret == NULL) {
             goto out;
