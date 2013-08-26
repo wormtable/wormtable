@@ -33,15 +33,22 @@ import itertools
 
 from xml.etree import ElementTree
 
+# module variables used to control the number of tests that we do.
+num_random_test_rows = 10
+
 def histogram(l, width):
     """
     Returns a histogram over the data in v with bin widths width.
     """
     d = {}
     for u in l:
-        v = None
-        if u is not None:
-            v = u - math.fmod(u, width)
+        if isinstance(u, tuple):
+            v = [uu - math.fmod(uu, width) for uu in u]
+            v = tuple(v)
+        else:
+            v = None
+            if u is not None:
+                v = u - math.fmod(u, width)
         if v in d:
             d[v] += 1
         else:
@@ -63,7 +70,7 @@ class WormtableTest(unittest.TestCase):
         """
         Make a small random table with small random values.
         """
-        n = 100
+        num_rows = num_random_test_rows 
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
@@ -72,15 +79,18 @@ class WormtableTest(unittest.TestCase):
         t.add_int_column("int")
         t.add_float_column("float", size=4)
         t.add_char_column("char", num_elements=3)
+        t.add_uint_column("uintv", num_elements=wt.WT_VAR_1)
         t.open("w")
         def g():
             return random.random() < 0.25
-        for j in range(n):
+        for j in range(num_rows):
             u = None if g() else random.randint(0, max_value)
             i = None if g() else random.randint(0, max_value)
             f = None if g() else random.uniform(0, max_value)
             c = None if g() else str(random.randint(0, max_value)).encode()
-            t.append([None, u, i, f, c]) 
+            n = random.randint(1, 5)
+            v = [0 for j in range(n)]
+            t.append([None, u, i, f, c, v]) 
             if random.random() < 0.33:
                 t.append([])
         t.close()
@@ -416,20 +426,13 @@ class IndexIntegrityTest(WormtableTest):
                 stop_index = key_rows.index(stop_key)
                 l = [r for k, r in t[start_index:stop_index]]
                 c = 0
+                if len(cols) == 1:
+                    start_key = start_key[0]
+                    stop_key = stop_key[0]
                 for r1, r2 in zip(i.cursor(read_cols, start_key, stop_key), l):
                     self.assertEqual(r1, r2)
                     c += 1
                 self.assertEqual(c, stop_index - start_index)
-                # If we have a single column index we also support passing the 
-                # values directly
-                if len(cols) == 1:
-                    l = [r for k, r in t[start_index:stop_index]]
-                    c = 0
-                    for r1, r2 in zip(i.cursor(read_cols, start_key[0], stop_key[0]), l):
-                        self.assertEqual(r1, r2)
-                        c += 1
-                    self.assertEqual(c, stop_index - start_index)
-                  
 
             i.close()
             
@@ -457,7 +460,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
                     self._indexes.append(i)
             elif c.get_type() == wt.WT_FLOAT: 
                 name = c.get_name()
-                w = 0.1
+                w = 0.125
                 while w < 10: 
                     i = wt.Index(self._table, name + "_" + str(w)) 
                     i.add_key_column(c, w)
@@ -465,7 +468,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
                     i.build()
                     i.close()
                     self._indexes.append(i)
-                    w += 0.1
+                    w += 0.125
         
     def test_count(self):
         """
@@ -477,10 +480,70 @@ class BinnedIndexIntegrityTest(WormtableTest):
             w = i.bin_widths()[0]
             t = [r[c.get_position()] for r in self._table] 
             d = histogram(t, w)
+            d2 = dict(i.counter().items())
             for k, v in i.counter().items():
                 self.assertTrue(k in d)
                 self.assertEqual(d[k], v)
             i.close()
+
+
+class MultivalueColumnTest(IndexIntegrityTest):
+    """
+    Tests specific to the properties of multivalue columns.
+    """
+
+    def setUp(self):
+        super(MultivalueColumnTest, self).setUp()
+        # Add some indexes with specific properties.
+        index_cols = [["var_uint"], ["var_uint", "var_int"], 
+                ["var_uint", "var_int", "var_char"]]
+        index_cols = [[self._table.get_column(c) for c in cols]
+                for cols in index_cols]
+        for cols in index_cols: 
+            name = "multi" + "+".join(c.get_name() for c in cols) 
+            i = wt.Index(self._table, name) 
+            for c in cols:
+                i.add_key_column(c)
+            i.open("w")
+            i.build()
+            i.close()
+            self._indexes.append(i)
+
+    def make_random_table(self):
+        """
+        Make a small random table with small random values.
+        """
+        num_rows = num_random_test_rows 
+        max_value = 2 
+        max_len = 5
+        self._table = wt.Table(self._homedir)
+        t = self._table
+        t.add_id_column(2)
+        t.add_uint_column("fixed_uint", num_elements=max_len)
+        t.add_uint_column("var_uint", num_elements=wt.WT_VAR_1)
+        t.add_int_column("fixed_int", num_elements=max_len)
+        t.add_int_column("var_int", num_elements=wt.WT_VAR_1)
+        t.add_char_column("fixed_char", num_elements=max_len)
+        t.add_char_column("var_char", num_elements=wt.WT_VAR_1)
+        t.open("w")
+        def fixed():
+            return [random.randint(0, max_value) for j in range(max_len)]
+        def var():
+            n = random.randint(0, max_len)
+            return [random.randint(0, max_value) for j in range(n)]
+        for j in range(num_rows):
+            fu = fixed()
+            vu = var()
+            fi = fixed() 
+            vi = var()
+            fc = "".join(str(u) for u in fixed())
+            vc = "".join(str(u) for u in var())
+            t.append([None, fu, vu, fi, vi, fc.encode(), vc.encode()])
+            if random.random() < 0.33:
+                t.append([])
+        t.close()
+        t.open("r")
+
 
 
 class StringIndexIntegrityTest(WormtableTest):
@@ -859,5 +922,6 @@ class FloatTest(WormtableTest):
             da = np.array([d], dtype=np.float64)
             results.append((float(ha[0]), float(sa[0]), float(da[0])))
         self.assert_tables_equal(values, results)
+
 
 

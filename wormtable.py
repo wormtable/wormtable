@@ -40,7 +40,7 @@ import _wormtable
 
 __version__ = '0.1.0b3'
 TABLE_METADATA_VERSION = "0.2"
-INDEX_METADATA_VERSION = "0.2"
+INDEX_METADATA_VERSION = "0.3"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
@@ -1094,7 +1094,7 @@ class Index(Database):
         order.
         """
         self.verify_open(WT_READ)
-        dvi = _wormtable.DistinctValueIterator(self.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.get_ll_object())
         for k in dvi:
             yield self.ll_to_key(k)
 
@@ -1104,7 +1104,10 @@ class Index(Database):
         Returns the smallest key greater than or equal to the specified 
         prefix.
         """
-        key = self.key_to_ll(k)
+        if len(k) == 0:
+            key = k
+        else:
+            key = self.key_to_ll(k)
         v = self.get_ll_object().get_min(key)
         return self.ll_to_key(v) 
 
@@ -1112,7 +1115,10 @@ class Index(Database):
         """
         Returns the largest index key less than the specified prefix. 
         """
-        key = self.key_to_ll(k)
+        if len(k) == 0:
+            key = k
+        else:
+            key = self.key_to_ll(k)
         v = self.get_ll_object().get_max(key)
         return self.ll_to_key(v) 
 
@@ -1171,15 +1177,15 @@ class Index(Database):
         for use in the low-level API.
         """
         cols = self.__key_columns
-        u = v
-        if not isinstance(v, tuple):
-            u = v,
-        n = len(u)
-        l = [None for j in range(n)]
-        for j in range(n):
-            l[j] = u[j]
-            if isinstance(l[j], str):
-                l[j] = l[j].encode()
+        if len(cols) == 1:
+            l = [v]
+        else:
+            n = len(v)
+            l = [None for j in range(n)]
+            for j in range(n):
+                l[j] = v[j]
+                if isinstance(l[j], str):
+                    l[j] = l[j].encode()
         return tuple(l)
     
     def ll_to_key(self, v):
@@ -1190,9 +1196,7 @@ class Index(Database):
         ret = v
         cols = self.__key_columns
         if len(cols) == 1:
-            c = cols[0]
-            if c.get_num_elements() == 1 or c.get_type() == WT_CHAR:
-                ret = v[0]
+            ret = v[0]
         return ret
 
 
@@ -1206,20 +1210,17 @@ class IndexCounter(collections.Mapping):
         self.__index = index
     
     def __getitem__(self, key):
-        if isinstance(key, tuple):
-            k = self.__index.key_to_ll(key)
-        else:
-            k = self.__index.key_to_ll((key,))
+        k = self.__index.key_to_ll(key)
         return self.__index.get_ll_object().get_num_rows(k) 
    
     def __iter__(self):
-        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.__index.get_ll_object())
         for v in dvi:
             yield self.__index.ll_to_key(v)
 
     def __len__(self):
         n = 0
-        dvi = _wormtable.DistinctValueIterator(self.__index.get_ll_object())
+        dvi = _wormtable.IndexKeyIterator(self.__index.get_ll_object())
         for v in dvi:
             n += 1
         return n
