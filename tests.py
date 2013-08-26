@@ -58,6 +58,7 @@ def main():
     random.seed(int(options.random_seed))
     testloader = unittest.TestLoader()
     test.lowlevel.num_random_test_rows = num_rows 
+    test.highlevel.num_random_test_rows = num_rows 
     if options.name is not None:
         suite = testloader.loadTestsFromName(options.name)
     else:

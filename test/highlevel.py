@@ -33,6 +33,9 @@ import itertools
 
 from xml.etree import ElementTree
 
+# module variables used to control the number of tests that we do.
+num_random_test_rows = 10
+
 def histogram(l, width):
     """
     Returns a histogram over the data in v with bin widths width.
@@ -67,7 +70,7 @@ class WormtableTest(unittest.TestCase):
         """
         Make a small random table with small random values.
         """
-        n = 100
+        num_rows = num_random_test_rows 
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
@@ -80,7 +83,7 @@ class WormtableTest(unittest.TestCase):
         t.open("w")
         def g():
             return random.random() < 0.25
-        for j in range(n):
+        for j in range(num_rows):
             u = None if g() else random.randint(0, max_value)
             i = None if g() else random.randint(0, max_value)
             f = None if g() else random.uniform(0, max_value)
@@ -510,7 +513,7 @@ class MultivalueColumnTest(IndexIntegrityTest):
         """
         Make a small random table with small random values.
         """
-        n = 200
+        num_rows = num_random_test_rows 
         max_value = 2 
         max_len = 5
         self._table = wt.Table(self._homedir)
@@ -528,7 +531,7 @@ class MultivalueColumnTest(IndexIntegrityTest):
         def var():
             n = random.randint(0, max_len)
             return [random.randint(0, max_value) for j in range(n)]
-        for j in range(n):
+        for j in range(num_rows):
             fu = fixed()
             vu = var()
             fi = fixed() 
