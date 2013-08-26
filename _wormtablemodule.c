@@ -2677,10 +2677,10 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         col = self->table->columns[k];
         n = col->num_elements;
         if (col->num_elements == WT_VAR_1) {
-            n = MAX_NUM_ELEMENTS;
+            /* allow space for the sentinel */
+            n = MAX_NUM_ELEMENTS + 1;
         }
-        /* allow space for separator */
-        self->key_buffer_size += (n + 1) * col->element_size;
+        self->key_buffer_size += n * col->element_size;
     }
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     if (self->key_buffer == NULL) {
@@ -2815,7 +2815,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         v += len;
         skey->size += len;
         if (col->num_elements == WT_VAR_1) {
-            /* insert the separator between columns */
+            /* insert the sentinel */
             for (k = 0; k < col->element_size; k++) {
                 *v = 0;
                 v++;
@@ -2867,15 +2867,15 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
-        if (key_size + m + 1 > self->key_buffer_size) {
-            PyErr_Format(PyExc_SystemError, "Max key key_size exceeded."); 
+        if (key_size + m > self->key_buffer_size) {
+            PyErr_Format(PyExc_SystemError, "Max key_size exceeded."); 
             goto out;
         }
         col->pack_elements(col, key_buffer);
         key_buffer += m;
         key_size += m;
         if (col->num_elements == WT_VAR_1) {
-            /* insert the separator between columns */
+            /* insert the sentinel */
             for (k = 0; k < col->element_size; k++) {
                 *key_buffer = 0;
                 key_buffer++;
