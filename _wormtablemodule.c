@@ -1455,7 +1455,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
         }
         v = key_buffer;
     } 
-    if (offset + num_elements * element_size >= key_size) {
+    if (offset + num_elements * element_size > key_size) {
         PyErr_SetString(PyExc_SystemError, "Key offset too long");
         goto out; 
     }
@@ -2814,11 +2814,13 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         }
         v += len;
         skey->size += len;
-        /* insert the separator between columns */
-        for (k = 0; k < col->element_size; k++) {
-            *v = 0;
-            v++;
-            skey->size++;
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the separator between columns */
+            for (k = 0; k < col->element_size; k++) {
+                *v = 0;
+                v++;
+                skey->size++;
+            }
         }
     }
     ret = 0;
@@ -2872,11 +2874,13 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
         col->pack_elements(col, key_buffer);
         key_buffer += m;
         key_size += m;
-        /* insert the separator between columns */
-        for (k = 0; k < col->element_size; k++) {
-            *key_buffer = 0;
-            key_buffer++;
-            key_size++;
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the separator between columns */
+            for (k = 0; k < col->element_size; k++) {
+                *key_buffer = 0;
+                key_buffer++;
+                key_size++;
+            }
         }
     }
     ret = key_size;
@@ -2929,8 +2933,11 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
             Py_DECREF(t);
             goto out;
         }
-        /* skip the sentinel */
-        offset += (n + 1) * col->element_size;
+        if (col->num_elements == WT_VAR_1) {
+            /* skip the sentinel */
+            n++;
+        }
+        offset += n * col->element_size;
         value = Column_get_python_elements(col); 
         if (value == NULL) {
             Py_DECREF(t);
