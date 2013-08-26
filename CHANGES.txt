@@ -1,3 +1,11 @@
+v0.1.0b4, 2013.08 
+	
+    * Changed index key format so that values can be reconstructed from keys
+      and all types of column sort correctly.
+
+    * Added address_size attribute to schema XML format for full forwards and 
+      backwards compatibility with large rows.
+
 v0.1.0b3, 2013.08 
 	
     * Minor change in row format for forward compatability with large rows

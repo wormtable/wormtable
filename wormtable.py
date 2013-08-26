@@ -38,8 +38,8 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.1.0b3'
-TABLE_METADATA_VERSION = "0.2"
+__version__ = '0.1.0b4'
+TABLE_METADATA_VERSION = "0.3"
 INDEX_METADATA_VERSION = "0.3"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
@@ -679,6 +679,11 @@ class Table(Database):
         supported_versions = [TABLE_METADATA_VERSION]
         if version not in supported_versions: 
             raise ValueError("Unsupported schema version.")
+        address_size = root.get("address_size")
+        if address_size is None:
+            raise ValueError("invalid xml: schema address_size missing")
+        if address_size != "2":
+            raise ValueError("Unsupported address size.")
         self._parse_schema_xml(root)
     
     def write_schema(self, filename):
@@ -701,6 +706,7 @@ class Table(Database):
         Generates the XML representing the schema for this table.
         """
         schema = ElementTree.Element("schema")
+        schema.set("address_size", "2")
         columns = ElementTree.Element("columns")
         schema.append(columns)
         for c in self.__columns:
