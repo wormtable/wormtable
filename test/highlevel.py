@@ -484,6 +484,65 @@ class BinnedIndexIntegrityTest(WormtableTest):
             i.close()
 
 
+class MultivalueColumnTest(IndexIntegrityTest):
+    """
+    Tests specific to the properties of multivalue columns.
+    """
+
+    def setUp(self):
+        super(MultivalueColumnTest, self).setUp()
+        # Add some indexes with specific properties.
+        index_cols = [["var_uint"], ["var_uint", "var_int"], 
+                ["var_uint", "var_int", "var_char"]]
+        index_cols = [[self._table.get_column(c) for c in cols]
+                for cols in index_cols]
+        for cols in index_cols: 
+            name = "multi" + "+".join(c.get_name() for c in cols) 
+            i = wt.Index(self._table, name) 
+            for c in cols:
+                i.add_key_column(c)
+            i.open("w")
+            i.build()
+            i.close()
+            self._indexes.append(i)
+
+    def make_random_table(self):
+        """
+        Make a small random table with small random values.
+        """
+        n = 200
+        max_value = 2 
+        max_len = 5
+        self._table = wt.Table(self._homedir)
+        t = self._table
+        t.add_id_column(2)
+        t.add_uint_column("fixed_uint", num_elements=max_len)
+        t.add_uint_column("var_uint", num_elements=wt.WT_VAR_1)
+        t.add_int_column("fixed_int", num_elements=max_len)
+        t.add_int_column("var_int", num_elements=wt.WT_VAR_1)
+        t.add_char_column("fixed_char", num_elements=max_len)
+        t.add_char_column("var_char", num_elements=wt.WT_VAR_1)
+        t.open("w")
+        def fixed():
+            return [random.randint(0, max_value) for j in range(max_len)]
+        def var():
+            n = random.randint(0, max_len)
+            return [random.randint(0, max_value) for j in range(n)]
+        for j in range(n):
+            fu = fixed()
+            vu = var()
+            fi = fixed() 
+            vi = var()
+            fc = "".join(str(u) for u in fixed())
+            vc = "".join(str(u) for u in var())
+            t.append([None, fu, vu, fi, vi, fc.encode(), vc.encode()])
+            if random.random() < 0.33:
+                t.append([])
+        t.close()
+        t.open("r")
+
+
+
 class StringIndexIntegrityTest(WormtableTest):
     """
     Tests the integrity of indexes over variable length length 
@@ -860,5 +919,6 @@ class FloatTest(WormtableTest):
             da = np.array([d], dtype=np.float64)
             results.append((float(ha[0]), float(sa[0]), float(da[0])))
         self.assert_tables_equal(values, results)
+
 
 
