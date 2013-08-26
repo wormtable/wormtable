@@ -39,9 +39,13 @@ def histogram(l, width):
     """
     d = {}
     for u in l:
-        v = None
-        if u is not None:
-            v = u - math.fmod(u, width)
+        if isinstance(u, tuple):
+            v = [uu - math.fmod(uu, width) for uu in u]
+            v = tuple(v)
+        else:
+            v = None
+            if u is not None:
+                v = u - math.fmod(u, width)
         if v in d:
             d[v] += 1
         else:
@@ -72,6 +76,7 @@ class WormtableTest(unittest.TestCase):
         t.add_int_column("int")
         t.add_float_column("float", size=4)
         t.add_char_column("char", num_elements=3)
+        t.add_uint_column("uintv", num_elements=wt.WT_VAR_1)
         t.open("w")
         def g():
             return random.random() < 0.25
@@ -80,7 +85,9 @@ class WormtableTest(unittest.TestCase):
             i = None if g() else random.randint(0, max_value)
             f = None if g() else random.uniform(0, max_value)
             c = None if g() else str(random.randint(0, max_value)).encode()
-            t.append([None, u, i, f, c]) 
+            n = random.randint(1, 5)
+            v = [0 for j in range(n)]
+            t.append([None, u, i, f, c, v]) 
             if random.random() < 0.33:
                 t.append([])
         t.close()
@@ -416,20 +423,13 @@ class IndexIntegrityTest(WormtableTest):
                 stop_index = key_rows.index(stop_key)
                 l = [r for k, r in t[start_index:stop_index]]
                 c = 0
+                if len(cols) == 1:
+                    start_key = start_key[0]
+                    stop_key = stop_key[0]
                 for r1, r2 in zip(i.cursor(read_cols, start_key, stop_key), l):
                     self.assertEqual(r1, r2)
                     c += 1
                 self.assertEqual(c, stop_index - start_index)
-                # If we have a single column index we also support passing the 
-                # values directly
-                if len(cols) == 1:
-                    l = [r for k, r in t[start_index:stop_index]]
-                    c = 0
-                    for r1, r2 in zip(i.cursor(read_cols, start_key[0], stop_key[0]), l):
-                        self.assertEqual(r1, r2)
-                        c += 1
-                    self.assertEqual(c, stop_index - start_index)
-                  
 
             i.close()
             
@@ -457,7 +457,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
                     self._indexes.append(i)
             elif c.get_type() == wt.WT_FLOAT: 
                 name = c.get_name()
-                w = 0.1
+                w = 0.125
                 while w < 10: 
                     i = wt.Index(self._table, name + "_" + str(w)) 
                     i.add_key_column(c, w)
@@ -465,7 +465,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
                     i.build()
                     i.close()
                     self._indexes.append(i)
-                    w += 0.1
+                    w += 0.125
         
     def test_count(self):
         """

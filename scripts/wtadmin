@@ -303,7 +303,11 @@ class DumpRunner(ProgramRunner):
             elif c.get_type() in [wt.WT_INT, wt.WT_UINT]:
                 v = int(k)
             l.append(v)
-        return tuple(l)
+        if len(self._index.key_columns()) == 1:
+            ret = l[0]
+        else:
+            ret = tuple(l)
+        return ret
 
     def init(self):
         super(DumpRunner, self).init()
