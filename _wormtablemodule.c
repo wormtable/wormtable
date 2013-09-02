@@ -2949,50 +2949,7 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
 out:
     return ret;
 }
-          
-/*
- * Unpacks value for the columns in this index in the row pointed to in the 
- * specified DBT, truncates them as necessary, and then generates Python 
- * values from the buffer, returning a tuple.
- */
-static PyObject *
-Index_row_to_python(Index *self, void *row) {
-    PyObject *ret = NULL;
-    PyObject *value;
-    unsigned int j;
-    Column *col;
-    PyObject *t = PyTuple_New(self->num_columns);
-    if (t == NULL) {
-        PyErr_NoMemory();
-        goto out;
-    }
-    if (Index_check_read_mode(self) != 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_columns; j++) {
-        col = self->table->columns[self->columns[j]]; 
-        if (Column_extract_elements(col, row) < 0) {
-            Py_DECREF(t);
-            goto out;
-        }
-        if (self->bin_widths[j] > 0.0) {
-            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
-                Py_DECREF(t);
-                goto out;
-            }
-        }
-        value = Column_get_python_elements(col); 
-        if (value == NULL) {
-            Py_DECREF(t);
-            goto out;
-        }
-        PyTuple_SET_ITEM(t, j, value);
-    }
-    ret = t;
-out:
-    return ret;
-}
-
+ 
 static PyObject *
 Index_get_num_rows(Index *self, PyObject *args)
 {
@@ -3049,7 +3006,7 @@ Index_get_min(Index* self, PyObject *args)
     PyObject *ret = NULL;
     int db_ret;
     DBC *cursor = NULL;
-    DBT primary_key, primary_data, secondary_key;
+    DBT key, data; 
     int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
@@ -3057,25 +3014,21 @@ Index_get_min(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    Index_init_dbts(self, &primary_key, &primary_data);
-    memset(&secondary_key, 0, sizeof(DBT));
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    secondary_key.data = self->key_buffer;
-    secondary_key.size = (u_int32_t) key_size; 
-    db_ret = cursor->pget(cursor, &secondary_key, &primary_key, &primary_data, 
-            DB_SET_RANGE);
+    key.data = self->key_buffer;
+    key.size = (u_int32_t) key_size; 
+    db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
-            goto out;
-        }
-        ret = Index_row_to_python(self, self->table->row_buffer);
+        ret = Index_key_to_python(self, key.data, key.size);
         if (ret == NULL) {
             goto out;
-        }
+        }    
     } else if (db_ret == DB_NOTFOUND) {
         PyErr_SetObject(PyExc_KeyError, args); 
         goto out;
@@ -3087,18 +3040,18 @@ out:
     if (cursor != NULL) {
         cursor->close(cursor);
     }
-   
     return ret;
 }
 
+   
 static PyObject *
 Index_get_max(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
     int db_ret;
-    DBC *cursor = NULL;
-    DBT primary_key, primary_data, secondary_key;
     unsigned char *search_key = NULL;
+    DBC *cursor = NULL;
+    DBT key, data; 
     int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
@@ -3106,19 +3059,18 @@ Index_get_max(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    Index_init_dbts(self, &primary_key, &primary_data);
-    memset(&secondary_key, 0, sizeof(DBT));
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    secondary_key.data = self->key_buffer;
-    secondary_key.size = (u_int32_t) key_size; 
+    key.data = self->key_buffer;
+    key.size = (u_int32_t) key_size; 
     if (key_size == 0) {
         /* An empty list has been passed so we want the last value */
-        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                &primary_data, DB_LAST);
+        db_ret = cursor->get(cursor, &key, &data, DB_LAST);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
             goto out;    
@@ -3132,13 +3084,10 @@ Index_get_max(Index* self, PyObject *args)
         memcpy(search_key, self->key_buffer, key_size);
         Index_increment_key(self, self->key_buffer, key_size);
         /* Seek to the first key prefix >= to this */
-        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                &primary_data, DB_SET_RANGE);
-        /* If this is not found, we want the last key in the index 
-         */
+        db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+        /* If this is not found, we want the last key in the index */
         if (db_ret == DB_NOTFOUND) {
-            db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                    &primary_data, DB_LAST);
+            db_ret = cursor->get(cursor, &key, &data, DB_LAST);
             if (db_ret != 0) {
                 handle_bdb_error(db_ret);
                 goto out;    
@@ -3148,22 +3097,18 @@ Index_get_max(Index* self, PyObject *args)
             * the provided key
             */
             do {
-                db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                        &primary_data, DB_PREV);
+                db_ret = cursor->get(cursor, &key, &data, DB_PREV);
                 if (db_ret != 0) {
                     handle_bdb_error(db_ret);
                     goto out;    
                 }
-            } while (memcmp(search_key, secondary_key.data, key_size) != 0);
+            } while (memcmp(search_key, key.data, key_size) != 0);
         } else {
             handle_bdb_error(db_ret);
             goto out;    
         }
     }
-    if (Table_retrieve_row(self->table) != 0) {
-        goto out;
-    }
-    ret = Index_row_to_python(self, self->table->row_buffer);
+    ret = Index_key_to_python(self, key.data, key.size);
 out:
     if (cursor != NULL) {
         cursor->close(cursor);
