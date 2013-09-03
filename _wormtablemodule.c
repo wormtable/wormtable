@@ -2106,27 +2106,6 @@ out:
     return ret;
 }
 
-/*
- * Sets up the specified DBTs so that the underlying memory for each points
- * to the complete row_buffer. 
- */
-static int 
-Table_init_dbts(Table *self, DBT *primary_key, DBT *primary_data)
-{
-    Column *id_col = self->columns[0];
-    u_int32_t primary_key_size = id_col->element_size;
-    memset(primary_key, 0, sizeof(DBT));
-    memset(primary_data, 0, sizeof(DBT));
-    primary_key->data = self->row_buffer;
-    primary_key->ulen = primary_key_size; 
-    primary_key->size = primary_key_size;
-    primary_key->flags = DB_DBT_USERMEM;
-    primary_data->data = self->row_buffer + primary_key_size;
-    primary_data->ulen = self->row_buffer_size - primary_key_size; 
-    primary_data->flags = DB_DBT_USERMEM;
-    return 0;
-}
-
 static PyObject *
 Table_open(Table* self, PyObject *args)
 {
@@ -2316,19 +2295,12 @@ Table_update_row_stats(Table *self, u_int32_t row_size)
     }
 }
 
-/* Retrieves a the row pointed to by the current state of the row_buffer.
- * DB has filled in the offset and length of the row into the start of
- * the row buffer and now we must read this row from the data file.
- *
- * TODO this is not a very nice way of doing things, as there is all 
- * sorts of coupling between the different objects. A much cleaner 
- * approach would be to have a seperate row_buffer object that 
- * is responsible for all of this that is explicity shared by all 
- * of the objects and that interact with it through a fixed 
- * interface. 
+/* Retrieves the row from the data file identified by data into the 
+ * row buffer such that it is ready for reading. Also copy the specified
+ * key into the buffer so that we can read the col_id column also.
  */
 static int    
-Table_retrieve_row(Table *self) 
+Table_retrieve_row(Table *self, DBT *key, DBT *data) 
 {
     int ret = -1;
     void *v;
@@ -2336,7 +2308,17 @@ Table_retrieve_row(Table *self)
     u_int32_t key_size = id_col->element_size; 
     u_int64_t offset = 0;
     u_int16_t len = 0;
-    v = self->row_buffer + key_size;
+    
+    if (key->size != key_size) {
+        PyErr_Format(PyExc_SystemError, "table key record size mismatch");
+        goto out;
+    }
+    if (data->size != OFFSET_LEN_RECORD_SIZE) {
+        PyErr_Format(PyExc_SystemError, "offset/len record size mismatch");
+        goto out;
+    }
+    memcpy(self->row_buffer, key->data, key->size);
+    v = data->data; 
     offset = unpack_uint(v, sizeof(offset));
     v += sizeof(offset);
     len = unpack_uint(v, sizeof(len));
@@ -2351,6 +2333,34 @@ Table_retrieve_row(Table *self)
         goto out;
     }
     ret = 0;
+out:
+    return ret;
+}
+
+static int    
+Table_retrieve_row_by_id(Table *self, uint64_t row_id) 
+{
+    int ret = -1;
+    int db_ret;
+    Column *id_col = self->columns[0];
+    DBT key, data;
+
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    key.data = self->row_buffer;
+    key.size = id_col->element_size;
+    if (Column_set_row_id(id_col, row_id) != 0) {
+        goto out;
+    }
+    if (Column_update_row(id_col, self->row_buffer, 0) != 0) {
+        goto out;
+    }
+    db_ret = self->db->get(self->db, NULL, &key, &data, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Table_retrieve_row(self, &key, &data);
 out:
     return ret;
 }
@@ -2471,33 +2481,18 @@ static PyObject *
 Table_get_row(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int db_ret;
     PyObject *t = NULL;
     Column *col = NULL;
-    Column *id_col = self->columns[0];
     PyObject *value = NULL;
     unsigned long long row_id = 0;
     u_int32_t j;
-    DBT key, data;
     if (!PyArg_ParseTuple(args, "K", &row_id)) {
         goto out;
     }
     if (Table_check_read_mode(self) != 0) {
         goto out;
     }
-    Table_init_dbts(self, &key, &data); 
-    if (Column_set_row_id(id_col, row_id) != 0) {
-        goto out;
-    }
-    if (Column_update_row(id_col, self->row_buffer, 0) != 0) {
-        goto out;
-    }
-    db_ret = self->db->get(self->db, NULL, &key, &data, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    if (Table_retrieve_row(self) != 0) {
+    if (Table_retrieve_row_by_id(self, (uint64_t) row_id) != 0) {
         goto out;
     }
     t = PyTuple_New(self->num_columns);
@@ -2765,26 +2760,6 @@ Index_check_read_mode(Index *self)
     ret = 0;
 out:
     return ret;
-}
-
-/*
- * Sets up the specified DBTs so that the underlying memory for each points
- * to the complete row_buffer. 
- */
-static int 
-Index_init_dbts(Index *self, DBT *primary_key, DBT *primary_data)
-{
-    Column *id_col = self->table->columns[0];
-    u_int32_t primary_key_size = id_col->element_size;
-    memset(primary_key, 0, sizeof(DBT));
-    memset(primary_data, 0, sizeof(DBT));
-    primary_key->data = self->table->row_buffer;
-    primary_key->ulen = primary_key_size; 
-    primary_key->flags = DB_DBT_USERMEM;
-    primary_data->data = self->table->row_buffer + primary_key_size;
-    primary_data->ulen = self->table->row_buffer_size - primary_key_size; 
-    primary_data->flags = DB_DBT_USERMEM;
-    return 0;
 }
 
 /* extract values from the specified row and push them into the specified 
@@ -3200,6 +3175,7 @@ Index_build(Index* self, PyObject *args)
     u_int32_t truncate_count;
     uint64_t callback_interval = 1000;
     uint64_t records_processed = 0;
+    
     if (!PyArg_ParseTuple(args, "|OK", &progress_callback, 
             &callback_interval)) { 
         progress_callback = NULL;
@@ -3233,17 +3209,11 @@ Index_build(Index* self, PyObject *args)
     memset(&pdata, 0, sizeof(DBT));
     memset(&skey, 0, sizeof(DBT));
     memset(&sdata, 0, sizeof(DBT));
-    pkey.data = self->table->row_buffer;
-    pkey.ulen = primary_key_size; 
-    pkey.flags = DB_DBT_USERMEM;
-    pdata.data = self->table->row_buffer + primary_key_size;
-    pdata.ulen = MAX_ROW_SIZE - primary_key_size; 
-    pdata.flags = DB_DBT_USERMEM;
     skey.data = self->key_buffer;
     sdata.data = self->table->row_buffer;
     sdata.size = primary_key_size;
     while ((db_ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
+        if (Table_retrieve_row(self->table, &pkey, &pdata) != 0) {
             goto out;
         }
         if (Index_fill_key(self, self->table->row_buffer, &skey) < 0 ) {
@@ -3578,7 +3548,8 @@ TableRowIterator_next(TableRowIterator *self)
     if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
-    Table_init_dbts(self->table, &key, &data);
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     flags = DB_NEXT;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
@@ -3589,17 +3560,14 @@ TableRowIterator_next(TableRowIterator *self)
             goto out;    
         }
         if (self->min_key_size != 0) {
-            if (key.size != self->min_key_size) {
-                PyErr_Format(PyExc_SystemError, "key size mismatch."); 
-                goto out;
-            }
-            memcpy(key.data, self->min_key, self->min_key_size);
+            key.data = self->min_key;
+            key.size = self->min_key_size;
             flags = DB_SET_RANGE;
         }
     } 
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
+        if (Table_retrieve_row(self->table, &key, &data) != 0) {
             goto out;
         }
         /* Now, check if we've hit or gone past max_key */ 
@@ -3863,10 +3831,12 @@ IndexRowIterator_next(IndexRowIterator *self)
     DBT primary_key, primary_data, secondary_key;
     uint32_t flags, cmp_size;
     int max_exceeded = 0;
+    
     if (Index_check_read_mode(self->index) != 0) {
         goto out;
     }
-    Index_init_dbts(self->index, &primary_key, &primary_data);
+    memset(&primary_key, 0, sizeof(DBT));
+    memset(&primary_data, 0, sizeof(DBT));
     memset(&secondary_key, 0, sizeof(DBT));
     flags = DB_NEXT;
     if (self->cursor == NULL) {
@@ -3886,7 +3856,8 @@ IndexRowIterator_next(IndexRowIterator *self)
     db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
             &primary_data, flags);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->index->table) != 0) {
+        if (Table_retrieve_row(self->index->table, &primary_key, 
+                    &primary_data) != 0) {
             goto out;
         }
         /* Now, check if we've hit or gone past max_key */
@@ -3900,7 +3871,6 @@ IndexRowIterator_next(IndexRowIterator *self)
             if (secondary_key.size < self->max_key_size) {
                 max_exceeded = cmp < 0;
             }
-            
         }
         if (!max_exceeded) { 
             t = PyTuple_New(self->num_read_columns);
