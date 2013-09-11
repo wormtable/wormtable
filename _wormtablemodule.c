@@ -2342,17 +2342,18 @@ Table_retrieve_row_by_id(Table *self, uint64_t row_id)
 {
     int ret = -1;
     int db_ret;
+    unsigned char key_buffer[sizeof(row_id)];
     Column *id_col = self->columns[0];
     DBT key, data;
 
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
-    key.data = self->row_buffer;
+    key.data = key_buffer; 
     key.size = id_col->element_size;
     if (Column_set_row_id(id_col, row_id) != 0) {
         goto out;
     }
-    if (Column_update_row(id_col, self->row_buffer, 0) != 0) {
+    if (Column_update_row(id_col, key_buffer, 0) != 0) {
         goto out;
     }
     db_ret = self->db->get(self->db, NULL, &key, &data, 0);
