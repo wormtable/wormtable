@@ -275,11 +275,11 @@ unpack_double(void *src)
 static void
 pack_uint(uint64_t value, void *dest, uint8_t size) 
 {
-    void *src;
+    char *src;
     uint64_t u = value;
     /* increment before storing */
     u += 1; 
-    src = &u;
+    src = (char *) &u;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, src + (8 - size), size);
 #else
@@ -291,7 +291,7 @@ static uint64_t
 unpack_uint(void *src, uint8_t size) 
 {
     uint64_t dest = 0;
-    void *v = &dest;
+    char *v = (char *) &dest;
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
 #else
@@ -306,11 +306,11 @@ unpack_uint(void *src, uint8_t size)
 static void
 pack_int(int64_t value, void *dest, uint8_t size) 
 {
-    void *src;
+    char *src;
     int64_t u = value; 
     /* flip the sign bit */
     u ^= 1LL << (size * 8 - 1);
-    src = &u;
+    src = (char *) &u;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, src + (8 - size), size);
 #else
@@ -322,7 +322,7 @@ static int64_t
 unpack_int(void *src, uint8_t size) 
 {
     int64_t dest = 0;
-    void *v = &dest;
+    char *v = (char *) &dest;
     const int64_t m = 1LL << (size * 8 - 1);
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
@@ -524,10 +524,11 @@ Column_unpack_elements_uint(Column *self, void *source)
 {
     int j;
     int ret = -1;
+    char *v = (char *) source;
     uint64_t *elements = (uint64_t *) self->element_buffer;
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
-        elements[j] = unpack_uint(source + j * size, size); 
+        elements[j] = unpack_uint(v + j * size, size); 
     }
     ret = 0;
     return ret; 
@@ -539,10 +540,11 @@ Column_unpack_elements_int(Column *self, void *source)
 {
     int j;
     int ret = -1;
+    char *v = (char *) source;
     int64_t *elements = (int64_t *) self->element_buffer;
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
-        elements[j] = unpack_int(source + j * size, size); 
+        elements[j] = unpack_int(v + j * size, size); 
     }
     ret = 0;
     return ret; 
@@ -553,7 +555,7 @@ Column_unpack_elements_float_2(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = source;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_half(v); 
@@ -568,7 +570,7 @@ Column_unpack_elements_float_4(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = source;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_float(v); 
@@ -583,7 +585,7 @@ Column_unpack_elements_float_8(Column *self, void *source)
 {
     int j;
     int ret = -1;
-    void *v = source;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_double(v); 
@@ -614,7 +616,7 @@ Column_pack_elements_uint(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     uint64_t *elements = (uint64_t *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_uint(elements[j], v, self->element_size);
@@ -629,7 +631,7 @@ Column_pack_elements_int(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     int64_t *elements = (int64_t *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_int(elements[j], v, self->element_size);
@@ -644,7 +646,7 @@ Column_pack_elements_float_2(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_half(elements[j], v);
@@ -659,7 +661,7 @@ Column_pack_elements_float_4(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_float(elements[j], v);
@@ -674,7 +676,7 @@ Column_pack_elements_float_8(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_double(elements[j], v);
@@ -1320,7 +1322,7 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         uint32_t offset, uint32_t num_elements)
 {
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     /* these are currently hard coded to 2 and 1 - future versions
      * will support general address_size and var_size */
     unsigned int address_size = 2;
@@ -1350,7 +1352,7 @@ Column_unpack_variable_elements_address(Column *self, void *src,
         uint32_t *offset, uint32_t *num_elements)
 {
     int ret = -1;
-    void *v = src;
+    char *v = (char *) src;
     uint64_t off = 0;
     uint64_t n = 0;
     /* these are currently hard coded to 2 and 1 - future versions
@@ -1389,6 +1391,7 @@ static int
 Column_update_row(Column *self, void *row, uint32_t row_size)
 {
     int ret = -1;
+    char *v = (char *) row;
     void *dest;
     int bytes_added = 0;
     uint32_t num_elements = (uint32_t) self->num_buffered_elements;
@@ -1396,7 +1399,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
     if (self->verify_elements(self) < 0) {
         goto out;
     }
-    dest = row + self->fixed_region_offset; 
+    dest = v + self->fixed_region_offset; 
     if (self->num_elements == WT_VAR_1) {
         bytes_added = data_size;
         if (row_size + bytes_added > MAX_ROW_SIZE) {
@@ -1407,7 +1410,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
                 num_elements) < 0) {
             goto out;
         }
-        dest = row + row_size; 
+        dest = v + row_size; 
     }
     self->pack_elements(self, dest);
     ret = bytes_added;
@@ -1425,7 +1428,8 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
         uint32_t key_size)
 {
     int ret = -1;
-    unsigned char *v;
+    char *v;
+    char *kb = (char *) key_buffer;
     uint32_t j, k, s;
     uint32_t element_size = self->element_size;
     uint32_t num_elements = self->num_elements;
@@ -1435,7 +1439,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
         num_elements = 0;
         not_done = 1;
         j = offset;
-        v = key_buffer;
+        v = kb; 
         while (not_done) {
             s = 0;
             k = j + element_size;
@@ -1453,13 +1457,13 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
                 num_elements++;
             }
         }
-        v = key_buffer;
+        v = kb;
     } 
     if (offset + num_elements * element_size > key_size) {
         PyErr_SetString(PyExc_SystemError, "Key offset too long");
         goto out; 
     }
-    v = key_buffer + offset;
+    v = kb + offset;
     self->num_buffered_elements = num_elements;
     ret = self->unpack_elements(self, v);
     if (ret < 0) {
@@ -1478,16 +1482,17 @@ static int
 Column_extract_elements(Column *self, void *row)
 {
     int ret = -1;
+    char *v = (char *) row;
     void *src;
     uint32_t offset, num_elements;
-    src = row + self->fixed_region_offset; 
+    src = v + self->fixed_region_offset; 
     num_elements = self->num_elements;
     if (self->num_elements == WT_VAR_1) {
         if (Column_unpack_variable_elements_address(self, src, &offset, 
                 &num_elements) < 0) {
             goto out;
         }
-        src = row + offset;
+        src = v + offset;
     }
     self->num_buffered_elements = num_elements;
     ret = self->unpack_elements(self, src);
@@ -1503,7 +1508,8 @@ Column_copy_row_values(Column *self, void *dest, void *src)
 {
     int ret = -1;
     uint32_t len, num_elements, offset;
-    void *v = src + self->fixed_region_offset;
+    char *u = (char *) src;
+    char *v = u + self->fixed_region_offset;
     offset = 0;
     num_elements = self->num_elements;
     if (self->num_elements == WT_VAR_1) {
@@ -1511,7 +1517,7 @@ Column_copy_row_values(Column *self, void *dest, void *src)
                 &num_elements) < 0) {
             goto out;
         }
-        v = src + offset;
+        v = u + offset;
     }
     len = self->element_size * num_elements;
     memcpy(dest, v, len); 
@@ -2303,7 +2309,8 @@ static int
 Table_retrieve_row(Table *self, DBT *key, DBT *data) 
 {
     int ret = -1;
-    void *v;
+    char *v;
+    char *rb = (char *) self->row_buffer;
     Column *id_col = self->columns[0];
     uint32_t key_size = id_col->element_size; 
     uint64_t offset = 0;
@@ -2318,7 +2325,7 @@ Table_retrieve_row(Table *self, DBT *key, DBT *data)
         goto out;
     }
     memcpy(self->row_buffer, key->data, key->size);
-    v = data->data; 
+    v = (char *) data->data; 
     offset = unpack_uint(v, sizeof(offset));
     v += sizeof(offset);
     len = unpack_uint(v, sizeof(len));
@@ -2327,7 +2334,7 @@ Table_retrieve_row(Table *self, DBT *key, DBT *data)
         handle_io_error();
         goto out;
     }
-    v = self->row_buffer + key_size;
+    v = rb + key_size;
     if (fread(v, len, 1, self->data_file) != 1) {
         handle_io_error();
         goto out;
@@ -2372,10 +2379,11 @@ Table_commit_row(Table* self)
     PyObject *ret = NULL;
     size_t io_ret;
     int db_ret;
-    void *v;
+    char *v;
+    char *rb = (char *) self->row_buffer;
     uint64_t offset;
     uint16_t len;
-    char *record[OFFSET_LEN_RECORD_SIZE];
+    char record[OFFSET_LEN_RECORD_SIZE];
     void *row = NULL;
     DBT key, data;
     Column *id_col = self->columns[0];
@@ -2393,7 +2401,7 @@ Table_commit_row(Table* self)
     /* write the data row */
     offset = (uint64_t) ftello(self->data_file);
     len = self->current_row_size - key_size;
-    row = self->row_buffer + key_size;
+    row = rb + key_size;
     io_ret = fwrite(row, len, 1, self->data_file);
     if (io_ret != 1) {
         handle_io_error();
