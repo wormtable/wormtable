@@ -1430,7 +1430,8 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
     int ret = -1;
     char *v;
     char *kb = (char *) key_buffer;
-    uint32_t j, k, s;
+    char s;
+    uint32_t j, k;
     uint32_t element_size = self->element_size;
     uint32_t num_elements = self->num_elements;
     int not_done;
@@ -1448,7 +1449,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
                     PyErr_SetString(PyExc_SystemError, "Key buffer overflow");
                     goto out; 
                 }
-                s += v[j];
+                s |= v[j];
                 j++;
             }
             if (s == 0) {
