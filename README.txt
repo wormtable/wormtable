@@ -182,9 +182,9 @@ Wormtable is higly portable, and
 has been successfully built and tested 
 on the following platforms:
 
-================        ========        ======          ===========     
+====================    ========        ======          ===========     
 Operating system        Platform        Python          Compiler        
-================        ========        ======          ===========     
+====================    ========        ======          ===========     
 Ubuntu 13.04            x86-64          2.7.4           gcc 4.7.3       
 Ubuntu 13.04            x86-64          3.3.1           gcc 4.7.3       
 Ubuntu 13.04            x86-64          2.7.4           clang 3.2.1     
@@ -201,5 +201,8 @@ FreeBSD 9.0             i386            2.7.2           gcc 4.2.2
 FreeBSD 9.0             i386            3.1.4           clang 3.0 
 OS X 10.8.4             x86-64          2.7.2           clang 4.2
 SunOS 5.10              SPARC           3.3.2           gcc 4.8.0 
-================        ========        ======          ===========     
+Solaris 11.1            SPARC           2.6.8           gcc 4.5.2 
+Solaris 11.1            SPARC           2.6.8           Sun C 5.12          
+Scientific Linux 6.2    x86-64          2.6.6           icc 12.0.0
+====================    ========        ======          ===========     
 
