@@ -308,8 +308,9 @@ pack_int(int64_t value, void *dest, uint8_t size)
 {
     char *src;
     int64_t u = value; 
+    const int64_t m = 1LL << (size * 8 - 1);
     /* flip the sign bit */
-    u ^= 1LL << (size * 8 - 1);
+    u ^= m; 
     src = (char *) &u;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, src + (8 - size), size);

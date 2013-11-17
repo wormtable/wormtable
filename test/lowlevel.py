@@ -1,4 +1,3 @@
-#!python
 # 
 # Copyright (C) 2013, wormtable developers (see AUTHORS.txt).
 #
