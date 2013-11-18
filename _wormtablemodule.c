@@ -38,6 +38,8 @@
 #define MAX_NUM_ELEMENTS 254
 #define MAX_ROW_SIZE 65535
 
+#define WT_MISSING_VALUE 1
+
 #define OFFSET_LEN_RECORD_SIZE 10 
 
 #define MODULE_DOC \
@@ -520,18 +522,25 @@ Column_native_to_python_char(Column *self, int index)
  *
  *************************************/
 
+/*
+ * Unpack values starting at the specified pointer, and return the
+ * number of missing_values encountered.
+ */
 static int 
 Column_unpack_elements_uint(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
     char *v = (char *) source;
     uint64_t *elements = (uint64_t *) self->element_buffer;
+    uint64_t missing_value = missing_uint(self->element_size); 
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_uint(v + j * size, size); 
+        if (elements[j] == missing_value) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -540,14 +549,17 @@ static int
 Column_unpack_elements_int(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
     char *v = (char *) source;
     int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t missing_value = missing_int(self->element_size); 
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_int(v + j * size, size); 
+        if (elements[j] == missing_value) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -555,14 +567,19 @@ static int
 Column_unpack_elements_float_2(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
     char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_half(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -570,14 +587,19 @@ static int
 Column_unpack_elements_float_4(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
     char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_float(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -585,22 +607,36 @@ static int
 Column_unpack_elements_float_8(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
     char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_double(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
 static int 
 Column_unpack_elements_char(Column *self, void *source)
 {
+    int ret = 0;
+    int j;
+    char *v = (char *) source;
     memcpy(self->element_buffer, source, self->num_buffered_elements); 
-    return  0; 
+    /* scan for zero bytes to get missing values */
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        if (v[j] == 0) {
+            ret += 1;
+        }
+    }
+    return ret; 
 }
 
 
@@ -1478,7 +1514,9 @@ out:
 
 /*
  * Extracts elements from the specified row and inserts them into the 
- * element buffer. 
+ * element buffer. Returns a positive value WT_MISSING_VALUE if the 
+ * missing value was stored in this column, 0 if a non-missing value 
+ * was stored, and a negative value if an error occurs.
  */
 static int 
 Column_extract_elements(Column *self, void *row)
@@ -1488,20 +1526,37 @@ Column_extract_elements(Column *self, void *row)
     void *src;
     uint32_t offset, num_elements;
     src = v + self->fixed_region_offset; 
-    num_elements = self->num_elements;
     if (self->num_elements == WT_VAR_1) {
         if (Column_unpack_variable_elements_address(self, src, &offset, 
                 &num_elements) < 0) {
             goto out;
         }
         src = v + offset;
+        self->num_buffered_elements = num_elements;
+        ret = self->unpack_elements(self, src);
+        if (ret > 0) {
+            PyErr_SetString(PyExc_SystemError, 
+                    "Missing values detected within variable length column");
+            goto out; 
+        }
+        if (ret < 0) {
+            goto out;
+        }
+        if (offset == 0) {
+            ret = WT_MISSING_VALUE;
+        }
+    } else {
+        self->num_buffered_elements = self->num_elements;;
+        ret = self->unpack_elements(self, src);
+        if (ret > 0) {
+            ret = WT_MISSING_VALUE;
+        }
     }
-    self->num_buffered_elements = num_elements;
-    ret = self->unpack_elements(self, src);
 out:
     return ret;
 }
 
+#if 0
 /* Copies the data values from the specified source to the specified 
  * destination
  */
@@ -1549,16 +1604,47 @@ out:
     return ret;
 }
 
+#endif
+
 /*
  * Converts the native values in the element buffer to the appropriate 
  * Python types, and returns the result.
  */
 static PyObject *
-Column_get_python_elements(Column *self)
+Column_get_python_elements(Column *self, int missing)
 {
     PyObject *ret = NULL;
     PyObject *u, *t;
     Py_ssize_t j;
+    if (missing) {
+        Py_INCREF(Py_None);
+        ret = Py_None;
+    } else {
+        if (self->element_type == WT_CHAR || self->num_elements == 1) {
+            ret = self->native_to_python(self, 0);
+            if (ret == NULL) {
+                goto out;
+            }
+        } else {
+            t = PyTuple_New(self->num_buffered_elements);
+            if (t == NULL) {
+                PyErr_NoMemory();
+                goto out;
+            }
+            for (j = 0; j < self->num_buffered_elements; j++) {
+                u = self->native_to_python(self, j);
+                if (u == NULL) {
+                    Py_DECREF(t);
+                    PyErr_NoMemory();
+                    goto out;
+                }
+                PyTuple_SET_ITEM(t, j, u);
+            }
+            ret = t;
+        }
+    }
+    
+#if 0    
     /* TODO Missing value handling is a mess FIXME!!! */
     if (self->element_type == WT_CHAR) {
         ret = self->native_to_python(self, 0);
@@ -1607,8 +1693,10 @@ Column_get_python_elements(Column *self)
             }
         }
     }
+#endif
 out:
     return ret;
+
 }
 
 
@@ -2440,6 +2528,7 @@ static PyObject *
 Table_get_num_rows(Table* self)
 {
     int db_ret;
+    int wt_ret;
     Column *id_col = self->columns[0];
     uint64_t max_key = 0;
     PyObject *ret = NULL;
@@ -2462,7 +2551,12 @@ Table_get_num_rows(Table* self)
             PyErr_Format(PyExc_SystemError, "key size mismatch");
             goto out;
         }
-        if (Column_extract_elements(id_col, key.data) < 0) {
+        wt_ret = Column_extract_elements(id_col, key.data);
+        if (wt_ret > 0) {
+            PyErr_Format(PyExc_SystemError, "Missing value in id column."); 
+            goto out;
+        }
+        if (wt_ret < 0) {
             goto out;
         } 
         if (Column_get_row_id(id_col, &max_key) != 0) {
@@ -2495,6 +2589,7 @@ Table_get_row(Table* self, PyObject *args)
     PyObject *t = NULL;
     Column *col = NULL;
     PyObject *value = NULL;
+    int wt_ret;
     unsigned long long row_id = 0;
     uint32_t j;
     if (!PyArg_ParseTuple(args, "K", &row_id)) {
@@ -2513,11 +2608,12 @@ Table_get_row(Table* self, PyObject *args)
     }
     for (j = 0; j < self->num_columns; j++) {
         col = self->columns[j]; 
-        if (Column_extract_elements(col, self->row_buffer) < 0) {
+        wt_ret = Column_extract_elements(col, self->row_buffer);
+        if (wt_ret < 0) {
             Py_DECREF(t);
             goto out;
-        }
-        value = Column_get_python_elements(col); 
+        } 
+        value = Column_get_python_elements(col, wt_ret == WT_MISSING_VALUE); 
         if (value == NULL) {
             Py_DECREF(t);
             goto out;
@@ -2686,7 +2782,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
             /* allow space for the sentinel */
             n = MAX_NUM_ELEMENTS + 1;
         }
-        self->key_buffer_size += n * col->element_size;
+        self->key_buffer_size += 1 + n * col->element_size;
     }
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     if (self->key_buffer == NULL) {
@@ -2788,6 +2884,21 @@ Index_fill_key(Index *self, void *row, DBT *skey)
     for (j = 0; j < self->num_columns; j++) {
         col = self->table->columns[self->columns[j]]; 
         len = 0;
+        if (Column_extract_elements(col, row) < 0) {
+            goto out;
+        }
+        
+        if (self->bin_widths[j] != 0.0) {
+            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
+                goto out;
+            }
+        }
+        if (col->pack_elements(col, v) < 0) {
+            goto out;
+        }
+        len = col->num_buffered_elements * col->element_size;
+
+#if 0
         if (self->bin_widths[j] == 0.0) {
             /* we can just copy the values directly here */
             len = Column_copy_row_values(col, v, row);
@@ -2795,6 +2906,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
             /* we must bin the values correctly here */
             len = Column_truncate_values(col, self->bin_widths[j], v, row);
         }
+#endif
         if (len < 0) {
             goto out;
         }
@@ -2923,8 +3035,9 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
             /* skip the sentinel */
             n++;
         }
+        /* TODO add in checks for the missing value */
         offset += n * col->element_size;
-        value = Column_get_python_elements(col); 
+        value = Column_get_python_elements(col, 0); 
         if (value == NULL) {
             Py_DECREF(t);
             goto out;
@@ -3551,7 +3664,7 @@ TableRowIterator_next(TableRowIterator *self)
     PyObject *t = NULL;
     PyObject *value;
     Column *col;
-    int db_ret, j;
+    int db_ret, j, wt_ret;
     DB *db;
     DBT key, data;
     uint32_t flags;
@@ -3597,11 +3710,13 @@ TableRowIterator_next(TableRowIterator *self)
             }
             for (j = 0; j < self->num_read_columns; j++) {
                 col = self->table->columns[self->read_columns[j]]; 
-                if (Column_extract_elements(col, self->table->row_buffer) < 0) {
+                wt_ret = Column_extract_elements(col, self->table->row_buffer);
+                if (wt_ret < 0) {
                     Py_DECREF(t);
                     goto out;
-                }
-                value = Column_get_python_elements(col); 
+                } 
+                value = Column_get_python_elements(col, 
+                        wt_ret == WT_MISSING_VALUE); 
                 if (value == NULL) {
                     Py_DECREF(t);
                     goto out;
@@ -3837,7 +3952,7 @@ IndexRowIterator_next(IndexRowIterator *self)
     PyObject *t = NULL;
     PyObject *value;
     Column *col;
-    int db_ret, j, cmp;
+    int db_ret, j, cmp, wt_ret;
     DB *db;
     DBT primary_key, primary_data, secondary_key;
     uint32_t flags, cmp_size;
@@ -3891,11 +4006,14 @@ IndexRowIterator_next(IndexRowIterator *self)
             }
             for (j = 0; j < self->num_read_columns; j++) {
                 col = self->index->table->columns[self->read_columns[j]]; 
-                if (Column_extract_elements(col, self->index->table->row_buffer) < 0) {
+                wt_ret = Column_extract_elements(col, 
+                        self->index->table->row_buffer);
+                if (wt_ret < 0) {
                     Py_DECREF(t);
                     goto out;
-                }
-                value = Column_get_python_elements(col); 
+                } 
+                value = Column_get_python_elements(col, 
+                        wt_ret == WT_MISSING_VALUE); 
                 if (value == NULL) {
                     Py_DECREF(t);
                     goto out;

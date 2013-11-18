@@ -1109,31 +1109,16 @@ class TestDatabaseCharMultiColumnIndex(TestDatabaseChar, TestMultiColumnIndex):
 
 class TestMissingValues(object):
     def test_missing_values(self):
-        # Insert an empty row    
-        self._row_buffer.commit_row()
-        # Now writing in empty values
-        for j in range(1, self.num_columns):
-            col = self._columns[j]
-            if col.num_elements == 1:
-                v = None
-            elif col.num_elements > 1:
-                v = tuple(None for k in range(col.num_elements))
-            else:
-                v = tuple()
-            self._row_buffer.insert_elements(j, v)
-        self._row_buffer.commit_row()
+        n = 10
+        # Insert empty rows 
+        for j in range(n):
+            self._row_buffer.commit_row()
         self.open_reading()
-        for j in range(2):
+        for j in range(n):
             r = self._database.get_row(j)
             for k in range(1, len(self._columns)):
-                c = self._columns[k]
-                if c.num_elements == _wormtable.WT_VAR_1:
-                    self.assertEqual(r[k], tuple())
-                elif c.num_elements < 2:
-                    self.assertEqual(r[k], None)
-                else:
-                    v = [None for j in range(c.num_elements)]
-                    self.assertEqual(tuple(v), r[k])
+                self.assertEqual(None, r[k])
+                    
 
 
 class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
@@ -1143,15 +1128,8 @@ class TestFloatMissingValues(TestMissingValues, TestDatabaseFloat):
     pass
     
 class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
+    pass   
    
-   
-    def test_missing_values(self):
-        self._row_buffer.commit_row()
-        self.open_reading()
-        r = self._database.get_row(0)
-        for k in range(1, len(self._columns)):
-            self.assertEqual(b"", r[k])
-
 class TestTable(unittest.TestCase):
     """
     Base class for testing tables.

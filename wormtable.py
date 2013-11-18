@@ -155,8 +155,7 @@ class Column(object):
         """
         Returns the missing value for this column.
 
-        TODO: document
-        """
+        TODO: REMOVE 
         t = self.get_type()
         n = self.get_num_elements()
         ret = None
@@ -168,6 +167,8 @@ class Column(object):
             else:
                 ret = tuple(None for j in range(n))
         return ret
+        """
+        return None
 
     def format_value(self, v):
         """
