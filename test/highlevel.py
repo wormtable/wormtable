@@ -74,7 +74,7 @@ class WormtableTest(unittest.TestCase):
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
-        t.add_id_column(2)
+        t.add_id_column(4)
         t.add_uint_column("uint")
         t.add_int_column("int")
         t.add_float_column("float", size=4)
@@ -518,7 +518,7 @@ class MultivalueColumnTest(IndexIntegrityTest):
         max_len = 5
         self._table = wt.Table(self._homedir)
         t = self._table
-        t.add_id_column(2)
+        t.add_id_column(4)
         t.add_uint_column("fixed_uint", num_elements=max_len)
         t.add_uint_column("var_uint", num_elements=wt.WT_VAR_1)
         t.add_int_column("fixed_int", num_elements=max_len)
