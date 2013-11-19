@@ -38,9 +38,9 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.1.0b4'
+__version__ = '0.1.0b5'
 TABLE_METADATA_VERSION = "0.3"
-INDEX_METADATA_VERSION = "0.3"
+INDEX_METADATA_VERSION = "0.4"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
