@@ -648,12 +648,13 @@ use and incur many unnecessary overheads.
 Wormtable provides the most important features of database
 technologies (packed binary storage of values; random access 
 to rows; general purpose indexing) without additional complexities 
-and overheads. Wormtable is also more flexible than 
+and overheads. Wormtable's data model is also less rigid
+than 
 relational databases, supporting, for example, columns 
 containing a variable number of integers. Finally, wormtable 
 is far more adaptable than a relational database.
 All widely used database systems are complex 
-and adding the necessary features would be 
+and adding required features (e.g.\ compression) would be 
 very difficult. Adding new features to wormtable, on the 
 other hand, is straightforward because it is far simpler and 
 does not need to be compatible with the relational model
@@ -707,13 +708,17 @@ productivity and ability to explore their data.
 \paragraph{License:} GNU LGPLv3+.
 \paragraph{Any restrictions to use by non-academics:} None.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Competing interests}
+The authors declare that they have no competing interests.
+
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{Authors contributions}
 JK conceived the project, developed wormtable source code and associated
 scripts and drafted the manuscript. RN wrote the tutorial and contributed to
 the example scripts and the manuscript. DH wrote the example scripts and vcf-utils,
-and contributed to vcf2wt, the tutorial and the manuscript.
+and contributed to \texttt{vcf2wt}, the tutorial and the manuscript.
 All authors read and approved the final manuscript.
 
 
