@@ -156,7 +156,7 @@ class Column(object):
         Formats the specified value from this column for printing.
         """ 
         if v is None:
-            s = "."
+            s = "NA"
         else:
             n = self.get_num_elements()
             if self.get_type() == WT_CHAR:
