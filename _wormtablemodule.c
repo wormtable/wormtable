@@ -949,14 +949,6 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             self->input_elements[j] = v; 
         }
     }
-    if (self->num_elements != WT_VAR_1) {
-        if (num_elements != self->num_elements) {
-            PyErr_Format(PyExc_ValueError, 
-                    "incorrect number of elements for column '%s'",
-                    PyBytes_AsString(self->name));
-            goto out;
-        }
-    }
     self->num_buffered_elements = num_elements;
     ret = 0;
 out:
@@ -1110,8 +1102,6 @@ Column_python_to_native_char(Column *self, PyObject *elements)
 {
     int ret = -1;
     char *s;
-    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
-            MAX_NUM_ELEMENTS: self->num_elements;
     Py_ssize_t length;
     /* Elements must be a single Python bytes object */
     if (!PyBytes_Check(elements)) {
@@ -1126,21 +1116,23 @@ Column_python_to_native_char(Column *self, PyObject *elements)
                 PyBytes_AsString(self->name));
         goto out;
     }
-    if (length > max_length) {
-        PyErr_Format(PyExc_ValueError, 
-                "String too long for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
+    if (self->num_elements == WT_VAR_1) {
+        if (length > MAX_NUM_ELEMENTS) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String too long for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+    } else {
+        if (length != self->num_elements) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String incorrect length for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
     }
     memcpy(self->element_buffer, s, length);
     self->num_buffered_elements = length;
-    if (self->num_elements != WT_VAR_1) {
-        /* Pad out the remaining space with zeros */
-        while (self->num_buffered_elements != self->num_elements) {
-            ((char *) self->element_buffer)[self->num_buffered_elements] = '\0';
-            self->num_buffered_elements++;
-        }
-    }
     ret = 0; 
 out:
     return ret;
@@ -1332,17 +1324,24 @@ static int
 Column_string_to_native_char(Column *self, char *string)
 {
     int ret = -1;
-    size_t n = strlen(string);
-    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
-            MAX_NUM_ELEMENTS: self->num_elements;
-    if (n > max_length) {
-        PyErr_Format(PyExc_ValueError, 
-                "String too long for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
+    size_t length = strlen(string);
+    if (self->num_elements == WT_VAR_1) {
+        if (length > MAX_NUM_ELEMENTS) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String too long for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+    } else {
+        if (length != self->num_elements) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String incorrect length for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
     }
-    memcpy(self->element_buffer, string, n); 
-    self->num_buffered_elements = n;
+    memcpy(self->element_buffer, string, length); 
+    self->num_buffered_elements = length;
     ret = 0;
 out:
     return ret;
