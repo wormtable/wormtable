@@ -2238,9 +2238,9 @@ static PyObject *
 Table_insert_elements(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    Column *column = NULL;
+    Column *col = NULL;
     PyObject *elements = NULL;
-    int m, col_index;
+    int m, col_index, wt_ret;
     if (!PyArg_ParseTuple(args, "iO", &col_index, &elements)) { 
         goto out;
     }
@@ -2248,21 +2248,24 @@ Table_insert_elements(Table* self, PyObject *args)
         goto out;
     }
     if (col_index == 0) {
-        PyErr_Format(WormtableError, "Cannot update ID column."); 
+        PyErr_Format(WormtableError, "Cannot update ID col."); 
         goto out;
     }
     if (Table_check_write_mode(self) != 0) {
         goto out;
     }
-    column = self->columns[col_index];
-    if (column->python_to_native(column, elements) < 0) {
+    col = self->columns[col_index];
+    wt_ret = col->python_to_native(col, elements);
+    if (wt_ret < 0) {
         goto out;   
     }
-    m = Column_update_row(column, self->row_buffer, self->current_row_size); 
-    if (m < 0) {
-        goto out;
+    if (wt_ret != WT_MISSING_VALUE) {
+        m = Column_update_row(col, self->row_buffer, self->current_row_size); 
+        if (m < 0) {
+            goto out;
+        }
+        self->current_row_size += m;
     }
-    self->current_row_size += m;
     Py_INCREF(Py_None);
     ret = Py_None;
 out:

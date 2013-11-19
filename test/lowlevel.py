@@ -897,7 +897,6 @@ class TestIndexIntegrity(object):
             row_iter = _wormtable.IndexRowIterator(index, [j])
             row_iter.set_min(max_val)
             row_iter.set_max(min_val)
-            row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
             self.assertEqual(len(l), 0)
             # Check if the correct lists are returned. 
@@ -1115,17 +1114,54 @@ class TestDatabaseCharMultiColumnIndex(TestDatabaseChar, TestMultiColumnIndex):
     """
 
 class TestMissingValues(object):
+    """
+    Test that missing and empty values are correctly handled.
+    """
     def test_missing_values(self):
         n = 10
-        # Insert empty rows 
         for j in range(n):
+            # Insert empty row 
+            self._row_buffer.commit_row()
+            # Insert Empty values
+            for k in range(1, len(self._columns)):
+                self._row_buffer.insert_elements(k, None)
+            self._row_buffer.commit_row()
+            # Insert alternating randomly
+            for k in range(1, len(self._columns)):
+                if random.random() < 0.5:
+                    self._row_buffer.insert_elements(k, None)
+            self._row_buffer.commit_row()
+        self.open_reading()
+        for j in range(3 * n):
+            r = self._database.get_row(j)
+            for k in range(1, len(self._columns)):
+                c = self._columns[k]
+                self.assertEqual(None, r[k])
+                    
+    def get_empty_value(self):
+        return tuple() 
+
+    def test_empty_values(self):
+        """
+        Variable length columns support empty values. These are not the same 
+        as missing values!
+        """
+        ev = self.get_empty_value()
+        n = 10
+        for j in range(n):
+            for k, c in enumerate(self._columns):
+                if c.num_elements == _wormtable.WT_VAR_1:
+                    self._row_buffer.insert_elements(k, ev)
             self._row_buffer.commit_row()
         self.open_reading()
         for j in range(n):
             r = self._database.get_row(j)
-            for k in range(1, len(self._columns)):
-                self.assertEqual(None, r[k])
-                    
+            for k, c in enumerate(self._columns):
+                v = None if k > 0 else j 
+                if c.num_elements == _wormtable.WT_VAR_1:
+                    v = ev
+                self.assertEqual(r[k], v)
+
 
 
 class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
@@ -1135,7 +1171,9 @@ class TestFloatMissingValues(TestMissingValues, TestDatabaseFloat):
     pass
     
 class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
-    pass   
+    
+    def get_empty_value(self):
+        return b""
    
 class TestTable(unittest.TestCase):
     """
