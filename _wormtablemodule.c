@@ -639,9 +639,6 @@ Column_unpack_elements_char(Column *self, void *source)
     return ret; 
 }
 
-
-
-
 /**************************************
  *
  * Packing native values from the element_buffer to a row.
@@ -966,14 +963,22 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
     uint64_t max_value = max_uint(self->element_size); 
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            native[j] = missing_value;
-        } else { 
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = missing_value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -1010,8 +1015,8 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
                 goto out;
             }
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -1027,14 +1032,22 @@ Column_python_to_native_int(Column *self, PyObject *elements)
     int64_t max_value = max_int(self->element_size); 
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            native[j] = missing_value;
-        } else { 
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = missing_value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -1059,8 +1072,8 @@ Column_python_to_native_int(Column *self, PyObject *elements)
                 goto out;
             }
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -1074,15 +1087,23 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     union { double value; uint64_t bits; } conv;
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            conv.bits = missing_float(self->element_size);
-            native[j] = conv.value; 
+    conv.bits = missing_float(self->element_size);
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
         } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = conv.value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -1091,8 +1112,8 @@ Column_python_to_native_float(Column *self, PyObject *elements)
             }
             native[j] = (double) PyFloat_AsDouble(v);
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -1103,37 +1124,48 @@ Column_python_to_native_char(Column *self, PyObject *elements)
     int ret = -1;
     char *s;
     Py_ssize_t length;
-    /* Elements must be a single Python bytes object */
-    if (!PyBytes_Check(elements)) {
-        PyErr_Format(PyExc_TypeError, 
-                "Values for column '%s' must be bytes",
-                PyBytes_AsString(self->name));
-        goto out;
-    }
-    if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
-        PyErr_Format(PyExc_ValueError, 
-                "String conversion failed for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
-    }
-    if (self->num_elements == WT_VAR_1) {
-        if (length > MAX_NUM_ELEMENTS) {
-            PyErr_Format(PyExc_ValueError, 
-                    "String too long for column '%s'",
-                    PyBytes_AsString(self->name));
-            goto out;
+    
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            memset(self->element_buffer, 0, self->num_elements); 
+            self->num_buffered_elements = self->num_elements;
         }
+        ret = WT_MISSING_VALUE;
     } else {
-        if (length != self->num_elements) {
-            PyErr_Format(PyExc_ValueError, 
-                    "String incorrect length for column '%s'",
+        /* Elements must be a single Python bytes object */
+        if (!PyBytes_Check(elements)) {
+            PyErr_Format(PyExc_TypeError, 
+                    "Values for column '%s' must be bytes",
                     PyBytes_AsString(self->name));
             goto out;
         }
+        if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String conversion failed for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+        if (self->num_elements == WT_VAR_1) {
+            if (length > MAX_NUM_ELEMENTS) {
+                PyErr_Format(PyExc_ValueError, 
+                        "String too long for column '%s'",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+        } else {
+            if (length != self->num_elements) {
+                PyErr_Format(PyExc_ValueError, 
+                        "String incorrect length for column '%s'",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+        }
+        memcpy(self->element_buffer, s, length);
+        self->num_buffered_elements = length;
+        ret = 0; 
     }
-    memcpy(self->element_buffer, s, length);
-    self->num_buffered_elements = length;
-    ret = 0; 
 out:
     return ret;
 }
@@ -1282,7 +1314,6 @@ Column_string_to_native_int(Column *self, char *string)
 out:
     return ret;
 }
-
 
 static int 
 Column_string_to_native_float(Column *self, char *string)
@@ -1457,7 +1488,9 @@ out:
 
 /*
  * Extract values from the specified key buffer starting at the specified 
- * offset. Return the number of elements read, or < 0 in case of an error. 
+ * offset. Returns a positive value WT_MISSING_VALUE if the missing 
+ * value is detected, or 0 if not. Returns a negative value if an error 
+ * occured.
  */
 static int 
 Column_extract_key(Column *self, void *key_buffer, uint32_t offset, 
@@ -1471,6 +1504,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
     uint32_t element_size = self->element_size;
     uint32_t num_elements = self->num_elements;
     int not_done;
+    
     if (num_elements == WT_VAR_1) {
         /* count the number of elements until we hit the sentinel */
         num_elements = 0;
@@ -1503,10 +1537,9 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
     v = kb + offset;
     self->num_buffered_elements = num_elements;
     ret = self->unpack_elements(self, v);
-    if (ret < 0) {
-        goto out;
+    if (ret > 0) {
+        ret = WT_MISSING_VALUE;
     }
-    ret = num_elements;
 out:
     return ret;
 }
@@ -1555,56 +1588,6 @@ out:
     return ret;
 }
 
-#if 0
-/* Copies the data values from the specified source to the specified 
- * destination
- */
-static int
-Column_copy_row_values(Column *self, void *dest, void *src)
-{
-    int ret = -1;
-    uint32_t len, num_elements, offset;
-    char *u = (char *) src;
-    char *v = u + self->fixed_region_offset;
-    offset = 0;
-    num_elements = self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
-        if (Column_unpack_variable_elements_address(self, v, &offset, 
-                &num_elements) < 0) {
-            goto out;
-        }
-        v = u + offset;
-    }
-    len = self->element_size * num_elements;
-    memcpy(dest, v, len); 
-    ret = len;
-out:
-    return ret;
-}
-/* Copies the data values from the specified source to the specified 
- * destination by first reading them back and then truncating then 
- * according to the specified bin_width.
- */
-static int
-Column_truncate_values(Column *self, double bin_width, void *dest, void *src)
-{
-    int ret = -1;
-    if (Column_extract_elements(self, src) < 0) {
-        goto out;
-    }
-    if (self->truncate_elements(self, bin_width) < 0) {
-        goto out;
-    }
-    if (self->pack_elements(self, dest) < 0) {
-        goto out;
-    }
-    ret = self->num_buffered_elements * self->element_size;
-out:
-    return ret;
-}
-
-#endif
-
 /*
  * Converts the native values in the element buffer to the appropriate 
  * Python types, and returns the result.
@@ -1642,63 +1625,9 @@ Column_get_python_elements(Column *self, int missing)
             ret = t;
         }
     }
-    
-#if 0    
-    /* TODO Missing value handling is a mess FIXME!!! */
-    if (self->element_type == WT_CHAR) {
-        ret = self->native_to_python(self, 0);
-        if (ret == NULL) {
-            goto out;
-        }
-    } else {
-        if (self->num_buffered_elements == 0) {
-            /* this is the missing value case. If we have a 
-             * variable number of elements, we return an empty
-             * tuple, otherwise it's None.
-             */
-            if (self->num_elements == WT_VAR_1) {
-                t = PyTuple_New(0);
-                if (t == NULL) {
-                    PyErr_NoMemory();
-                    goto out;
-                }
-                ret = t;
-            } else {
-                Py_INCREF(Py_None);
-                ret = Py_None;
-            }
-        } else {
-            if (self->num_elements == 1) {
-                ret = self->native_to_python(self, 0);
-                if (ret == NULL) {
-                    goto out;
-                }
-            } else {
-                t = PyTuple_New(self->num_buffered_elements);
-                if (t == NULL) {
-                    PyErr_NoMemory();
-                    goto out;
-                }
-                for (j = 0; j < self->num_buffered_elements; j++) {
-                    u = self->native_to_python(self, j);
-                    if (u == NULL) {
-                        Py_DECREF(t);
-                        PyErr_NoMemory();
-                        goto out;
-                    }
-                    PyTuple_SET_ITEM(t, j, u);
-                }
-                ret = t;
-            }
-        }
-    }
-#endif
 out:
     return ret;
-
 }
-
-
 
 /* 
  * Returns the number of bytes that this column occupies in the 
@@ -2780,16 +2709,16 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         if (col->num_elements == WT_VAR_1) {
             /* allow space for the sentinel */
             n = MAX_NUM_ELEMENTS + 1;
+            /* allow space for the missing value indicator */
+            self->key_buffer_size += 1; 
         }
-        self->key_buffer_size += 1 + n * col->element_size;
+        self->key_buffer_size += n * col->element_size;
     }
     self->key_buffer = PyMem_Malloc(self->key_buffer_size);
     if (self->key_buffer == NULL) {
         PyErr_NoMemory();
         goto out;
     }
-
-        
     ret = 0;
 out:
 
@@ -2875,6 +2804,7 @@ static int
 Index_fill_key(Index *self, void *row, DBT *skey)
 {
     int ret = -1;
+    int wt_ret;
     Column *col;
     uint32_t j, k;
     int len;
@@ -2883,10 +2813,17 @@ Index_fill_key(Index *self, void *row, DBT *skey)
     for (j = 0; j < self->num_columns; j++) {
         col = self->table->columns[self->columns[j]]; 
         len = 0;
-        if (Column_extract_elements(col, row) < 0) {
+        wt_ret = Column_extract_elements(col, row);
+        if (wt_ret < 0) {
+            ret = wt_ret;
             goto out;
+        } 
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the missing value prefix */
+            *v = wt_ret == WT_MISSING_VALUE ? 0 : 1;
+            v++;
+            skey->size++;
         }
-        
         if (self->bin_widths[j] != 0.0) {
             if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
                 goto out;
@@ -2896,16 +2833,6 @@ Index_fill_key(Index *self, void *row, DBT *skey)
             goto out;
         }
         len = col->num_buffered_elements * col->element_size;
-
-#if 0
-        if (self->bin_widths[j] == 0.0) {
-            /* we can just copy the values directly here */
-            len = Column_copy_row_values(col, v, row);
-        } else {
-            /* we must bin the values correctly here */
-            len = Column_truncate_values(col, self->bin_widths[j], v, row);
-        }
-#endif
         if (len < 0) {
             goto out;
         }
@@ -2933,13 +2860,13 @@ static int
 Index_set_key(Index *self, PyObject *args, void *buffer)
 {
     int ret = -1;
-    int j, m, k;
+    int j, m, k, wt_ret, overhead;
     int key_size = 0;
     Py_ssize_t n;
     Column *col = NULL;
     PyObject *elements = NULL;
     PyObject *v = NULL;
-    unsigned char *key_buffer = buffer; 
+    char *key_buffer = (char *) buffer; 
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
@@ -2954,19 +2881,24 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     for (j = 0; j < n; j++) {
         col = self->table->columns[self->columns[j]]; 
         v = PyTuple_GetItem(elements, j);
-        if (v == NULL) {
-            goto out;
-        }
-        if (col->python_to_native(col, v) < 0) {
+        wt_ret = col->python_to_native(col, v);
+        if (wt_ret < 0) {
             goto out;   
         }
         if (col->verify_elements(col) < 0) {
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
-        if (key_size + m > self->key_buffer_size) {
+        overhead = col->num_elements == WT_VAR_1 ? 1 + col->element_size: 0;
+        if (key_size + m + overhead > self->key_buffer_size) {
             PyErr_Format(PyExc_SystemError, "Max key_size exceeded."); 
             goto out;
+        }
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the missing value prefix */
+            *key_buffer = wt_ret == WT_MISSING_VALUE? 0 : 1;
+            key_buffer++;
+            key_size++; 
         }
         col->pack_elements(col, key_buffer);
         key_buffer += m;
@@ -3013,7 +2945,8 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
     PyObject *value;
     uint32_t j, offset;
     Column *col;
-    int n;
+    char *v;
+    int n, missing_value, wt_ret;
     PyObject *t = PyTuple_New(self->num_columns);
     if (t == NULL) {
         PyErr_NoMemory();
@@ -3024,19 +2957,32 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
     }
     offset = 0;
     for (j = 0; j < self->num_columns; j++) {
+        missing_value = 0;
         col = self->table->columns[self->columns[j]]; 
-        n = Column_extract_key(col, key_buffer, offset, key_size);
-        if (n < 0) {
-            Py_DECREF(t);
-            goto out;
-        }
+        n = 0;
         if (col->num_elements == WT_VAR_1) {
+            v = (char *) key_buffer;
+            v += offset;
+            missing_value = *v == 0;
+            offset++;
+            wt_ret = Column_extract_key(col, key_buffer, offset, key_size);
+            if (wt_ret < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
             /* skip the sentinel */
-            n++;
+            n = 1;
+        } else {
+            wt_ret = Column_extract_key(col, key_buffer, offset, key_size);
+            if (wt_ret < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+            missing_value = wt_ret == WT_MISSING_VALUE;
         }
-        /* TODO add in checks for the missing value */
+        n += col->num_buffered_elements;
         offset += n * col->element_size;
-        value = Column_get_python_elements(col, 0); 
+        value = Column_get_python_elements(col, missing_value); 
         if (value == NULL) {
             Py_DECREF(t);
             goto out;

@@ -730,7 +730,7 @@ class TestDatabaseChar(TestDatabase):
                 c = self._columns[k]
                 n = c.num_elements
                 if n == _wormtable.WT_VAR_1:
-                    n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                    n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
                 row[k] = random_string(n).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -896,6 +896,7 @@ class TestIndexIntegrity(object):
             max_val = max(s),
             row_iter = _wormtable.IndexRowIterator(index, [j])
             row_iter.set_min(max_val)
+            row_iter.set_max(min_val)
             row_iter.set_max(min_val)
             l = [row[0] for row in row_iter]
             self.assertEqual(len(l), 0)

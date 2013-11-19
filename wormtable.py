@@ -151,38 +151,21 @@ class Column(object):
         """
         return self.__ll_object.num_elements
   
-    def get_missing_value(self):
-        """
-        Returns the missing value for this column.
-
-        TODO: REMOVE 
-        t = self.get_type()
-        n = self.get_num_elements()
-        ret = None
-        if t == WT_CHAR:
-            ret = b''
-        elif n != 1: 
-            if n == WT_VAR_1:
-                ret = tuple()
-            else:
-                ret = tuple(None for j in range(n))
-        return ret
-        """
-        return None
-
     def format_value(self, v):
         """
         Formats the specified value from this column for printing.
         """ 
-        # TODO do something a bit better with missing values
-        n = self.get_num_elements()
-        if self.get_type() == WT_CHAR:
-            s = v.decode()
-        elif n == 1:
-            s = str(v)
+        if v is None:
+            s = "."
         else:
-            s = ",".join(str(u) for u in v) 
-            s = "(" + s + ")"
+            n = self.get_num_elements()
+            if self.get_type() == WT_CHAR:
+                s = v.decode()
+            elif n == 1:
+                s = str(v)
+            else:
+                s = ",".join(str(u) for u in v) 
+                s = "(" + s + ")"
         return s
 
     def get_xml(self):
