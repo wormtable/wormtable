@@ -1,4 +1,3 @@
-#!python
 # 
 # Copyright (C) 2013, wormtable developers (see AUTHORS.txt).
 #
@@ -269,7 +268,7 @@ class TestListParsers(TestDatabase):
     def test_long_lists(self):
         rb = self._row_buffer
         i2 = self._int_columns[2]
-        f2 = self._int_columns[2]
+        f2 = self._float_columns[2]
         for j in [0, 1, 3, 4, 50]:
             s = [0 for k in range(j)]
             self.assertRaises(ValueError, rb.insert_elements, f2, s)
@@ -285,7 +284,7 @@ class TestListParsers(TestDatabase):
                 ss = ",".join([str(u) for u in s])
                 sse = ss.encode()
                 self.assertRaises(ValueError, rb.insert_encoded_elements, k, sse)
-
+    
 
 class TestDatabaseLimits(TestDatabase):
     """
@@ -731,7 +730,7 @@ class TestDatabaseChar(TestDatabase):
                 c = self._columns[k]
                 n = c.num_elements
                 if n == _wormtable.WT_VAR_1:
-                    n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                    n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
                 row[k] = random_string(n).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -742,9 +741,9 @@ class TestDatabaseChar(TestDatabase):
 
 class TestDatabaseCharIntegrity(TestDatabaseChar):
     
-    def test_illegal_long_strings(self):
+    def test_illegal_length_strings(self):
         """
-        Test to ensure that long strings are trapped correctly.
+        Test to ensure that long and short strings are trapped correctly.
         """
         rb = self._row_buffer
         for j in range(1, len(self._columns)):
@@ -752,11 +751,16 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             n = c.num_elements
             if n == _wormtable.WT_VAR_1:
                 n = _wormtable.MAX_NUM_ELEMENTS
-            for k in [1, 2, 3, 10, 500, 1000]:
-                s = random_string(n + k).encode() 
-                self.assertRaises(ValueError, rb.insert_elements, j, s)
-                self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
-        
+                for k in [1, 2, 3, 10, 500, 1000]:
+                    s = random_string(n + k).encode() 
+                    self.assertRaises(ValueError, rb.insert_elements, j, s)
+                    self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
+            else:
+                for k in [0, n - 1, n + 1, n + 2, n + 100]:
+                    s = b"x" * k
+                    self.assertRaises(ValueError, rb.insert_elements, j, s)
+                    self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
+                
 
     def test_variable_char_retrieval(self):
         rb = self._row_buffer
@@ -785,7 +789,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             for k in cols: 
                 self.assertEqual(rows[j][k], r[k])
     
-    def test_short_char_retrieval(self):
+    def test_fixed_char_retrieval(self):
         rb = self._row_buffer
         db = self._database
         cols = []
@@ -801,7 +805,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             for k in cols: 
                 c = self._columns[k] 
                 n = random.randint(0, c.num_elements)
-                row[k] = random_string(n).encode() 
+                row[k] = random_string(c.num_elements).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
                 else:
@@ -813,6 +817,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
         for j in range(num_rows):
             r = db.get_row(j)
             for k in cols: 
+                c = self._columns[k]
                 self.assertEqual(rows[j][k], r[k])
     
     def test_random_char_retrieval(self):
@@ -1109,32 +1114,54 @@ class TestDatabaseCharMultiColumnIndex(TestDatabaseChar, TestMultiColumnIndex):
     """
 
 class TestMissingValues(object):
+    """
+    Test that missing and empty values are correctly handled.
+    """
     def test_missing_values(self):
-        # Insert an empty row    
-        self._row_buffer.commit_row()
-        # Now writing in empty values
-        for j in range(1, self.num_columns):
-            col = self._columns[j]
-            if col.num_elements == 1:
-                v = None
-            elif col.num_elements > 1:
-                v = tuple(None for k in range(col.num_elements))
-            else:
-                v = tuple()
-            self._row_buffer.insert_elements(j, v)
-        self._row_buffer.commit_row()
+        n = 10
+        for j in range(n):
+            # Insert empty row 
+            self._row_buffer.commit_row()
+            # Insert Empty values
+            for k in range(1, len(self._columns)):
+                self._row_buffer.insert_elements(k, None)
+            self._row_buffer.commit_row()
+            # Insert alternating randomly
+            for k in range(1, len(self._columns)):
+                if random.random() < 0.5:
+                    self._row_buffer.insert_elements(k, None)
+            self._row_buffer.commit_row()
         self.open_reading()
-        for j in range(2):
+        for j in range(3 * n):
             r = self._database.get_row(j)
             for k in range(1, len(self._columns)):
                 c = self._columns[k]
+                self.assertEqual(None, r[k])
+                    
+    def get_empty_value(self):
+        return tuple() 
+
+    def test_empty_values(self):
+        """
+        Variable length columns support empty values. These are not the same 
+        as missing values!
+        """
+        ev = self.get_empty_value()
+        n = 10
+        for j in range(n):
+            for k, c in enumerate(self._columns):
                 if c.num_elements == _wormtable.WT_VAR_1:
-                    self.assertEqual(r[k], tuple())
-                elif c.num_elements < 2:
-                    self.assertEqual(r[k], None)
-                else:
-                    v = [None for j in range(c.num_elements)]
-                    self.assertEqual(tuple(v), r[k])
+                    self._row_buffer.insert_elements(k, ev)
+            self._row_buffer.commit_row()
+        self.open_reading()
+        for j in range(n):
+            r = self._database.get_row(j)
+            for k, c in enumerate(self._columns):
+                v = None if k > 0 else j 
+                if c.num_elements == _wormtable.WT_VAR_1:
+                    v = ev
+                self.assertEqual(r[k], v)
+
 
 
 class TestIntegerMissingValues(TestMissingValues, TestDatabaseInteger):
@@ -1144,15 +1171,10 @@ class TestFloatMissingValues(TestMissingValues, TestDatabaseFloat):
     pass
     
 class TestCharMissingValues(TestMissingValues, TestDatabaseChar):
+    
+    def get_empty_value(self):
+        return b""
    
-   
-    def test_missing_values(self):
-        self._row_buffer.commit_row()
-        self.open_reading()
-        r = self._database.get_row(0)
-        for k in range(1, len(self._columns)):
-            self.assertEqual(b"", r[k])
-
 class TestTable(unittest.TestCase):
     """
     Base class for testing tables.

@@ -1,9 +1,10 @@
 # simple makefile for development.
 
 SRC=_wormtablemodule.c
+CFLAGS=-Wpointer-arith
 
 ext3: ${SRC}
-	python3 setup.py build_ext --inplace
+	CFLAGS=${CFLAGS} python3 setup.py build_ext --inplace
 
 ext2: ${SRC}
 	python setup.py build_ext --inplace

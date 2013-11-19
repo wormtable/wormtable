@@ -74,7 +74,7 @@ class WormtableTest(unittest.TestCase):
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
-        t.add_id_column(2)
+        t.add_id_column(4)
         t.add_uint_column("uint")
         t.add_int_column("int")
         t.add_float_column("float", size=4)
@@ -87,8 +87,9 @@ class WormtableTest(unittest.TestCase):
             u = None if g() else random.randint(0, max_value)
             i = None if g() else random.randint(0, max_value)
             f = None if g() else random.uniform(0, max_value)
-            c = None if g() else str(random.randint(0, max_value)).encode()
-            n = random.randint(1, 5)
+            s = str(random.randint(0, max_value)).zfill(3)
+            c = None if g() else s.encode()
+            n = random.randint(0, 5)
             v = [0 for j in range(n)]
             t.append([None, u, i, f, c, v]) 
             if random.random() < 0.33:
@@ -249,7 +250,7 @@ class TableBuildTest(WormtableTest):
         n = len(t.columns())
         for j in range(1, n):
             c = t.get_column(j)
-            self.assertEqual(c.get_missing_value(), r[j])
+            self.assertEqual(None, r[j])
         t.close()
 
  
@@ -311,7 +312,7 @@ class ColumnValue(object):
     def __lt__(self, other):
         v1 = self.__value
         v2 = other.__value
-        missing = self.__column.get_missing_value()
+        missing = None 
         ret = False
         if v1 == missing and v2 != missing:
             ret = True
@@ -380,9 +381,9 @@ class IndexIntegrityTest(WormtableTest):
                 t = [ColumnValue(c, r) for c in cols for r in self._table] 
             else:
                 t = [tuple(ColumnValue(c, r) for c in cols) for r in self._table] 
+            keys = [k for k in i.keys()]
             self.assertEqual(i.min_key(), min(t)) 
             self.assertEqual(i.max_key(), max(t)) 
-            keys = [k for k in i.keys()]
             c1 = {}
             for k in t:
                 if k not in c1:
@@ -415,6 +416,7 @@ class IndexIntegrityTest(WormtableTest):
                 keys = [(k,) for k in i.keys()]
             else:
                 keys = [k for k in i.keys()]
+
             key_rows = [tuple(v.get_value() for v in k) for k, r in t]
             # Now generate some slices
             for j in range(10):
@@ -518,7 +520,7 @@ class MultivalueColumnTest(IndexIntegrityTest):
         max_len = 5
         self._table = wt.Table(self._homedir)
         t = self._table
-        t.add_id_column(2)
+        t.add_id_column(4)
         t.add_uint_column("fixed_uint", num_elements=max_len)
         t.add_uint_column("var_uint", num_elements=wt.WT_VAR_1)
         t.add_int_column("fixed_int", num_elements=max_len)

@@ -38,9 +38,9 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.1.0b4'
+__version__ = '0.1.0b5'
 TABLE_METADATA_VERSION = "0.3"
-INDEX_METADATA_VERSION = "0.3"
+INDEX_METADATA_VERSION = "0.4"
 
 DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
 DEFAULT_CACHE_SIZE_STR = "16M" 
@@ -151,37 +151,21 @@ class Column(object):
         """
         return self.__ll_object.num_elements
   
-    def get_missing_value(self):
-        """
-        Returns the missing value for this column.
-
-        TODO: document
-        """
-        t = self.get_type()
-        n = self.get_num_elements()
-        ret = None
-        if t == WT_CHAR:
-            ret = b''
-        elif n != 1: 
-            if n == WT_VAR_1:
-                ret = tuple()
-            else:
-                ret = tuple(None for j in range(n))
-        return ret
-
     def format_value(self, v):
         """
         Formats the specified value from this column for printing.
         """ 
-        # TODO do something a bit better with missing values
-        n = self.get_num_elements()
-        if self.get_type() == WT_CHAR:
-            s = v.decode()
-        elif n == 1:
-            s = str(v)
+        if v is None:
+            s = "NA"
         else:
-            s = ",".join(str(u) for u in v) 
-            s = "(" + s + ")"
+            n = self.get_num_elements()
+            if self.get_type() == WT_CHAR:
+                s = v.decode()
+            elif n == 1:
+                s = str(v)
+            else:
+                s = ",".join(str(u) for u in v) 
+                s = "(" + s + ")"
         return s
 
     def get_xml(self):

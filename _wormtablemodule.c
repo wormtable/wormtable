@@ -38,6 +38,8 @@
 #define MAX_NUM_ELEMENTS 254
 #define MAX_ROW_SIZE 65535
 
+#define WT_MISSING_VALUE 1
+
 #define OFFSET_LEN_RECORD_SIZE 10 
 
 #define MODULE_DOC \
@@ -85,8 +87,8 @@ typedef struct {
     unsigned int fixed_region_size;
     unsigned int num_columns;
     void *row_buffer;
-    u_int32_t row_buffer_size;     /* max size */
-    u_int32_t current_row_size;    /* current size */
+    uint32_t row_buffer_size;     /* max size */
+    uint32_t current_row_size;    /* current size */
     unsigned long long num_rows;     
     /* row stats */
     unsigned long long total_row_size;
@@ -101,10 +103,10 @@ typedef struct {
     DB *db;
     PyObject *db_filename;
     unsigned long long cache_size;
-    u_int32_t *columns;
-    u_int32_t num_columns;
+    uint32_t *columns;
+    uint32_t num_columns;
     void *key_buffer;
-    u_int32_t key_buffer_size;
+    uint32_t key_buffer_size;
     double *bin_widths;
 } Index;
 
@@ -112,12 +114,12 @@ typedef struct {
     PyObject_HEAD
     Index *index;
     DBC *cursor;
-    u_int32_t *read_columns;
-    u_int32_t num_read_columns; 
+    uint32_t *read_columns;
+    uint32_t num_read_columns; 
     void *min_key;
-    u_int32_t min_key_size;
+    uint32_t min_key_size;
     void *max_key;
-    u_int32_t max_key_size;
+    uint32_t max_key_size;
 } IndexRowIterator;
 
 
@@ -125,12 +127,12 @@ typedef struct {
     PyObject_HEAD
     Table *table;
     DBC *cursor;
-    u_int32_t *read_columns;
-    u_int32_t num_read_columns; 
+    uint32_t *read_columns;
+    uint32_t num_read_columns; 
     void *min_key;
-    u_int32_t min_key_size;
+    uint32_t min_key_size;
     void *max_key;
-    u_int32_t max_key_size;
+    uint32_t max_key_size;
 } TableRowIterator;
 
 
@@ -273,13 +275,13 @@ unpack_double(void *src)
  */
 
 static void
-pack_uint(u_int64_t value, void *dest, u_int8_t size) 
+pack_uint(uint64_t value, void *dest, uint8_t size) 
 {
-    void *src;
-    u_int64_t u = value;
+    char *src;
+    uint64_t u = value;
     /* increment before storing */
     u += 1; 
-    src = &u;
+    src = (char *) &u;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, src + (8 - size), size);
 #else
@@ -287,11 +289,11 @@ pack_uint(u_int64_t value, void *dest, u_int8_t size)
 #endif
 }
 
-static u_int64_t
-unpack_uint(void *src, u_int8_t size) 
+static uint64_t
+unpack_uint(void *src, uint8_t size) 
 {
-    u_int64_t dest = 0;
-    void *v = &dest;
+    uint64_t dest = 0;
+    char *v = (char *) &dest;
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
 #else
@@ -304,13 +306,14 @@ unpack_uint(void *src, u_int8_t size)
 
 
 static void
-pack_int(int64_t value, void *dest, u_int8_t size) 
+pack_int(int64_t value, void *dest, uint8_t size) 
 {
-    void *src;
+    char *src;
     int64_t u = value; 
+    const int64_t m = 1LL << (size * 8 - 1);
     /* flip the sign bit */
-    u ^= 1LL << (size * 8 - 1);
-    src = &u;
+    u ^= m; 
+    src = (char *) &u;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, src + (8 - size), size);
 #else
@@ -319,10 +322,10 @@ pack_int(int64_t value, void *dest, u_int8_t size)
 }
 
 static int64_t
-unpack_int(void *src, u_int8_t size) 
+unpack_int(void *src, uint8_t size) 
 {
     int64_t dest = 0;
-    void *v = &dest;
+    char *v = (char *) &dest;
     const int64_t m = 1LL << (size * 8 - 1);
 #ifdef WORDS_BIGENDIAN
     memcpy(v + 8 - size, src, size);
@@ -341,7 +344,7 @@ unpack_int(void *src, u_int8_t size)
  * Returns the missing value for a k byte integer.
  */
 static int64_t 
-missing_int(u_int32_t k) 
+missing_int(uint32_t k) 
 {
     int64_t v = (-1) * (1ll << (8 * k - 1));
     return v;
@@ -351,7 +354,7 @@ missing_int(u_int32_t k)
  * Returns the minimum value for a k byte integer.
  */
 static int64_t 
-min_int(u_int32_t k) 
+min_int(uint32_t k) 
 {
     int64_t v = (-1) * (1ll << (8 * k - 1)) + 1;
     return v;
@@ -361,7 +364,7 @@ min_int(u_int32_t k)
  * Returns the maximum value for a k byte integer.
  */
 static int64_t 
-max_int(u_int32_t k) 
+max_int(uint32_t k) 
 {
     int64_t v = (1ll << (8 * k - 1)) - 1;
     return v;
@@ -370,19 +373,19 @@ max_int(u_int32_t k)
 /* 
  * Returns the missing value for a k byte unsigned integer.
  */
-static u_int64_t 
-missing_uint(u_int32_t k) 
+static uint64_t 
+missing_uint(uint32_t k) 
 {
-    return (u_int64_t) -1ll;
+    return (uint64_t) -1ll;
 }
 
 /* 
  * Returns the maximum value for a k byte unsigned integer.
  */
-static u_int64_t 
-max_uint(u_int32_t k) 
+static uint64_t 
+max_uint(uint32_t k) 
 {
-    u_int64_t v = (u_int64_t) -1ll;
+    uint64_t v = (uint64_t) -1ll;
     if (k < 8) {
         v = (1ll << (8 * k)) - 1;
     } 
@@ -392,10 +395,10 @@ max_uint(u_int32_t k)
 /* 
  * Returns the minumum value for a k byte unsigned integer.
  */
-static u_int64_t 
-min_uint(u_int32_t k) 
+static uint64_t 
+min_uint(uint32_t k) 
 {
-    u_int64_t v = 0ll;
+    uint64_t v = 0ll;
     return v;
 }
 
@@ -406,7 +409,7 @@ min_uint(u_int32_t k)
  * compare NaN values as doubles.
  */
 static uint64_t 
-missing_float(u_int32_t k) 
+missing_float(uint32_t k) 
 {
     uint64_t zero = 0uLL;
     union { double value; uint64_t bits; } conv;
@@ -441,8 +444,8 @@ static PyObject *
 Column_native_to_python_uint(Column *self, int index)
 {
     PyObject *ret = NULL;
-    u_int64_t *elements = (u_int64_t *) self->element_buffer;
-    u_int64_t missing_value = missing_uint(self->element_size); 
+    uint64_t *elements = (uint64_t *) self->element_buffer;
+    uint64_t missing_value = missing_uint(self->element_size); 
     if (elements[index] == missing_value) {
         Py_INCREF(Py_None);
         ret = Py_None;
@@ -519,17 +522,25 @@ Column_native_to_python_char(Column *self, int index)
  *
  *************************************/
 
+/*
+ * Unpack values starting at the specified pointer, and return the
+ * number of missing_values encountered.
+ */
 static int 
 Column_unpack_elements_uint(Column *self, void *source)
 {
     int j;
-    int ret = -1;
-    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    int ret = 0;
+    char *v = (char *) source;
+    uint64_t *elements = (uint64_t *) self->element_buffer;
+    uint64_t missing_value = missing_uint(self->element_size); 
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
-        elements[j] = unpack_uint(source + j * size, size); 
+        elements[j] = unpack_uint(v + j * size, size); 
+        if (elements[j] == missing_value) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -538,13 +549,17 @@ static int
 Column_unpack_elements_int(Column *self, void *source)
 {
     int j;
-    int ret = -1;
+    int ret = 0;
+    char *v = (char *) source;
     int64_t *elements = (int64_t *) self->element_buffer;
+    int64_t missing_value = missing_int(self->element_size); 
     int size = self->element_size; 
     for (j = 0; j < self->num_buffered_elements; j++) {
-        elements[j] = unpack_int(source + j * size, size); 
+        elements[j] = unpack_int(v + j * size, size); 
+        if (elements[j] == missing_value) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -552,14 +567,19 @@ static int
 Column_unpack_elements_float_2(Column *self, void *source)
 {
     int j;
-    int ret = -1;
-    void *v = source;
+    int ret = 0;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_half(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -567,14 +587,19 @@ static int
 Column_unpack_elements_float_4(Column *self, void *source)
 {
     int j;
-    int ret = -1;
-    void *v = source;
+    int ret = 0;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_float(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
@@ -582,26 +607,37 @@ static int
 Column_unpack_elements_float_8(Column *self, void *source)
 {
     int j;
-    int ret = -1;
-    void *v = source;
+    int ret = 0;
+    char *v = (char *) source;
     double *elements = (double *) self->element_buffer;
+    union { double value; uint64_t bits; } conv;
+    uint64_t missing_bits = missing_float(self->element_size);
     for (j = 0; j < self->num_buffered_elements; j++) {
         elements[j] = unpack_double(v); 
         v += self->element_size;
+        conv.value = elements[j];
+        if (conv.bits == missing_bits) {
+            ret += 1;
+        }
     }
-    ret = 0;
     return ret; 
 }
 
 static int 
 Column_unpack_elements_char(Column *self, void *source)
 {
+    int ret = 0;
+    int j;
+    char *v = (char *) source;
     memcpy(self->element_buffer, source, self->num_buffered_elements); 
-    return  0; 
+    /* scan for zero bytes to get missing values */
+    for (j = 0; j < self->num_buffered_elements; j++) {
+        if (v[j] == 0) {
+            ret += 1;
+        }
+    }
+    return ret; 
 }
-
-
-
 
 /**************************************
  *
@@ -614,8 +650,8 @@ Column_pack_elements_uint(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
-    u_int64_t *elements = (u_int64_t *) self->element_buffer;
+    char *v = (char *) dest;
+    uint64_t *elements = (uint64_t *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_uint(elements[j], v, self->element_size);
         v += self->element_size;
@@ -629,7 +665,7 @@ Column_pack_elements_int(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     int64_t *elements = (int64_t *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_int(elements[j], v, self->element_size);
@@ -644,7 +680,7 @@ Column_pack_elements_float_2(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_half(elements[j], v);
@@ -659,7 +695,7 @@ Column_pack_elements_float_4(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_float(elements[j], v);
@@ -674,7 +710,7 @@ Column_pack_elements_float_8(Column *self, void *dest)
 {
     int j;
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     double *elements = (double *) self->element_buffer;
     for (j = 0; j < self->num_buffered_elements; j++) {
         pack_double(elements[j], v);
@@ -713,10 +749,10 @@ Column_verify_elements_uint(Column *self)
 {
     int j;
     int ret = -1;
-    u_int64_t *elements = (u_int64_t *) self->element_buffer;
-    u_int64_t min_value = min_uint(self->element_size); 
-    u_int64_t max_value = max_uint(self->element_size); 
-    u_int64_t missing_value = missing_uint(self->element_size); 
+    uint64_t *elements = (uint64_t *) self->element_buffer;
+    uint64_t min_value = min_uint(self->element_size); 
+    uint64_t max_value = max_uint(self->element_size); 
+    uint64_t missing_value = missing_uint(self->element_size); 
     for (j = 0; j < self->num_buffered_elements; j++) {
         if (elements[j] != missing_value && 
                 (elements[j] < min_value || elements[j] > max_value)) {
@@ -780,10 +816,10 @@ Column_truncate_elements_uint(Column *self, double bin_width)
 {
     int ret = 0;
     unsigned int j;
-    u_int64_t w = (u_int64_t) bin_width; 
-    u_int64_t *elements = (u_int64_t *) self->element_buffer;
-    u_int64_t missing_value = missing_uint(self->element_size); 
-    u_int64_t u; 
+    uint64_t w = (uint64_t) bin_width; 
+    uint64_t *elements = (uint64_t *) self->element_buffer;
+    uint64_t missing_value = missing_uint(self->element_size); 
+    uint64_t u; 
     if (bin_width <= 0.0) {
         PyErr_Format(PyExc_SystemError, "bin_width for column '%s' must > 0",
                 PyBytes_AsString(self->name));
@@ -832,7 +868,7 @@ Column_truncate_elements_float(Column *self, double bin_width)
 {
     int ret = -1;
     unsigned int j;
-    union { double value; u_int64_t bits; } conv;
+    union { double value; uint64_t bits; } conv;
     uint64_t missing_bits = missing_float(self->element_size);
     double *elements = (double *) self->element_buffer;
     double u; 
@@ -910,14 +946,6 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             self->input_elements[j] = v; 
         }
     }
-    if (self->num_elements != WT_VAR_1) {
-        if (num_elements != self->num_elements) {
-            PyErr_Format(PyExc_ValueError, 
-                    "incorrect number of elements for column '%s'",
-                    PyBytes_AsString(self->name));
-            goto out;
-        }
-    }
     self->num_buffered_elements = num_elements;
     ret = 0;
 out:
@@ -929,20 +957,28 @@ static int
 Column_python_to_native_uint(Column *self, PyObject *elements)
 {
     int ret = -1;
-    u_int64_t *native= (u_int64_t *) self->element_buffer; 
-    u_int64_t missing_value = missing_uint(self->element_size); 
-    u_int64_t min_value = min_uint(self->element_size);  
-    u_int64_t max_value = max_uint(self->element_size); 
+    uint64_t *native= (uint64_t *) self->element_buffer; 
+    uint64_t missing_value = missing_uint(self->element_size); 
+    uint64_t min_value = min_uint(self->element_size);  
+    uint64_t max_value = max_uint(self->element_size); 
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            native[j] = missing_value;
-        } else { 
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = missing_value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -950,7 +986,7 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
                 goto out;
             }
 #ifdef IS_PY3K
-            native[j] = (u_int64_t) PyLong_AsUnsignedLongLong(v);
+            native[j] = (uint64_t) PyLong_AsUnsignedLongLong(v);
 #else
             /* there's a problem with Python 2 in which we have to convert to 
              * long first.
@@ -959,7 +995,7 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
             if (v == NULL) {
                 goto out;
             }
-            native[j] = (u_int64_t) PyLong_AsUnsignedLongLong(v);
+            native[j] = (uint64_t) PyLong_AsUnsignedLongLong(v);
             Py_DECREF(v);
 #endif
             if (native[j] == -1) {
@@ -979,8 +1015,8 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
                 goto out;
             }
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -996,14 +1032,22 @@ Column_python_to_native_int(Column *self, PyObject *elements)
     int64_t max_value = max_int(self->element_size); 
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            native[j] = missing_value;
-        } else { 
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = missing_value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -1028,8 +1072,8 @@ Column_python_to_native_int(Column *self, PyObject *elements)
                 goto out;
             }
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -1043,15 +1087,23 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     union { double value; uint64_t bits; } conv;
     PyObject *v;
     int j;
-    if (Column_parse_python_sequence(self, elements) < 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_buffered_elements; j++) {
-        v = (PyObject *) self->input_elements[j];
-        if (v == Py_None) {
-            conv.bits = missing_float(self->element_size);
-            native[j] = conv.value; 
+    conv.bits = missing_float(self->element_size);
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
         } else {
+            for (j = 0; j < self->num_elements; j++) {
+                native[j] = conv.value;
+            }
+            self->num_buffered_elements = self->num_elements;
+        }
+        ret = WT_MISSING_VALUE;
+    } else {
+        if (Column_parse_python_sequence(self, elements) < 0) {
+            goto out;
+        }
+        for (j = 0; j < self->num_buffered_elements; j++) {
+            v = (PyObject *) self->input_elements[j];
             if (!PyNumber_Check(v)) {
                 PyErr_Format(PyExc_TypeError, 
                         "Values for column '%s' must be numeric",
@@ -1060,8 +1112,8 @@ Column_python_to_native_float(Column *self, PyObject *elements)
             }
             native[j] = (double) PyFloat_AsDouble(v);
         }
+        ret = 0;
     }
-    ret = 0;
 out:
     return ret;
 }
@@ -1071,38 +1123,49 @@ Column_python_to_native_char(Column *self, PyObject *elements)
 {
     int ret = -1;
     char *s;
-    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
-            MAX_NUM_ELEMENTS: self->num_elements;
     Py_ssize_t length;
-    /* Elements must be a single Python bytes object */
-    if (!PyBytes_Check(elements)) {
-        PyErr_Format(PyExc_TypeError, 
-                "Values for column '%s' must be bytes",
-                PyBytes_AsString(self->name));
-        goto out;
-    }
-    if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
-        PyErr_Format(PyExc_ValueError, 
-                "String conversion failed for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
-    }
-    if (length > max_length) {
-        PyErr_Format(PyExc_ValueError, 
-                "String too long for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
-    }
-    memcpy(self->element_buffer, s, length);
-    self->num_buffered_elements = length;
-    if (self->num_elements != WT_VAR_1) {
-        /* Pad out the remaining space with zeros */
-        while (self->num_buffered_elements != self->num_elements) {
-            ((char *) self->element_buffer)[self->num_buffered_elements] = '\0';
-            self->num_buffered_elements++;
+    
+    if (elements == Py_None) {
+        if (self->num_elements == WT_VAR_1) {
+            self->num_buffered_elements = 0;
+        } else {
+            memset(self->element_buffer, 0, self->num_elements); 
+            self->num_buffered_elements = self->num_elements;
         }
+        ret = WT_MISSING_VALUE;
+    } else {
+        /* Elements must be a single Python bytes object */
+        if (!PyBytes_Check(elements)) {
+            PyErr_Format(PyExc_TypeError, 
+                    "Values for column '%s' must be bytes",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+        if (PyBytes_AsStringAndSize(elements, &s, &length) < 0) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String conversion failed for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+        if (self->num_elements == WT_VAR_1) {
+            if (length > MAX_NUM_ELEMENTS) {
+                PyErr_Format(PyExc_ValueError, 
+                        "String too long for column '%s'",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+        } else {
+            if (length != self->num_elements) {
+                PyErr_Format(PyExc_ValueError, 
+                        "String incorrect length for column '%s'",
+                        PyBytes_AsString(self->name));
+                goto out;
+            }
+        }
+        memcpy(self->element_buffer, s, length);
+        self->num_buffered_elements = length;
+        ret = 0; 
     }
-    ret = 0; 
 out:
     return ret;
 }
@@ -1183,7 +1246,7 @@ static int
 Column_string_to_native_uint(Column *self, char *string)
 {
     int ret = -1;
-    u_int64_t *native= (u_int64_t *) self->element_buffer; 
+    uint64_t *native= (uint64_t *) self->element_buffer; 
     char *v, *tail;
     int j;
     if (Column_parse_string_sequence(self, string) < 0) {
@@ -1192,7 +1255,7 @@ Column_string_to_native_uint(Column *self, char *string)
     for (j = 0; j < self->num_buffered_elements; j++) {
         v = (char *) self->input_elements[j];
         errno = 0;
-        native[j] = (u_int64_t) strtoull(v, &tail, 0);
+        native[j] = (uint64_t) strtoull(v, &tail, 0);
         if (errno) {
             Column_encoded_elements_parse_error(self, "element overflow", 
                     string); 
@@ -1252,7 +1315,6 @@ out:
     return ret;
 }
 
-
 static int 
 Column_string_to_native_float(Column *self, char *string)
 {
@@ -1293,17 +1355,24 @@ static int
 Column_string_to_native_char(Column *self, char *string)
 {
     int ret = -1;
-    size_t n = strlen(string);
-    Py_ssize_t max_length = self->num_elements == WT_VAR_1?
-            MAX_NUM_ELEMENTS: self->num_elements;
-    if (n > max_length) {
-        PyErr_Format(PyExc_ValueError, 
-                "String too long for column '%s'",
-                PyBytes_AsString(self->name));
-        goto out;
+    size_t length = strlen(string);
+    if (self->num_elements == WT_VAR_1) {
+        if (length > MAX_NUM_ELEMENTS) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String too long for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
+    } else {
+        if (length != self->num_elements) {
+            PyErr_Format(PyExc_ValueError, 
+                    "String incorrect length for column '%s'",
+                    PyBytes_AsString(self->name));
+            goto out;
+        }
     }
-    memcpy(self->element_buffer, string, n); 
-    self->num_buffered_elements = n;
+    memcpy(self->element_buffer, string, length); 
+    self->num_buffered_elements = length;
     ret = 0;
 out:
     return ret;
@@ -1320,7 +1389,7 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         uint32_t offset, uint32_t num_elements)
 {
     int ret = -1;
-    void *v = dest;
+    char *v = (char *) dest;
     /* these are currently hard coded to 2 and 1 - future versions
      * will support general address_size and var_size */
     unsigned int address_size = 2;
@@ -1350,7 +1419,7 @@ Column_unpack_variable_elements_address(Column *self, void *src,
         uint32_t *offset, uint32_t *num_elements)
 {
     int ret = -1;
-    void *v = src;
+    char *v = (char *) src;
     uint64_t off = 0;
     uint64_t n = 0;
     /* these are currently hard coded to 2 and 1 - future versions
@@ -1389,6 +1458,7 @@ static int
 Column_update_row(Column *self, void *row, uint32_t row_size)
 {
     int ret = -1;
+    char *v = (char *) row;
     void *dest;
     int bytes_added = 0;
     uint32_t num_elements = (uint32_t) self->num_buffered_elements;
@@ -1396,7 +1466,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
     if (self->verify_elements(self) < 0) {
         goto out;
     }
-    dest = row + self->fixed_region_offset; 
+    dest = v + self->fixed_region_offset; 
     if (self->num_elements == WT_VAR_1) {
         bytes_added = data_size;
         if (row_size + bytes_added > MAX_ROW_SIZE) {
@@ -1407,7 +1477,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
                 num_elements) < 0) {
             goto out;
         }
-        dest = row + row_size; 
+        dest = v + row_size; 
     }
     self->pack_elements(self, dest);
     ret = bytes_added;
@@ -1418,24 +1488,29 @@ out:
 
 /*
  * Extract values from the specified key buffer starting at the specified 
- * offset. Return the number of elements read, or < 0 in case of an error. 
+ * offset. Returns a positive value WT_MISSING_VALUE if the missing 
+ * value is detected, or 0 if not. Returns a negative value if an error 
+ * occured.
  */
 static int 
 Column_extract_key(Column *self, void *key_buffer, uint32_t offset, 
         uint32_t key_size)
 {
     int ret = -1;
-    unsigned char *v;
-    uint32_t j, k, s;
+    char *v;
+    char *kb = (char *) key_buffer;
+    char s;
+    uint32_t j, k;
     uint32_t element_size = self->element_size;
     uint32_t num_elements = self->num_elements;
     int not_done;
+    
     if (num_elements == WT_VAR_1) {
         /* count the number of elements until we hit the sentinel */
         num_elements = 0;
         not_done = 1;
         j = offset;
-        v = key_buffer;
+        v = kb; 
         while (not_done) {
             s = 0;
             k = j + element_size;
@@ -1444,7 +1519,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
                     PyErr_SetString(PyExc_SystemError, "Key buffer overflow");
                     goto out; 
                 }
-                s += v[j];
+                s |= v[j];
                 j++;
             }
             if (s == 0) {
@@ -1453,90 +1528,62 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
                 num_elements++;
             }
         }
-        v = key_buffer;
+        v = kb;
     } 
     if (offset + num_elements * element_size > key_size) {
         PyErr_SetString(PyExc_SystemError, "Key offset too long");
         goto out; 
     }
-    v = key_buffer + offset;
+    v = kb + offset;
     self->num_buffered_elements = num_elements;
     ret = self->unpack_elements(self, v);
-    if (ret < 0) {
-        goto out;
+    if (ret > 0) {
+        ret = WT_MISSING_VALUE;
     }
-    ret = num_elements;
 out:
     return ret;
 }
 
 /*
  * Extracts elements from the specified row and inserts them into the 
- * element buffer. 
+ * element buffer. Returns a positive value WT_MISSING_VALUE if the 
+ * missing value was stored in this column, 0 if a non-missing value 
+ * was stored, and a negative value if an error occurs.
  */
 static int 
 Column_extract_elements(Column *self, void *row)
 {
     int ret = -1;
+    char *v = (char *) row;
     void *src;
     uint32_t offset, num_elements;
-    src = row + self->fixed_region_offset; 
-    num_elements = self->num_elements;
+    src = v + self->fixed_region_offset; 
     if (self->num_elements == WT_VAR_1) {
         if (Column_unpack_variable_elements_address(self, src, &offset, 
                 &num_elements) < 0) {
             goto out;
         }
-        src = row + offset;
-    }
-    self->num_buffered_elements = num_elements;
-    ret = self->unpack_elements(self, src);
-out:
-    return ret;
-}
-
-/* Copies the data values from the specified source to the specified 
- * destination
- */
-static int
-Column_copy_row_values(Column *self, void *dest, void *src)
-{
-    int ret = -1;
-    uint32_t len, num_elements, offset;
-    void *v = src + self->fixed_region_offset;
-    offset = 0;
-    num_elements = self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
-        if (Column_unpack_variable_elements_address(self, v, &offset, 
-                &num_elements) < 0) {
+        src = v + offset;
+        self->num_buffered_elements = num_elements;
+        ret = self->unpack_elements(self, src);
+        if (ret > 0) {
+            PyErr_SetString(PyExc_SystemError, 
+                    "Missing values detected within variable length column");
+            goto out; 
+        }
+        if (ret < 0) {
             goto out;
         }
-        v = src + offset;
+        if (offset == 0) {
+            ret = WT_MISSING_VALUE;
+        }
+    } else {
+        self->num_buffered_elements = self->num_elements;;
+        ret = self->unpack_elements(self, src);
+        if (ret > 0) {
+            ret = WT_MISSING_VALUE;
+        }
     }
-    len = self->element_size * num_elements;
-    memcpy(dest, v, len); 
-    ret = len;
-out:
-    return ret;
-}
-/* Copies the data values from the specified source to the specified 
- * destination by first reading them back and then truncating then 
- * according to the specified bin_width.
- */
-static int
-Column_truncate_values(Column *self, double bin_width, void *dest, void *src)
-{
-    int ret = -1;
-    if (Column_extract_elements(self, src) < 0) {
-        goto out;
-    }
-    if (self->truncate_elements(self, bin_width) < 0) {
-        goto out;
-    }
-    if (self->pack_elements(self, dest) < 0) {
-        goto out;
-    }
-    ret = self->num_buffered_elements * self->element_size;
 out:
     return ret;
 }
@@ -1546,64 +1593,41 @@ out:
  * Python types, and returns the result.
  */
 static PyObject *
-Column_get_python_elements(Column *self)
+Column_get_python_elements(Column *self, int missing)
 {
     PyObject *ret = NULL;
     PyObject *u, *t;
     Py_ssize_t j;
-    /* TODO Missing value handling is a mess FIXME!!! */
-    if (self->element_type == WT_CHAR) {
-        ret = self->native_to_python(self, 0);
-        if (ret == NULL) {
-            goto out;
-        }
+    if (missing) {
+        Py_INCREF(Py_None);
+        ret = Py_None;
     } else {
-        if (self->num_buffered_elements == 0) {
-            /* this is the missing value case. If we have a 
-             * variable number of elements, we return an empty
-             * tuple, otherwise it's None.
-             */
-            if (self->num_elements == WT_VAR_1) {
-                t = PyTuple_New(0);
-                if (t == NULL) {
-                    PyErr_NoMemory();
-                    goto out;
-                }
-                ret = t;
-            } else {
-                Py_INCREF(Py_None);
-                ret = Py_None;
+        if (self->element_type == WT_CHAR || self->num_elements == 1) {
+            ret = self->native_to_python(self, 0);
+            if (ret == NULL) {
+                goto out;
             }
         } else {
-            if (self->num_elements == 1) {
-                ret = self->native_to_python(self, 0);
-                if (ret == NULL) {
-                    goto out;
-                }
-            } else {
-                t = PyTuple_New(self->num_buffered_elements);
-                if (t == NULL) {
+            t = PyTuple_New(self->num_buffered_elements);
+            if (t == NULL) {
+                PyErr_NoMemory();
+                goto out;
+            }
+            for (j = 0; j < self->num_buffered_elements; j++) {
+                u = self->native_to_python(self, j);
+                if (u == NULL) {
+                    Py_DECREF(t);
                     PyErr_NoMemory();
                     goto out;
                 }
-                for (j = 0; j < self->num_buffered_elements; j++) {
-                    u = self->native_to_python(self, j);
-                    if (u == NULL) {
-                        Py_DECREF(t);
-                        PyErr_NoMemory();
-                        goto out;
-                    }
-                    PyTuple_SET_ITEM(t, j, u);
-                }
-                ret = t;
+                PyTuple_SET_ITEM(t, j, u);
             }
+            ret = t;
         }
     }
 out:
     return ret;
 }
-
-
 
 /* 
  * Returns the number of bytes that this column occupies in the 
@@ -1627,10 +1651,10 @@ Column_get_fixed_region_size(Column *self)
  *************************************/
 
 static int 
-Column_get_row_id(Column *self, u_int64_t *key) 
+Column_get_row_id(Column *self, uint64_t *key) 
 {
     int ret = -1; 
-    u_int64_t *native = (u_int64_t *) self->element_buffer;
+    uint64_t *native = (uint64_t *) self->element_buffer;
     if (self->num_buffered_elements != 1) {
         PyErr_Format(PyExc_SystemError, "key retrieval error."); 
         goto out;
@@ -1642,10 +1666,10 @@ out:
 }
 
 static int 
-Column_set_row_id(Column *self, u_int64_t key) 
+Column_set_row_id(Column *self, uint64_t key) 
 {
     int ret = -1;
-    u_int64_t *native = (u_int64_t *) self->element_buffer;
+    uint64_t *native = (uint64_t *) self->element_buffer;
     native[0] = key;
     self->num_buffered_elements = 1;
     ret = 0;
@@ -1703,7 +1727,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         self->pack_elements = Column_pack_elements_uint;
         self->unpack_elements = Column_unpack_elements_uint;
         self->native_to_python = Column_native_to_python_uint; 
-        native_element_size = sizeof(u_int64_t);
+        native_element_size = sizeof(uint64_t);
         self->min_element = PyLong_FromUnsignedLongLong(
                 min_uint(self->element_size));
         self->max_element = PyLong_FromUnsignedLongLong(
@@ -1873,7 +1897,7 @@ static PyTypeObject ColumnType = {
 static void
 Table_dealloc(Table* self)
 {
-    u_int32_t j;
+    uint32_t j;
     Py_XDECREF(self->db_filename);
     Py_XDECREF(self->data_filename);
     /* make sure that the DB handles are closed. We can ignore errors here. */ 
@@ -1904,7 +1928,7 @@ Table_verify_columns(Table *self)
 {
     int ret = -1;
     Column *col;
-    u_int32_t j, k;
+    uint32_t j, k;
     char *cj, *ck;
     if (self->num_columns < 2) {
         PyErr_SetString(PyExc_ValueError, "Two or more columns required");
@@ -1959,7 +1983,7 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     PyObject *db_filename = NULL;
     PyObject *data_filename = NULL;
     PyObject *columns = NULL;
-    u_int32_t j;
+    uint32_t j;
     self->db = NULL;
     self->row_buffer = NULL; 
     self->columns = NULL;
@@ -2054,7 +2078,7 @@ Table_check_write_mode(Table *self)
 {
     int ret = -1;
     int db_ret;
-    u_int32_t flags;
+    uint32_t flags;
     if (self->db == NULL) {
         PyErr_Format(WormtableError, "Table closed."); 
         goto out;
@@ -2083,7 +2107,7 @@ Table_check_read_mode(Table *self)
 {
     int ret = -1;
     int db_ret;
-    u_int32_t flags;
+    uint32_t flags;
     if (self == NULL) {
         PyErr_Format(PyExc_SystemError, "Null table."); 
         goto out;
@@ -2106,27 +2130,6 @@ out:
     return ret;
 }
 
-/*
- * Sets up the specified DBTs so that the underlying memory for each points
- * to the complete row_buffer. 
- */
-static int 
-Table_init_dbts(Table *self, DBT *primary_key, DBT *primary_data)
-{
-    Column *id_col = self->columns[0];
-    u_int32_t primary_key_size = id_col->element_size;
-    memset(primary_key, 0, sizeof(DBT));
-    memset(primary_data, 0, sizeof(DBT));
-    primary_key->data = self->row_buffer;
-    primary_key->ulen = primary_key_size; 
-    primary_key->size = primary_key_size;
-    primary_key->flags = DB_DBT_USERMEM;
-    primary_data->data = self->row_buffer + primary_key_size;
-    primary_data->ulen = self->row_buffer_size - primary_key_size; 
-    primary_data->flags = DB_DBT_USERMEM;
-    return 0;
-}
-
 static PyObject *
 Table_open(Table* self, PyObject *args)
 {
@@ -2134,9 +2137,9 @@ Table_open(Table* self, PyObject *args)
     char *db_name = NULL;
     char *data_name = NULL;
     char *data_mode = NULL;
-    u_int32_t flags = 0; 
+    uint32_t flags = 0; 
     Py_ssize_t gigabyte = 1024 * 1024 * 1024;
-    u_int32_t gigs, bytes;
+    uint32_t gigs, bytes;
     int db_ret, mode;
     if (!PyArg_ParseTuple(args, "i", &mode)) { 
         goto out;
@@ -2166,8 +2169,8 @@ Table_open(Table* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    gigs = (u_int32_t) (self->cache_size / gigabyte);
-    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    gigs = (uint32_t) (self->cache_size / gigabyte);
+    bytes = (uint32_t) (self->cache_size % gigabyte);
     db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -2235,9 +2238,9 @@ static PyObject *
 Table_insert_elements(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    Column *column = NULL;
+    Column *col = NULL;
     PyObject *elements = NULL;
-    int m, col_index;
+    int m, col_index, wt_ret;
     if (!PyArg_ParseTuple(args, "iO", &col_index, &elements)) { 
         goto out;
     }
@@ -2245,21 +2248,24 @@ Table_insert_elements(Table* self, PyObject *args)
         goto out;
     }
     if (col_index == 0) {
-        PyErr_Format(WormtableError, "Cannot update ID column."); 
+        PyErr_Format(WormtableError, "Cannot update ID col."); 
         goto out;
     }
     if (Table_check_write_mode(self) != 0) {
         goto out;
     }
-    column = self->columns[col_index];
-    if (column->python_to_native(column, elements) < 0) {
+    col = self->columns[col_index];
+    wt_ret = col->python_to_native(col, elements);
+    if (wt_ret < 0) {
         goto out;   
     }
-    m = Column_update_row(column, self->row_buffer, self->current_row_size); 
-    if (m < 0) {
-        goto out;
+    if (wt_ret != WT_MISSING_VALUE) {
+        m = Column_update_row(col, self->row_buffer, self->current_row_size); 
+        if (m < 0) {
+            goto out;
+        }
+        self->current_row_size += m;
     }
-    self->current_row_size += m;
     Py_INCREF(Py_None);
     ret = Py_None;
 out:
@@ -2305,7 +2311,7 @@ out:
 }
 
 static void
-Table_update_row_stats(Table *self, u_int32_t row_size) 
+Table_update_row_stats(Table *self, uint32_t row_size) 
 {
     self->total_row_size += row_size;
     if (row_size < self->min_row_size) {
@@ -2316,27 +2322,31 @@ Table_update_row_stats(Table *self, u_int32_t row_size)
     }
 }
 
-/* Retrieves a the row pointed to by the current state of the row_buffer.
- * DB has filled in the offset and length of the row into the start of
- * the row buffer and now we must read this row from the data file.
- *
- * TODO this is not a very nice way of doing things, as there is all 
- * sorts of coupling between the different objects. A much cleaner 
- * approach would be to have a seperate row_buffer object that 
- * is responsible for all of this that is explicity shared by all 
- * of the objects and that interact with it through a fixed 
- * interface. 
+/* Retrieves the row from the data file identified by data into the 
+ * row buffer such that it is ready for reading. Also copy the specified
+ * key into the buffer so that we can read the col_id column also.
  */
 static int    
-Table_retrieve_row(Table *self) 
+Table_retrieve_row(Table *self, DBT *key, DBT *data) 
 {
     int ret = -1;
-    void *v;
+    char *v;
+    char *rb = (char *) self->row_buffer;
     Column *id_col = self->columns[0];
-    u_int32_t key_size = id_col->element_size; 
-    u_int64_t offset = 0;
-    u_int16_t len = 0;
-    v = self->row_buffer + key_size;
+    uint32_t key_size = id_col->element_size; 
+    uint64_t offset = 0;
+    uint16_t len = 0;
+    
+    if (key->size != key_size) {
+        PyErr_Format(PyExc_SystemError, "table key record size mismatch");
+        goto out;
+    }
+    if (data->size != OFFSET_LEN_RECORD_SIZE) {
+        PyErr_Format(PyExc_SystemError, "offset/len record size mismatch");
+        goto out;
+    }
+    memcpy(self->row_buffer, key->data, key->size);
+    v = (char *) data->data; 
     offset = unpack_uint(v, sizeof(offset));
     v += sizeof(offset);
     len = unpack_uint(v, sizeof(len));
@@ -2345,12 +2355,41 @@ Table_retrieve_row(Table *self)
         handle_io_error();
         goto out;
     }
-    v = self->row_buffer + key_size;
+    v = rb + key_size;
     if (fread(v, len, 1, self->data_file) != 1) {
         handle_io_error();
         goto out;
     }
     ret = 0;
+out:
+    return ret;
+}
+
+static int    
+Table_retrieve_row_by_id(Table *self, uint64_t row_id) 
+{
+    int ret = -1;
+    int db_ret;
+    unsigned char key_buffer[sizeof(row_id)];
+    Column *id_col = self->columns[0];
+    DBT key, data;
+
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
+    key.data = key_buffer; 
+    key.size = id_col->element_size;
+    if (Column_set_row_id(id_col, row_id) != 0) {
+        goto out;
+    }
+    if (Column_update_row(id_col, key_buffer, 0) != 0) {
+        goto out;
+    }
+    db_ret = self->db->get(self->db, NULL, &key, &data, 0);
+    if (db_ret != 0) {
+        handle_bdb_error(db_ret);
+        goto out;    
+    }
+    ret = Table_retrieve_row(self, &key, &data);
 out:
     return ret;
 }
@@ -2361,18 +2400,19 @@ Table_commit_row(Table* self)
     PyObject *ret = NULL;
     size_t io_ret;
     int db_ret;
-    void *v;
-    u_int64_t offset;
-    u_int16_t len;
-    char *record[OFFSET_LEN_RECORD_SIZE];
+    char *v;
+    char *rb = (char *) self->row_buffer;
+    uint64_t offset;
+    uint16_t len;
+    char record[OFFSET_LEN_RECORD_SIZE];
     void *row = NULL;
     DBT key, data;
     Column *id_col = self->columns[0];
-    u_int32_t key_size = id_col->element_size; 
+    uint32_t key_size = id_col->element_size; 
     if (Table_check_write_mode(self) != 0) {
         goto out;
     }
-    if (Column_set_row_id(id_col, (u_int64_t) self->num_rows) != 0) {
+    if (Column_set_row_id(id_col, (uint64_t) self->num_rows) != 0) {
         goto out;
     }
     if (Column_update_row(id_col, self->row_buffer, self->current_row_size) 
@@ -2380,9 +2420,9 @@ Table_commit_row(Table* self)
         goto out;
     }
     /* write the data row */
-    offset = (u_int64_t) ftello(self->data_file);
+    offset = (uint64_t) ftello(self->data_file);
     len = self->current_row_size - key_size;
-    row = self->row_buffer + key_size;
+    row = rb + key_size;
     io_ret = fwrite(row, len, 1, self->data_file);
     if (io_ret != 1) {
         handle_io_error();
@@ -2419,8 +2459,9 @@ static PyObject *
 Table_get_num_rows(Table* self)
 {
     int db_ret;
+    int wt_ret;
     Column *id_col = self->columns[0];
-    u_int64_t max_key = 0;
+    uint64_t max_key = 0;
     PyObject *ret = NULL;
     DBC *cursor = NULL;
     DBT key, data;
@@ -2441,7 +2482,12 @@ Table_get_num_rows(Table* self)
             PyErr_Format(PyExc_SystemError, "key size mismatch");
             goto out;
         }
-        if (Column_extract_elements(id_col, key.data) < 0) {
+        wt_ret = Column_extract_elements(id_col, key.data);
+        if (wt_ret > 0) {
+            PyErr_Format(PyExc_SystemError, "Missing value in id column."); 
+            goto out;
+        }
+        if (wt_ret < 0) {
             goto out;
         } 
         if (Column_get_row_id(id_col, &max_key) != 0) {
@@ -2471,33 +2517,19 @@ static PyObject *
 Table_get_row(Table* self, PyObject *args)
 {
     PyObject *ret = NULL;
-    int db_ret;
     PyObject *t = NULL;
     Column *col = NULL;
-    Column *id_col = self->columns[0];
     PyObject *value = NULL;
+    int wt_ret;
     unsigned long long row_id = 0;
-    u_int32_t j;
-    DBT key, data;
+    uint32_t j;
     if (!PyArg_ParseTuple(args, "K", &row_id)) {
         goto out;
     }
     if (Table_check_read_mode(self) != 0) {
         goto out;
     }
-    Table_init_dbts(self, &key, &data); 
-    if (Column_set_row_id(id_col, row_id) != 0) {
-        goto out;
-    }
-    if (Column_update_row(id_col, self->row_buffer, 0) != 0) {
-        goto out;
-    }
-    db_ret = self->db->get(self->db, NULL, &key, &data, 0);
-    if (db_ret != 0) {
-        handle_bdb_error(db_ret);
-        goto out;    
-    }
-    if (Table_retrieve_row(self) != 0) {
+    if (Table_retrieve_row_by_id(self, (uint64_t) row_id) != 0) {
         goto out;
     }
     t = PyTuple_New(self->num_columns);
@@ -2507,11 +2539,12 @@ Table_get_row(Table* self, PyObject *args)
     }
     for (j = 0; j < self->num_columns; j++) {
         col = self->columns[j]; 
-        if (Column_extract_elements(col, self->row_buffer) < 0) {
+        wt_ret = Column_extract_elements(col, self->row_buffer);
+        if (wt_ret < 0) {
             Py_DECREF(t);
             goto out;
-        }
-        value = Column_get_python_elements(col); 
+        } 
+        value = Column_get_python_elements(col, wt_ret == WT_MISSING_VALUE); 
         if (value == NULL) {
             Py_DECREF(t);
             goto out;
@@ -2650,7 +2683,7 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Must be 1 or more columns index.");
         goto out; 
     }
-    self->columns = PyMem_Malloc(self->num_columns * sizeof(u_int32_t));
+    self->columns = PyMem_Malloc(self->num_columns * sizeof(uint32_t));
     if (self->columns == NULL) {
         PyErr_NoMemory();
         goto out;
@@ -2673,12 +2706,14 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "Column indexes out of bounds");
             goto out;
         }
-        self->columns[j] = (u_int32_t) k;
+        self->columns[j] = (uint32_t) k;
         col = self->table->columns[k];
         n = col->num_elements;
         if (col->num_elements == WT_VAR_1) {
             /* allow space for the sentinel */
             n = MAX_NUM_ELEMENTS + 1;
+            /* allow space for the missing value indicator */
+            self->key_buffer_size += 1; 
         }
         self->key_buffer_size += n * col->element_size;
     }
@@ -2687,8 +2722,6 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         PyErr_NoMemory();
         goto out;
     }
-
-        
     ret = 0;
 out:
 
@@ -2713,7 +2746,7 @@ Index_check_write_mode(Index *self)
 {
     int ret = -1;
     int db_ret;
-    u_int32_t flags;
+    uint32_t flags;
     if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
@@ -2745,7 +2778,7 @@ Index_check_read_mode(Index *self)
 {
     int ret = -1;
     int db_ret;
-    u_int32_t flags;
+    uint32_t flags;
     if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
@@ -2767,26 +2800,6 @@ out:
     return ret;
 }
 
-/*
- * Sets up the specified DBTs so that the underlying memory for each points
- * to the complete row_buffer. 
- */
-static int 
-Index_init_dbts(Index *self, DBT *primary_key, DBT *primary_data)
-{
-    Column *id_col = self->table->columns[0];
-    u_int32_t primary_key_size = id_col->element_size;
-    memset(primary_key, 0, sizeof(DBT));
-    memset(primary_data, 0, sizeof(DBT));
-    primary_key->data = self->table->row_buffer;
-    primary_key->ulen = primary_key_size; 
-    primary_key->flags = DB_DBT_USERMEM;
-    primary_data->data = self->table->row_buffer + primary_key_size;
-    primary_data->ulen = self->table->row_buffer_size - primary_key_size; 
-    primary_data->flags = DB_DBT_USERMEM;
-    return 0;
-}
-
 /* extract values from the specified row and push them into the specified 
  * secondary key. This has valid memory associated with it.
  */
@@ -2794,6 +2807,7 @@ static int
 Index_fill_key(Index *self, void *row, DBT *skey)
 {
     int ret = -1;
+    int wt_ret;
     Column *col;
     uint32_t j, k;
     int len;
@@ -2802,13 +2816,26 @@ Index_fill_key(Index *self, void *row, DBT *skey)
     for (j = 0; j < self->num_columns; j++) {
         col = self->table->columns[self->columns[j]]; 
         len = 0;
-        if (self->bin_widths[j] == 0.0) {
-            /* we can just copy the values directly here */
-            len = Column_copy_row_values(col, v, row);
-        } else {
-            /* we must bin the values correctly here */
-            len = Column_truncate_values(col, self->bin_widths[j], v, row);
+        wt_ret = Column_extract_elements(col, row);
+        if (wt_ret < 0) {
+            ret = wt_ret;
+            goto out;
+        } 
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the missing value prefix */
+            *v = wt_ret == WT_MISSING_VALUE ? 0 : 1;
+            v++;
+            skey->size++;
         }
+        if (self->bin_widths[j] != 0.0) {
+            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
+                goto out;
+            }
+        }
+        if (col->pack_elements(col, v) < 0) {
+            goto out;
+        }
+        len = col->num_buffered_elements * col->element_size;
         if (len < 0) {
             goto out;
         }
@@ -2836,13 +2863,13 @@ static int
 Index_set_key(Index *self, PyObject *args, void *buffer)
 {
     int ret = -1;
-    int j, m, k;
+    int j, m, k, wt_ret, overhead;
     int key_size = 0;
     Py_ssize_t n;
     Column *col = NULL;
     PyObject *elements = NULL;
     PyObject *v = NULL;
-    unsigned char *key_buffer = buffer; 
+    char *key_buffer = (char *) buffer; 
     if (!PyArg_ParseTuple(args, "O!", &PyTuple_Type, &elements)) { 
         goto out;
     }
@@ -2857,19 +2884,24 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
     for (j = 0; j < n; j++) {
         col = self->table->columns[self->columns[j]]; 
         v = PyTuple_GetItem(elements, j);
-        if (v == NULL) {
-            goto out;
-        }
-        if (col->python_to_native(col, v) < 0) {
+        wt_ret = col->python_to_native(col, v);
+        if (wt_ret < 0) {
             goto out;   
         }
         if (col->verify_elements(col) < 0) {
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
-        if (key_size + m > self->key_buffer_size) {
+        overhead = col->num_elements == WT_VAR_1 ? 1 + col->element_size: 0;
+        if (key_size + m + overhead > self->key_buffer_size) {
             PyErr_Format(PyExc_SystemError, "Max key_size exceeded."); 
             goto out;
+        }
+        if (col->num_elements == WT_VAR_1) {
+            /* insert the missing value prefix */
+            *key_buffer = wt_ret == WT_MISSING_VALUE? 0 : 1;
+            key_buffer++;
+            key_size++; 
         }
         col->pack_elements(col, key_buffer);
         key_buffer += m;
@@ -2890,7 +2922,7 @@ out:
 
 
 static void
-Index_increment_key(Index *self, void *buffer, u_int32_t key_size)
+Index_increment_key(Index *self, void *buffer, uint32_t key_size)
 {
     int j;
     unsigned char *key_buffer = (unsigned char *) buffer;
@@ -2916,7 +2948,8 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
     PyObject *value;
     uint32_t j, offset;
     Column *col;
-    int n;
+    char *v;
+    int n, missing_value, wt_ret;
     PyObject *t = PyTuple_New(self->num_columns);
     if (t == NULL) {
         PyErr_NoMemory();
@@ -2927,61 +2960,32 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
     }
     offset = 0;
     for (j = 0; j < self->num_columns; j++) {
+        missing_value = 0;
         col = self->table->columns[self->columns[j]]; 
-        n = Column_extract_key(col, key_buffer, offset, key_size);
-        if (n < 0) {
-            Py_DECREF(t);
-            goto out;
-        }
+        n = 0;
         if (col->num_elements == WT_VAR_1) {
-            /* skip the sentinel */
-            n++;
-        }
-        offset += n * col->element_size;
-        value = Column_get_python_elements(col); 
-        if (value == NULL) {
-            Py_DECREF(t);
-            goto out;
-        }
-        PyTuple_SET_ITEM(t, j, value);
-    }
-    ret = t;
-out:
-    return ret;
-}
-          
-/*
- * Unpacks value for the columns in this index in the row pointed to in the 
- * specified DBT, truncates them as necessary, and then generates Python 
- * values from the buffer, returning a tuple.
- */
-static PyObject *
-Index_row_to_python(Index *self, void *row) {
-    PyObject *ret = NULL;
-    PyObject *value;
-    unsigned int j;
-    Column *col;
-    PyObject *t = PyTuple_New(self->num_columns);
-    if (t == NULL) {
-        PyErr_NoMemory();
-        goto out;
-    }
-    if (Index_check_read_mode(self) != 0) {
-        goto out;
-    }
-    for (j = 0; j < self->num_columns; j++) {
-        col = self->table->columns[self->columns[j]]; 
-        if (Column_extract_elements(col, row) < 0) {
-            Py_DECREF(t);
-            goto out;
-        }
-        if (self->bin_widths[j] > 0.0) {
-            if (col->truncate_elements(col, self->bin_widths[j]) < 0) {
+            v = (char *) key_buffer;
+            v += offset;
+            missing_value = *v == 0;
+            offset++;
+            wt_ret = Column_extract_key(col, key_buffer, offset, key_size);
+            if (wt_ret < 0) {
                 Py_DECREF(t);
                 goto out;
             }
+            /* skip the sentinel */
+            n = 1;
+        } else {
+            wt_ret = Column_extract_key(col, key_buffer, offset, key_size);
+            if (wt_ret < 0) {
+                Py_DECREF(t);
+                goto out;
+            }
+            missing_value = wt_ret == WT_MISSING_VALUE;
         }
-        value = Column_get_python_elements(col); 
+        n += col->num_buffered_elements;
+        offset += n * col->element_size;
+        value = Column_get_python_elements(col, missing_value); 
         if (value == NULL) {
             Py_DECREF(t);
             goto out;
@@ -2992,7 +2996,7 @@ Index_row_to_python(Index *self, void *row) {
 out:
     return ret;
 }
-
+ 
 static PyObject *
 Index_get_num_rows(Index *self, PyObject *args)
 {
@@ -3022,7 +3026,7 @@ Index_get_num_rows(Index *self, PyObject *args)
         goto out;    
     }
     key.data = self->key_buffer;
-    key.size = (u_int32_t) key_size; 
+    key.size = (uint32_t) key_size; 
     db_ret = cursor->get(cursor, &key, &data, DB_SET);
     if (db_ret == 0) {
         db_ret = cursor->count(cursor, &count, 0); 
@@ -3049,7 +3053,7 @@ Index_get_min(Index* self, PyObject *args)
     PyObject *ret = NULL;
     int db_ret;
     DBC *cursor = NULL;
-    DBT primary_key, primary_data, secondary_key;
+    DBT key, data; 
     int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
@@ -3057,25 +3061,21 @@ Index_get_min(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    Index_init_dbts(self, &primary_key, &primary_data);
-    memset(&secondary_key, 0, sizeof(DBT));
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    secondary_key.data = self->key_buffer;
-    secondary_key.size = (u_int32_t) key_size; 
-    db_ret = cursor->pget(cursor, &secondary_key, &primary_key, &primary_data, 
-            DB_SET_RANGE);
+    key.data = self->key_buffer;
+    key.size = (uint32_t) key_size; 
+    db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
-            goto out;
-        }
-        ret = Index_row_to_python(self, self->table->row_buffer);
+        ret = Index_key_to_python(self, key.data, key.size);
         if (ret == NULL) {
             goto out;
-        }
+        }    
     } else if (db_ret == DB_NOTFOUND) {
         PyErr_SetObject(PyExc_KeyError, args); 
         goto out;
@@ -3087,18 +3087,18 @@ out:
     if (cursor != NULL) {
         cursor->close(cursor);
     }
-   
     return ret;
 }
 
+   
 static PyObject *
 Index_get_max(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
     int db_ret;
-    DBC *cursor = NULL;
-    DBT primary_key, primary_data, secondary_key;
     unsigned char *search_key = NULL;
+    DBC *cursor = NULL;
+    DBT key, data; 
     int key_size = Index_set_key(self, args, self->key_buffer);
     if (key_size < 0) {
         goto out;
@@ -3106,19 +3106,18 @@ Index_get_max(Index* self, PyObject *args)
     if (Index_check_read_mode(self) != 0) {
         goto out;
     }
-    Index_init_dbts(self, &primary_key, &primary_data);
-    memset(&secondary_key, 0, sizeof(DBT));
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     db_ret = self->db->cursor(self->db, NULL, &cursor, 0);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         goto out;    
     }
-    secondary_key.data = self->key_buffer;
-    secondary_key.size = (u_int32_t) key_size; 
+    key.data = self->key_buffer;
+    key.size = (uint32_t) key_size; 
     if (key_size == 0) {
         /* An empty list has been passed so we want the last value */
-        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                &primary_data, DB_LAST);
+        db_ret = cursor->get(cursor, &key, &data, DB_LAST);
         if (db_ret != 0) {
             handle_bdb_error(db_ret);
             goto out;    
@@ -3132,13 +3131,10 @@ Index_get_max(Index* self, PyObject *args)
         memcpy(search_key, self->key_buffer, key_size);
         Index_increment_key(self, self->key_buffer, key_size);
         /* Seek to the first key prefix >= to this */
-        db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                &primary_data, DB_SET_RANGE);
-        /* If this is not found, we want the last key in the index 
-         */
+        db_ret = cursor->get(cursor, &key, &data, DB_SET_RANGE);
+        /* If this is not found, we want the last key in the index */
         if (db_ret == DB_NOTFOUND) {
-            db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                    &primary_data, DB_LAST);
+            db_ret = cursor->get(cursor, &key, &data, DB_LAST);
             if (db_ret != 0) {
                 handle_bdb_error(db_ret);
                 goto out;    
@@ -3148,22 +3144,18 @@ Index_get_max(Index* self, PyObject *args)
             * the provided key
             */
             do {
-                db_ret = cursor->pget(cursor, &secondary_key, &primary_key, 
-                        &primary_data, DB_PREV);
+                db_ret = cursor->get(cursor, &key, &data, DB_PREV);
                 if (db_ret != 0) {
                     handle_bdb_error(db_ret);
                     goto out;    
                 }
-            } while (memcmp(search_key, secondary_key.data, key_size) != 0);
+            } while (memcmp(search_key, key.data, key_size) != 0);
         } else {
             handle_bdb_error(db_ret);
             goto out;    
         }
     }
-    if (Table_retrieve_row(self->table) != 0) {
-        goto out;
-    }
-    ret = Index_row_to_python(self, self->table->row_buffer);
+    ret = Index_key_to_python(self, key.data, key.size);
 out:
     if (cursor != NULL) {
         cursor->close(cursor);
@@ -3247,14 +3239,15 @@ Index_build(Index* self, PyObject *args)
     PyObject *arglist, *result;
     PyObject *progress_callback = NULL;
     Column *id_col;
-    u_int32_t primary_key_size;
+    uint32_t primary_key_size;
     DBC *cursor = NULL;
     DB *pdb = NULL;
     DB *sdb = NULL;
     DBT pkey, pdata, skey, sdata;
-    u_int32_t truncate_count;
+    uint32_t truncate_count;
     uint64_t callback_interval = 1000;
     uint64_t records_processed = 0;
+    
     if (!PyArg_ParseTuple(args, "|OK", &progress_callback, 
             &callback_interval)) { 
         progress_callback = NULL;
@@ -3288,17 +3281,11 @@ Index_build(Index* self, PyObject *args)
     memset(&pdata, 0, sizeof(DBT));
     memset(&skey, 0, sizeof(DBT));
     memset(&sdata, 0, sizeof(DBT));
-    pkey.data = self->table->row_buffer;
-    pkey.ulen = primary_key_size; 
-    pkey.flags = DB_DBT_USERMEM;
-    pdata.data = self->table->row_buffer + primary_key_size;
-    pdata.ulen = MAX_ROW_SIZE - primary_key_size; 
-    pdata.flags = DB_DBT_USERMEM;
     skey.data = self->key_buffer;
     sdata.data = self->table->row_buffer;
     sdata.size = primary_key_size;
     while ((db_ret = cursor->get(cursor, &pkey, &pdata, DB_NEXT)) == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
+        if (Table_retrieve_row(self->table, &pkey, &pdata) != 0) {
             goto out;
         }
         if (Index_fill_key(self, self->table->row_buffer, &skey) < 0 ) {
@@ -3366,9 +3353,9 @@ Index_open(Index* self, PyObject *args)
 {
     PyObject *ret = NULL;
     char *db_name = NULL;
-    u_int32_t flags = 0; 
+    uint32_t flags = 0; 
     Py_ssize_t gigabyte = 1024 * 1024 * 1024;
-    u_int32_t gigs, bytes;
+    uint32_t gigs, bytes;
     int db_ret, mode;
     DB *pdb;
     if (!PyArg_ParseTuple(args, "i", &mode)) { 
@@ -3400,8 +3387,8 @@ Index_open(Index* self, PyObject *args)
         handle_bdb_error(db_ret);
         goto out;    
     }
-    gigs = (u_int32_t) (self->cache_size / gigabyte);
-    bytes = (u_int32_t) (self->cache_size % gigabyte);
+    gigs = (uint32_t) (self->cache_size / gigabyte);
+    bytes = (uint32_t) (self->cache_size % gigabyte);
     db_ret = self->db->set_cachesize(self->db, gigs, bytes, 1); 
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
@@ -3580,7 +3567,7 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     self->read_columns = PyMem_Malloc(self->num_read_columns 
-            * sizeof(u_int32_t));
+            * sizeof(uint32_t));
     if (self->read_columns == NULL) {
         PyErr_NoMemory();
         goto out;
@@ -3596,7 +3583,7 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "Column positions out of bounds");
             goto out;
         }
-        self->read_columns[j] = (u_int32_t) k;
+        self->read_columns[j] = (uint32_t) k;
     }
     id_col = self->table->columns[0];
     self->min_key = PyMem_Malloc(id_col->element_size);
@@ -3625,7 +3612,7 @@ TableRowIterator_next(TableRowIterator *self)
     PyObject *t = NULL;
     PyObject *value;
     Column *col;
-    int db_ret, j;
+    int db_ret, j, wt_ret;
     DB *db;
     DBT key, data;
     uint32_t flags;
@@ -3633,7 +3620,8 @@ TableRowIterator_next(TableRowIterator *self)
     if (Table_check_read_mode(self->table) != 0) {
         goto out;
     }
-    Table_init_dbts(self->table, &key, &data);
+    memset(&key, 0, sizeof(DBT));
+    memset(&data, 0, sizeof(DBT));
     flags = DB_NEXT;
     if (self->cursor == NULL) {
         /* it's the first time through the loop, so set up the cursor */
@@ -3644,17 +3632,14 @@ TableRowIterator_next(TableRowIterator *self)
             goto out;    
         }
         if (self->min_key_size != 0) {
-            if (key.size != self->min_key_size) {
-                PyErr_Format(PyExc_SystemError, "key size mismatch."); 
-                goto out;
-            }
-            memcpy(key.data, self->min_key, self->min_key_size);
+            key.data = self->min_key;
+            key.size = self->min_key_size;
             flags = DB_SET_RANGE;
         }
     } 
     db_ret = self->cursor->get(self->cursor, &key, &data, flags);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->table) != 0) {
+        if (Table_retrieve_row(self->table, &key, &data) != 0) {
             goto out;
         }
         /* Now, check if we've hit or gone past max_key */ 
@@ -3673,11 +3658,13 @@ TableRowIterator_next(TableRowIterator *self)
             }
             for (j = 0; j < self->num_read_columns; j++) {
                 col = self->table->columns[self->read_columns[j]]; 
-                if (Column_extract_elements(col, self->table->row_buffer) < 0) {
+                wt_ret = Column_extract_elements(col, self->table->row_buffer);
+                if (wt_ret < 0) {
                     Py_DECREF(t);
                     goto out;
-                }
-                value = Column_get_python_elements(col); 
+                } 
+                value = Column_get_python_elements(col, 
+                        wt_ret == WT_MISSING_VALUE); 
                 if (value == NULL) {
                     Py_DECREF(t);
                     goto out;
@@ -3716,7 +3703,7 @@ TableRowIterator_set_min(TableRowIterator *self, PyObject *args)
         goto out;
     }
     id_col = self->table->columns[0];
-    if (Column_set_row_id(id_col, (u_int64_t) row_id) != 0) {
+    if (Column_set_row_id(id_col, (uint64_t) row_id) != 0) {
         goto out;
     }
     /* this is safe because this column must be at offset 0 */
@@ -3746,7 +3733,7 @@ TableRowIterator_set_max(TableRowIterator *self, PyObject *args)
         goto out;
     }
     id_col = self->table->columns[0];
-    if (Column_set_row_id(id_col, (u_int64_t) row_id) != 0) {
+    if (Column_set_row_id(id_col, (uint64_t) row_id) != 0) {
         goto out;
     }
     /* this is safe because this column must be at offset 0 */
@@ -3867,7 +3854,7 @@ IndexRowIterator_init(IndexRowIterator *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     self->read_columns = PyMem_Malloc(self->num_read_columns 
-            * sizeof(u_int32_t));
+            * sizeof(uint32_t));
     if (self->read_columns == NULL) {
         PyErr_NoMemory();
         goto out;
@@ -3883,7 +3870,7 @@ IndexRowIterator_init(IndexRowIterator *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "Column indexes out of bounds");
             goto out;
         }
-        self->read_columns[j] = (u_int32_t) k;
+        self->read_columns[j] = (uint32_t) k;
     }
     self->min_key = PyMem_Malloc(self->index->key_buffer_size);
     self->max_key = PyMem_Malloc(self->index->key_buffer_size);
@@ -3913,15 +3900,17 @@ IndexRowIterator_next(IndexRowIterator *self)
     PyObject *t = NULL;
     PyObject *value;
     Column *col;
-    int db_ret, j, cmp;
+    int db_ret, j, cmp, wt_ret;
     DB *db;
     DBT primary_key, primary_data, secondary_key;
     uint32_t flags, cmp_size;
     int max_exceeded = 0;
+    
     if (Index_check_read_mode(self->index) != 0) {
         goto out;
     }
-    Index_init_dbts(self->index, &primary_key, &primary_data);
+    memset(&primary_key, 0, sizeof(DBT));
+    memset(&primary_data, 0, sizeof(DBT));
     memset(&secondary_key, 0, sizeof(DBT));
     flags = DB_NEXT;
     if (self->cursor == NULL) {
@@ -3941,7 +3930,8 @@ IndexRowIterator_next(IndexRowIterator *self)
     db_ret = self->cursor->pget(self->cursor, &secondary_key, &primary_key, 
             &primary_data, flags);
     if (db_ret == 0) {
-        if (Table_retrieve_row(self->index->table) != 0) {
+        if (Table_retrieve_row(self->index->table, &primary_key, 
+                    &primary_data) != 0) {
             goto out;
         }
         /* Now, check if we've hit or gone past max_key */
@@ -3955,7 +3945,6 @@ IndexRowIterator_next(IndexRowIterator *self)
             if (secondary_key.size < self->max_key_size) {
                 max_exceeded = cmp < 0;
             }
-            
         }
         if (!max_exceeded) { 
             t = PyTuple_New(self->num_read_columns);
@@ -3965,11 +3954,14 @@ IndexRowIterator_next(IndexRowIterator *self)
             }
             for (j = 0; j < self->num_read_columns; j++) {
                 col = self->index->table->columns[self->read_columns[j]]; 
-                if (Column_extract_elements(col, self->index->table->row_buffer) < 0) {
+                wt_ret = Column_extract_elements(col, 
+                        self->index->table->row_buffer);
+                if (wt_ret < 0) {
                     Py_DECREF(t);
                     goto out;
-                }
-                value = Column_get_python_elements(col); 
+                } 
+                value = Column_get_python_elements(col, 
+                        wt_ret == WT_MISSING_VALUE); 
                 if (value == NULL) {
                     Py_DECREF(t);
                     goto out;
