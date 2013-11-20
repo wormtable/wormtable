@@ -730,7 +730,9 @@ class TestDatabaseChar(TestDatabase):
                 c = self._columns[k]
                 n = c.num_elements
                 if n == _wormtable.WT_VAR_1:
-                    n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                    n = 0
+                    if random.random() < 0.75:
+                        n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
                 row[k] = random_string(n).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -1081,7 +1083,6 @@ class TestMultiColumnIndex(object):
             # pick a row at random with a given prefix and find the min 
             # and max with this prefix
             prefix_row = random.choice(rows)
-            #print("row = ", prefix_row)
             ri = _wormtable.IndexRowIterator(index, list(cols))
             l1 = [r for r in ri]
             l2 = sorted(rows)
@@ -1098,6 +1099,7 @@ class TestMultiColumnIndex(object):
                 while l2[j][:k] > prefix:
                     j -= 1
                 self.assertEqual(l2[j], index.get_max(prefix))
+
         self.destroy_indexes()
 
 class TestDatabaseIntegerMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIndex):
