@@ -609,8 +609,40 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertEqual(i.max_key("A"), (b"A", b"B"))
         self.assertEqual(i.max_key("AA"), (b"AA", b""))
         t.close()
+    
+    def test_empty_prefix(self):
+        """
+        Tests the simplest possible case where we have a 
+        empty string prefix.
+        """
+        t = wt.Table(self._homedir) 
+        t.add_id_column(1)
+        t.add_char_column("s1")
+        t.add_char_column("s2", num_elements=7)
+        t.add_char_column("s3")
+        t.open("w")
+        values = [
+            (b'', b'zGwKwDr', b''),
+            (b'gq', b'wRIFXIp', b'QO'),
+            (b'ugn', b'utgTGMs', b't'),
+            (b'Po', b'pqnlsjI', b'K'),
+            (b'x', b'rwNVozJ', b'')
+        ]
+        for r in values:
+            t.append([None] + list(r))
+        t.close()
+        t.open("r")
+        i = wt.Index(t, "test")
+        i.add_key_column(t.get_column("s1"))
+        i.add_key_column(t.get_column("s2"))
+        i.add_key_column(t.get_column("s3"))
+        i.open("w")
+        i.build()
+        i.close()
+        i.open("r")
+        self.assertEqual(i.max_key(b""), values[0]) 
+        t.close()
  
-
 
 class TableCursorTest(WormtableTest):
     """

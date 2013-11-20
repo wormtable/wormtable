@@ -731,8 +731,11 @@ class TestDatabaseChar(TestDatabase):
                 n = c.num_elements
                 if n == _wormtable.WT_VAR_1:
                     n = 0
-                    if random.random() < 0.75:
+                    u = random.random()
+                    if u < 0.5: 
                         n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                    elif u < 0.75:
+                        n = _wormtable.MAX_NUM_ELEMENTS
                 row[k] = random_string(n).encode() 
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
