@@ -1,3 +1,9 @@
+v0.1.0b5, 2013.11 
+
+    * Changed the API so that missing values are always returned as None. 
+      This required a minor change in the index file format; indexes from 
+      previous releases must be rebuilt.
+
 v0.1.0b4, 2013.08 
 	
     * Changed index key format so that values can be reconstructed from keys
