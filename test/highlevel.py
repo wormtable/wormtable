@@ -615,18 +615,25 @@ class StringIndexIntegrityTest(WormtableTest):
         Tests the simplest possible case where we have a 
         empty string prefix.
         """
+        # TODO we need to write a more general test class to exercise this 
+        # code for min/max with prefixes more thoroughly.
         t = wt.Table(self._homedir) 
         t.add_id_column(1)
         t.add_char_column("s1")
-        t.add_char_column("s2", num_elements=7)
+        t.add_char_column("s2")
         t.add_char_column("s3")
         t.open("w")
         values = [
-            (b'', b'zGwKwDr', b''),
-            (b'gq', b'wRIFXIp', b'QO'),
-            (b'ugn', b'utgTGMs', b't'),
-            (b'Po', b'pqnlsjI', b'K'),
-            (b'x', b'rwNVozJ', b'')
+            (None, None, None),
+            (None, None, b""),
+            (None, None, b"z"),
+            (b'', b'', b'a'),
+            (b'', b'', b'b'),
+            (b'', b'', b'c'),
+            (b'', b'a', b'b'),
+            (b'', b'a', b'z'),
+            (b'b', b'b', b'b'),
+            (b'z', b'z', b'z')
         ]
         for r in values:
             t.append([None] + list(r))
@@ -640,7 +647,32 @@ class StringIndexIntegrityTest(WormtableTest):
         i.build()
         i.close()
         i.open("r")
-        self.assertEqual(i.max_key(b""), values[0]) 
+        # Max keys
+        self.assertEqual(i.max_key(None), values[2]) 
+        self.assertEqual(i.max_key(None, None), values[2]) 
+        self.assertEqual(i.max_key(None, None, b""), values[1]) 
+        self.assertEqual(i.max_key(b"", b""), values[5]) 
+        self.assertEqual(i.max_key(b"", b"", b"a"), values[3]) 
+        self.assertEqual(i.max_key(b"", b"", b"b"), values[4]) 
+        self.assertEqual(i.max_key(b"", b"", b"c"), values[5]) 
+        self.assertEqual(i.max_key(b"", b"a"), values[7]) 
+        self.assertEqual(i.max_key(b"", b"a", b"z"), values[7]) 
+        self.assertRaises(KeyError, i.max_key, "x") 
+        self.assertRaises(KeyError, i.max_key, "", "x") 
+        self.assertRaises(KeyError, i.max_key, None, "x") 
+        # Min keys
+        self.assertEqual(i.min_key(None), values[0]) 
+        self.assertEqual(i.min_key(None, None), values[0]) 
+        self.assertEqual(i.min_key(None, None, b""), values[1]) 
+        self.assertEqual(i.min_key(b"", b""), values[3]) 
+        self.assertEqual(i.min_key(b"", b"", b"a"), values[3]) 
+        self.assertEqual(i.min_key(b"", b"", b"b"), values[4]) 
+        self.assertEqual(i.min_key(b"", b"", b"c"), values[5]) 
+        self.assertEqual(i.min_key(b"", b"a"), values[6]) 
+        self.assertEqual(i.min_key(b"", b"a", b"z"), values[7]) 
+        self.assertRaises(KeyError, i.min_key, "x") 
+        self.assertRaises(KeyError, i.min_key, "", "x") 
+        self.assertRaises(KeyError, i.min_key, None, "x") 
         t.close()
  
 
@@ -685,8 +717,6 @@ class TableCursorTest(WormtableTest):
         t = self._table
         cols = ["row_id"]
         v = [r for r in t.cursor(cols, start=0, stop=0)]
-        self.assertEqual(v, [])
-        v = [r for r in t.cursor(cols, start=0, stop=-1)]
         self.assertEqual(v, [])
         v = [r for r in t.cursor(cols, start=1, stop=1)]
         self.assertEqual(v, [])

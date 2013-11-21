@@ -410,7 +410,12 @@ class TestDatabaseInteger(TestDatabase):
                 else:
                     n = c.num_elements
                     if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                        n = 0
+                        u = random.random()
+                        if u < 0.5: 
+                            n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                        elif u < 0.75:
+                            n = _wormtable.MAX_NUM_ELEMENTS
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     row[k] = v
                 if j % 2 == 1:
@@ -662,7 +667,12 @@ class TestDatabaseFloat(TestDatabase):
                 else:
                     n = c.num_elements
                     if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                        n = 0
+                        u = random.random()
+                        if u < 0.5: 
+                            n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                        elif u < 0.75:
+                            n = _wormtable.MAX_NUM_ELEMENTS
                     row[k] = tuple([f() for l in range(n)])
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k]) 
@@ -1109,7 +1119,7 @@ class TestDatabaseIntegerMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIn
     """
     Test multicolumn integer indexes 
     """
-class TestDatabaseFloatMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIndex):
+class TestDatabaseFloatMultiColumnIndex(TestDatabaseFloat, TestMultiColumnIndex):
     """
     Test multicolumn integer indexes 
     """

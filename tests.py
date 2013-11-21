@@ -69,7 +69,10 @@ def main():
         suite.addTests(l)
     try:
         for i in range(iterations):
-            unittest.TextTestRunner(verbosity=2).run(suite)
+            r = unittest.TextTestRunner(verbosity=2).run(suite)
+            if len(r.errors) > 0 or len(r.failures) > 0:
+                print("Error detected: exiting!")
+                break
     finally:
         cleanup()
 if __name__ == '__main__':
