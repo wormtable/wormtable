@@ -162,6 +162,41 @@ we can do the following::
          $ CFLAGS=-I/usr/local/include/db48 LDFLAGS=-L/usr/local/lib/db48 python setup.py build
          $ sudo python setup.py install
 
+--------------------------------
+Installation without root access
+--------------------------------
+
+If you need to install wormtable on a system where Berkeley DB is not 
+installed (and your system administrator refuses to install it, for 
+some reason), we can still compile and install it locally.
+Here is a recipe that worked on a Debian squeeze machine; however, this is not guaranteed 
+to work on any given system and you may need to tweak things a little to suit 
+your environment::
+
+        $ mkdir -p $HOME/.local
+        $ wget http://download.oracle.com/berkeley-db/db-4.8.30.tar.gz
+        $ tar -zxf db-4.8.30.tar.gz
+        $ cd db-4.8.30/build_unix/
+        $ ../dist/configure --prefix=$HOME/.local
+        $ make install
+
+This downloads a version of Berkeley DB from Oracle, compiles and 
+then installs it to the directory $HOME/.local. (The version of Berkeley DB 
+you use doesn't really matter once it's at least 4.8.)
+Now, download 
+the latest version of wormtable, untar it and `cd` to the new directory.
+We can then install it locally::
+
+        $ CFLAGS=-I$HOME/.local/include LDFLAGS=$HOME/.local/lib/ python setup.py install --user
+
+Now we need to set up some paths so that we can use this at run time. Put the following 
+lines into your $HOME/.bashrc (or equivalent if you use another shell)::
+
+        export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+        export PATH=$HOME/.local/bin:$PATH
+
+Then, log out, log back in, and you should be able to use wormtable.
+
 
 ----------
 Test suite
@@ -178,7 +213,7 @@ It is a good idea to run these immediately after installation::
 Tested platforms
 ****************
 
-Wormtable is higly portable, and 
+Wormtable is highly portable, and 
 has been successfully built and tested 
 on the following platforms:
 
