@@ -89,6 +89,11 @@ the "--force" (or -f) argument to tell vcf2wt to overwrite the old wormtable::
 
     $ vcf2wt -f sample.vcf sample.wt
 
+
+.. warning:: Wormtable does not currently support very long strings, so it 
+   may be necessary to truncate the ``ALT`` and ``REF`` columns when converting 
+   a VCF. Use the ``--truncate`` option to ``vcf2wt`` to do this.
+   
 --------------
 Using a cursor
 --------------
@@ -466,7 +471,7 @@ snp-filter.py
 *************
 
 This script runs through a VCF file (using a CHROM+POS compound index) and allows 
-the user to extract (a comma separated list of) specific VCF fields using an 
+the user to extract (a semicolon separated list of) specific VCF fields using an 
 arbitrary set of filters on numeric or text columns. For example, to 
 find variants with a QUAL score > 500, depth of coverage (stored as DP in the 
 INFO column) > 20, a genotype in sample "S1" of "0/1" and print out CHROM and 
