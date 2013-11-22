@@ -674,7 +674,255 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertRaises(KeyError, i.min_key, "", "x") 
         self.assertRaises(KeyError, i.min_key, None, "x") 
         t.close()
+
+
+def ntuples(n, m):
+    """
+    Generates all m-ary n-tuples using Knuth's mixed radix generation algorithm M.
+    This generates all base m numbers in numerical order, as well as generating the 
+    tuples in lexicographic order.
+    """
+    if n == 0: 
+        yield []
+    elif m == 1:
+        yield [0 for i in range(n)]
+    else: 
+        a = [0 for i in range(n + 1)]
+        m0 = 2
+        j = n
+        while j != 0:
+            yield a[1:]
+            j = n
+            while a[j] == m - 1:
+                a[j] = 0
+                j -= 1
+            a[j] += 1
+
+class IndexMinMaxTest(WormtableTest):
+    """
+    Class to test the min|max functionality of indexes.
+    """
+    def setUp(self):
+        super(IndexMinMaxTest, self).setUp()
+        self.set_values()
+        self.min_value = self.values[0]
+        self.max_value = self.values[-1]
+        t = wt.Table(self._homedir) 
+        self._table = t
+        t.add_id_column(4)
+        for j in range(self.num_columns):
+            self.add_column("c_{0}".format(j))
+        t.open("w")
+        for a in ntuples(self.num_columns, len(self.values)):
+            v = [self.values[j] for j in a]
+            t.append([None] + v)
+        t.close()
+        t.open("r")
+        i = wt.Index(t, "test")
+        for j in range(self.num_columns):
+            i.add_key_column(t.get_column("c_{0}".format(j)))
+        i.open("w")
+        i.build()
+        i.close()
+        i.open("r")
+        self._index = i
+
+    def add_column(self, name):
+        """
+        Adds a single column of the required type to the table.
+        """
+        self._table.add_int_column(name, size=1, num_elements=1)
+    
+    def set_values(self):
+        """
+        Sets up the range of values that we use to construct the n-tuples.
+        """
+        self.num_columns = 4
+        self.values = list(range(4))
+
+    def test_min_max(self):
+        i = self._index
+        v = tuple([self.min_value for j in range(self.num_columns)])
+        self.assertEqual(i.min_key(), v)
+        v = tuple([self.max_value for j in range(self.num_columns)])
+        self.assertEqual(i.max_key(), v) 
+        for n in range(1, self.num_columns):
+            for a in ntuples(n, len(self.values)):
+                m = self.num_columns - n 
+                prefix = [self.values[j] for j in a]
+                v = prefix + [self.min_value for j in range(m)]
+                self.assertEqual(i.min_key(*prefix), tuple(v))
+                v = prefix + [self.max_value for j in range(m)]
+                self.assertEqual(i.max_key(*prefix), tuple(v))
+
+class IntegerIndexMinMaxTest(object):
+    
+    def add_column(self, name):
+        self._table.add_int_column(name, size=self.element_size, 
+                num_elements=self.num_elements)
+     
+    def set_values(self):
+        self.num_columns = 5
+        if self.num_elements == 0:
+            values = [tuple([1 for j in range(k)]) for k in range(4)]
+        elif self.num_elements == 1:
+            values = list(range(4))
+        else:
+            values = [tuple([j for k in range(self.num_elements)])
+                    for j in range(4)]
+        self.values = [None] + values 
+
+
+class Integer11IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 1
+    num_elements = 1
+  
+class Integer21IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 1
+    
+class Integer31IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 3 
+    num_elements = 1
+
+class Integer41IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4 
+    num_elements = 1
+
+class Integer51IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 5 
+    num_elements = 1
+
+class Integer12IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 1
+    num_elements = 2
+  
+class Integer22IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 2
+    
+class Integer32IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 3 
+    num_elements = 2
+
+class Integer13IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 1
+    num_elements = 3
+  
+class Integer23IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 3
+    
+class Integer33IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 3 
+    num_elements = 3
+
+class Integer1VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 1
+    num_elements = 0 
+  
+class Integer2VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 0
+    
+class Integer3VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 3 
+    num_elements = 0
+
+class FloatIndexMinMaxTest(object):
+    
+    def add_column(self, name):
+        self._table.add_float_column(name, size=self.element_size, 
+                num_elements=self.num_elements)
+     
+    def set_values(self):
+        self.num_columns = 5
+        if self.num_elements == 0:
+            values = [tuple([0.25 for j in range(k)]) for k in range(4)]
+        elif self.num_elements == 1:
+            values = list(range(4))
+        else:
+            values = [tuple([j for k in range(self.num_elements)])
+                    for j in range(4)]
+        self.values = [None] + values 
+
+
+class Float21IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 1
  
+class Float41IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4 
+    num_elements = 1
+
+class Float81IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 8 
+    num_elements = 1
+
+class Float22IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 2
+ 
+class Float42IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4 
+    num_elements = 2
+
+class Float82IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 8 
+    num_elements = 2
+
+class Float23IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 3
+ 
+class Float43IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4 
+    num_elements = 3
+
+class Float83IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 8 
+    num_elements = 3
+
+class Float2VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2 
+    num_elements = 0
+ 
+class Float4VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4 
+    num_elements = 0
+
+class Float8VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 8 
+    num_elements = 0
+
+class CharIndexMinMaxTest(object):
+    
+    def add_column(self, name):
+        self._table.add_char_column(name, num_elements=self.num_elements)
+     
+    def set_values(self):
+        self.num_columns = 5
+        if self.num_elements == 0:
+            values = ["1" * k for k in range(4)]
+        elif self.num_elements == 1:
+            values = ["{0}".format(j) for j in range(4)]
+        else:
+            values = ["{0}".format(j) * self.num_elements for j in range(4)]
+        self.values = [None] + [v.encode() for v in values]
+
+
+class Char1IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = 1
+  
+class Char2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = 2
+
+class Char2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = 3
+
+class CharVarIndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = 0
+
 
 class TableCursorTest(WormtableTest):
     """
