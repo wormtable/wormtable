@@ -731,14 +731,14 @@ class IndexMinMaxTest(WormtableTest):
         """
         Adds a single column of the required type to the table.
         """
-        self._table.add_int_column(name, size=1, num_elements=1)
+        self._table.add_uint_column(name, size=1, num_elements=1)
     
     def set_values(self):
         """
         Sets up the range of values that we use to construct the n-tuples.
         """
         self.num_columns = 4
-        self.values = list(range(4))
+        self.values = [None, 0, 1, 253, 254]
 
     def test_min_max(self):
         i = self._index
@@ -755,6 +755,16 @@ class IndexMinMaxTest(WormtableTest):
                 v = prefix + [self.max_value for j in range(m)]
                 self.assertEqual(i.max_key(*prefix), tuple(v))
 
+
+def get_int_range(element_size):
+    """
+    Returns the tuple min, max defining the acceptable bounds for an
+    integer of the specified size.
+    """
+    min_v = -2**(8 * element_size - 1) + 1
+    max_v = 2**(8 * element_size - 1) - 1
+    return min_v, max_v
+
 class IntegerIndexMinMaxTest(object):
     
     def add_column(self, name):
@@ -763,13 +773,15 @@ class IntegerIndexMinMaxTest(object):
      
     def set_values(self):
         self.num_columns = 5
+        min_v, max_v = get_int_range(self.element_size)
+        v = [min_v, min_v + 1, max_v - 1, max_v]
         if self.num_elements == 0:
-            values = [tuple([1 for j in range(k)]) for k in range(4)]
+            values = [tuple([max_v for j in range(k)]) for k in range(4)]
         elif self.num_elements == 1:
-            values = list(range(4))
+            values = v 
         else:
             values = [tuple([j for k in range(self.num_elements)])
-                    for j in range(4)]
+                    for j in v]
         self.values = [None] + values 
 
 

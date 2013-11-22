@@ -1112,7 +1112,6 @@ class TestMultiColumnIndex(object):
                 while l2[j][:k] > prefix:
                     j -= 1
                 self.assertEqual(l2[j], index.get_max(prefix))
-
         self.destroy_indexes()
 
 class TestDatabaseIntegerMultiColumnIndex(TestDatabaseInteger, TestMultiColumnIndex):
