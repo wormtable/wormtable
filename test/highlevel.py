@@ -23,6 +23,7 @@ from __future__ import division
 import wormtable as wt
 
 import os
+import sys
 import math
 import unittest
 import tempfile
@@ -1195,6 +1196,18 @@ class FloatTest(WormtableTest):
         """
         Compare with numpy arrays for some critical values.
         """
+        ok = False
+        try:
+            import numpy as np
+            x = np.float16 # Old versions of numpy don't have this
+            ok = True 
+        except:
+            print("Numpy either not present or too old: skipping test; ", 
+                    end="", file=sys.stderr)
+        if ok:
+            self.run_numpy_test()
+
+    def run_numpy_test(self):
         import numpy as np
         inf = float("Inf") 
         values = [

@@ -21,8 +21,8 @@ from __future__ import print_function
 from __future__ import division 
 import unittest
 import random
+import tempfile
 import optparse
-import glob
 import shutil 
 import os
 
@@ -30,14 +30,11 @@ import test.lowlevel
 import test.highlevel
 import test.utilities
 
-def cleanup():
+def cleanup(tmp_dir):
     """
     Remove temporary files after interrupt.
     """
-    for f in glob.glob("/tmp/wthl_*"):
-        shutil.rmtree(f) 
-    for f in glob.glob("/tmp/wtll_*.db"):
-        os.unlink(f) 
+    shutil.rmtree(tmp_dir) 
 
 def main():
     usage = "usage: %prog [options] "
@@ -67,13 +64,16 @@ def main():
         suite.addTests(l)
         l = testloader.loadTestsFromModule(test.utilities) 
         suite.addTests(l)
+    # create the temporary directory we use for all files.
+    tmp_dir = tempfile.mkdtemp(prefix="wt_test_")
+    tempfile.tempdir = tmp_dir 
     try:
         for i in range(iterations):
             r = unittest.TextTestRunner(verbosity=2).run(suite)
             if len(r.errors) > 0 or len(r.failures) > 0:
-                print("Error detected: exiting!")
+                print("Error detected at iteration {0}: exiting!".format(i))
                 break
     finally:
-        cleanup()
+        cleanup(tmp_dir)
 if __name__ == '__main__':
     main()
