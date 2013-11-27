@@ -1,3 +1,10 @@
+v0.1.0, 2013.11
+
+    * Fixed index.max_key() bug.
+
+    * This release marks the point at which we try very hard not to 
+      break backwards and forwards compatibility.
+
 v0.1.0b5, 2013.11 
 
     * Changed the API so that missing values are always returned as None. 
