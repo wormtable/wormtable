@@ -227,6 +227,7 @@ class AddRunner(ProgramRunner):
             s = "Index '{0}' exists; use --force to overwrite"
             self.error(s.format(self._index_name))
         self.parse_colspec()
+        self._index.set_db_cache_size(self._index_db_cache_size)
         self._index.open("w")
 
     def parse_colspec(self):
