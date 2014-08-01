@@ -1,3 +1,7 @@
+v0.1.1, 2014.08
+
+    * Fixed index cache size bug in wtadmin.
+    
 v0.1.0, 2013.11
 
     * Fixed index.max_key() bug.
