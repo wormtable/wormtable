@@ -21,7 +21,7 @@ dump values and add, remove and view indexes.
 
 If you use wormtable in your work, please cite the BMC Bioinfomatics
 `article <http://www.biomedcentral.com/1471-2105/14/356>`_. See 
-the CITATIONS file for details.
+the ``CITATION.txt`` file for details.
 
 -------------
 Documentation

@@ -1,7 +1,7 @@
 
 If you use wormtable, please cite the following article:
 
-Kelleher, Jerome, Rob W. Ness, and Daniel L. Halligan. "Processing genome scale
+Jerome Kelleher, Rob W. Ness, and Daniel L. Halligan. "Processing genome scale
 tabular data with wormtable." BMC Bioinformatics 14:356, 2013.
 
 http://www.biomedcentral.com/1471-2105/14/356
