@@ -1,0 +1,17 @@
+
+If you use wormtable, please cite the following article:
+
+Kelleher, Jerome, Rob W. Ness, and Daniel L. Halligan. "Processing genome scale
+tabular data with wormtable." BMC Bioinformatics 14:356, 2013.
+
+http://www.biomedcentral.com/1471-2105/14/356
+
+@article{kelleher2013processing,
+    title={Processing genome scale tabular data with wormtable},
+    author={Kelleher, Jerome and Ness, Rob W and Halligan, Daniel L},
+    journal={BMC Bioinformatics},
+    volume={14},
+    pages={356},
+    doi={10.1186/1471-2105-14-356},
+    year={2013},
+}
