@@ -1,11 +1,6 @@
-.. image:: https://travis-ci.org/wormtable/wormtable.svg?branch=master
-   :target: https://travis-ci.org/wormtable/wormtable
-   :align: right
-
 ===============================================
 Wormtable
 ===============================================
-
 
 Wormtable is a write-once read-many table for large scale datasets.
 It provides Python programmers with a simple and efficient method of
@@ -250,3 +245,9 @@ Solaris 11.1            SPARC           2.6.8           Sun C 5.12
 Scientific Linux 6.2    x86-64          2.6.6           icc 12.0.0
 ====================    ========        ======          ===========
 
+************
+Build Status
+************
+
+.. image:: https://travis-ci.org/wormtable/wormtable.svg?branch=master
+   :target: https://travis-ci.org/wormtable/wormtable
