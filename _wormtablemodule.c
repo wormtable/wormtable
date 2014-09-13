@@ -4194,6 +4194,35 @@ static PyTypeObject IndexKeyIteratorType = {
     (initproc)IndexKeyIterator_init,      /* tp_init */
 };
 
+/*==========================================================
+ * Module level functions
+ *==========================================================
+ */
+
+PyDoc_STRVAR(wormtable_get_db_version_doc,
+"Returns Berkeley DB version information.\n\
+This returns a tuple (compiled_version, runtime_version).\n\
+Each of these is a tuple (major, minor, patch, version_string).\n");
+
+static PyObject *
+wormtable_get_db_version(PyObject *self)
+{
+    PyObject *ret = NULL;
+    int major, minor, patch;
+    char *str;
+
+    str = db_version(&major, &minor, &patch);
+    ret = Py_BuildValue("((i,i,i,s), (i,i,i,s))",
+        DB_VERSION_MAJOR, DB_VERSION_MINOR, DB_VERSION_PATCH,
+        DB_VERSION_STRING, major, minor, patch, str);
+    return ret;
+}
+
+static PyMethodDef wormtable_methods[] = {
+    {"get_db_version", (PyCFunction) wormtable_get_db_version, METH_NOARGS,
+        wormtable_get_db_version_doc},
+    {NULL}        /* Sentinel */
+};
 
 
 /* Initialisation code supports Python 2.x and 3.x. The framework uses the
@@ -4209,7 +4238,8 @@ static struct PyModuleDef wormtablemodule = {
     "_wormtable",   /* name of module */
     MODULE_DOC, /* module documentation, may be NULL */
     -1,
-    NULL, NULL, NULL, NULL, NULL
+    wormtable_methods,
+    NULL, NULL, NULL, NULL
 };
 
 #define INITERROR return NULL
@@ -4229,7 +4259,8 @@ init_wormtable(void)
 #if PY_MAJOR_VERSION >= 3
     PyObject *module = PyModule_Create(&wormtablemodule);
 #else
-    PyObject *module = Py_InitModule3("_wormtable", NULL, MODULE_DOC);
+    PyObject *module = Py_InitModule3("_wormtable", wormtable_methods,
+            MODULE_DOC);
 #endif
     if (module == NULL) {
         INITERROR;
