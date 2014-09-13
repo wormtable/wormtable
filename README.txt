@@ -2,6 +2,9 @@
 Wormtable
 ===============================================
 
+.. image:: https://travis-ci.org/wormtable/wormtable.svg?branch=master
+   :target: https://travis-ci.org/wormtable/wormtable
+
 Wormtable is a write-once read-many table for large scale datasets.
 It provides Python programmers with a simple and efficient method of
 storing, processing and searching datasets of essentially unlimited
