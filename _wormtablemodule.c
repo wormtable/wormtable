@@ -213,9 +213,10 @@ unpack_half(void *src)
 static void
 pack_float(double value, void *dest)
 {
+    int32_t bits;
     union { float value; int32_t bits; } conv;
     conv.value = (float) value;
-    int32_t bits = conv.bits;
+    bits = conv.bits;
     bits ^= (bits < 0) ? 0xffffffffL: 0x80000000L;
 #ifdef WORDS_BIGENDIAN
     memcpy(dest, &bits, sizeof(float));
