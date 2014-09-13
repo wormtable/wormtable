@@ -1,29 +1,29 @@
-# 
+#
 # Copyright (C) 2013, wormtable developers (see AUTHORS.txt).
 #
 # This file is part of wormtable.
-# 
+#
 # Wormtable is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # Wormtable is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public License
 # along with wormtable.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 from __future__ import print_function
-from __future__ import division 
+from __future__ import division
 import unittest
 import random
 import tempfile
 import optparse
-import shutil 
+import shutil
 import os
 
 import test.lowlevel
@@ -34,11 +34,11 @@ def cleanup(tmp_dir):
     """
     Remove temporary files after interrupt.
     """
-    shutil.rmtree(tmp_dir) 
+    shutil.rmtree(tmp_dir)
 
 def main():
     usage = "usage: %prog [options] "
-    parser = optparse.OptionParser(usage=usage) 
+    parser = optparse.OptionParser(usage=usage)
     parser.add_option("-s", "--random-seed", dest="random_seed",
             help="Random seed", default=1)
     parser.add_option("-r", "--rows", dest="num_rows",
@@ -54,19 +54,19 @@ def main():
         parser.error("At least 2 rows must be used for random tests")
     random.seed(int(options.random_seed))
     testloader = unittest.TestLoader()
-    test.lowlevel.num_random_test_rows = num_rows 
-    test.highlevel.num_random_test_rows = num_rows 
+    test.lowlevel.num_random_test_rows = num_rows
+    test.highlevel.num_random_test_rows = num_rows
     if options.name is not None:
         suite = testloader.loadTestsFromName(options.name)
     else:
-        suite = testloader.loadTestsFromModule(test.highlevel) 
-        l = testloader.loadTestsFromModule(test.lowlevel) 
+        suite = testloader.loadTestsFromModule(test.highlevel)
+        l = testloader.loadTestsFromModule(test.lowlevel)
         suite.addTests(l)
-        l = testloader.loadTestsFromModule(test.utilities) 
+        l = testloader.loadTestsFromModule(test.utilities)
         suite.addTests(l)
     # create the temporary directory we use for all files.
     tmp_dir = tempfile.mkdtemp(prefix="wt_test_")
-    tempfile.tempdir = tmp_dir 
+    tempfile.tempdir = tmp_dir
     try:
         for i in range(iterations):
             r = unittest.TextTestRunner(verbosity=2).run(suite)

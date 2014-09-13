@@ -1,24 +1,24 @@
-# 
+#
 # Copyright (C) 2013, wormtable developers (see AUTHORS.txt).
 #
 # This file is part of wormtable.
-# 
+#
 # Wormtable is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # Wormtable is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public License
 # along with wormtable.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 from __future__ import print_function
-from __future__ import division 
+from __future__ import division
 
 import wormtable as wt
 
@@ -27,7 +27,7 @@ import sys
 import math
 import unittest
 import tempfile
-import shutil 
+import shutil
 import os.path
 import random
 import itertools
@@ -62,8 +62,8 @@ class WormtableTest(unittest.TestCase):
     on startup and clear it on teardown.
     """
     def setUp(self):
-        self._homedir = tempfile.mkdtemp(prefix="wthl_") 
-    
+        self._homedir = tempfile.mkdtemp(prefix="wthl_")
+
     def tearDown(self):
         shutil.rmtree(self._homedir)
 
@@ -71,7 +71,7 @@ class WormtableTest(unittest.TestCase):
         """
         Make a small random table with small random values.
         """
-        num_rows = num_random_test_rows 
+        num_rows = num_random_test_rows
         max_value = 10
         self._table = wt.Table(self._homedir)
         t = self._table
@@ -92,7 +92,7 @@ class WormtableTest(unittest.TestCase):
             c = None if g() else s.encode()
             n = random.randint(0, 5)
             v = [0 for j in range(n)]
-            t.append([None, u, i, f, c, v]) 
+            t.append([None, u, i, f, c, v])
             if random.random() < 0.33:
                 t.append([])
         t.close()
@@ -111,9 +111,9 @@ class VacuousDatabase(wt.Database):
 class DatabaseClassTests(WormtableTest):
     """
     Tests the functionality of the database superclass of Index and Table.
-    """ 
+    """
     def test_db_cache_size(self):
-        db = wt.Database(self._homedir, "test") 
+        db = wt.Database(self._homedir, "test")
         self.assertEqual(db.get_db_cache_size(), wt.DEFAULT_CACHE_SIZE)
         # Test integer interface
         for j in range(10):
@@ -131,12 +131,12 @@ class DatabaseClassTests(WormtableTest):
     def test_names(self):
         names = ["some", "example", "names"]
         for n in names:
-            db = wt.Database(self._homedir, n) 
+            db = wt.Database(self._homedir, n)
             self.assertEqual(db.get_db_name(), n)
             self.assertEqual(db.get_homedir(), self._homedir)
             path = os.path.join(self._homedir, n + ".db")
             self.assertEqual(db.get_db_path(), path)
-            s = "_build_{0}_{1}.db".format(os.getpid(), n) 
+            s = "_build_{0}_{1}.db".format(os.getpid(), n)
             path = os.path.join(self._homedir, s)
             self.assertEqual(db.get_db_build_path(), path)
             path = os.path.join(self._homedir, n + ".xml")
@@ -154,7 +154,7 @@ class DatabaseClassTests(WormtableTest):
     def test_finalise_build(self):
         name = "finalise_test"
         vdb = VacuousDatabase(self._homedir, name)
-        build = vdb.get_db_build_path() 
+        build = vdb.get_db_build_path()
         with open(build, "w") as f:
             f.write(name)
         vdb.finalise_build()
@@ -184,11 +184,11 @@ class DatabaseClassTests(WormtableTest):
         # try now with the context manager
         with wt.open_table(self._homedir) as t:
             self.assertTrue(t.is_open())
-        self.assertFalse(t.is_open()) 
+        self.assertFalse(t.is_open())
         # Now do the same for an index.
         t = wt.open_table(self._homedir)
         name = "test"
-        i = wt.Index(t, name) 
+        i = wt.Index(t, name)
         i.add_key_column(t.get_column(1))
         i.open("w")
         i.build()
@@ -205,7 +205,7 @@ class DatabaseClassTests(WormtableTest):
 
 class TableBuildTest(WormtableTest):
     """
-    Tests for the build process in tables. 
+    Tests for the build process in tables.
     """
 
     def test_open(self):
@@ -234,14 +234,14 @@ class TableBuildTest(WormtableTest):
         t = wt.Table(self._homedir)
         t.add_id_column()
         for j in range(1, 5):
-            t.add_uint_column("u_" + str(j), num_elements=j) 
-            t.add_int_column("i_" + str(j),  num_elements=j) 
-            t.add_float_column("f_" + str(j), num_elements=j) 
-            t.add_char_column("c_" + str(j), num_elements=j) 
-        t.add_uint_column("u_v", num_elements=wt.WT_VAR_1)  
-        t.add_int_column("i_v", num_elements=wt.WT_VAR_1)  
-        t.add_float_column("f_v", num_elements=wt.WT_VAR_1)  
-        t.add_char_column("c_v", num_elements=wt.WT_VAR_1) 
+            t.add_uint_column("u_" + str(j), num_elements=j)
+            t.add_int_column("i_" + str(j),  num_elements=j)
+            t.add_float_column("f_" + str(j), num_elements=j)
+            t.add_char_column("c_" + str(j), num_elements=j)
+        t.add_uint_column("u_v", num_elements=wt.WT_VAR_1)
+        t.add_int_column("i_v", num_elements=wt.WT_VAR_1)
+        t.add_float_column("f_v", num_elements=wt.WT_VAR_1)
+        t.add_char_column("c_v", num_elements=wt.WT_VAR_1)
         t.open("w")
         t.append([])
         t.close()
@@ -254,13 +254,13 @@ class TableBuildTest(WormtableTest):
             self.assertEqual(None, r[j])
         t.close()
 
- 
+
 
 class IndexBuildTest(WormtableTest):
     """
-    Tests for the build process in indexes. 
+    Tests for the build process in indexes.
     """
-    
+
     def setUp(self):
         super(IndexBuildTest, self).setUp()
         t = wt.Table(self._homedir)
@@ -277,7 +277,7 @@ class IndexBuildTest(WormtableTest):
 
     def test_open(self):
         name = "col1"
-        i = wt.Index(self._table, name) 
+        i = wt.Index(self._table, name)
         self.assertEqual(i.get_db_name(), i.DB_PREFIX + name)
         i.add_key_column(self._table.get_column(1))
         self.assertFalse(i.is_open())
@@ -297,7 +297,7 @@ class IndexBuildTest(WormtableTest):
 
 class ColumnValue(object):
     """
-    A class that represents a value from a given column. This class 
+    A class that represents a value from a given column. This class
     is primarily to ensure that values from Columns sort correctly.
     """
     def __init__(self, column, row):
@@ -313,13 +313,13 @@ class ColumnValue(object):
     def __lt__(self, other):
         v1 = self.__value
         v2 = other.__value
-        missing = None 
+        missing = None
         ret = False
         if v1 == missing and v2 != missing:
             ret = True
         elif v1 != missing and v2 != missing:
-            ret = v1 < v2 
-        return ret 
+            ret = v1 < v2
+        return ret
 
     def __eq__(self, other):
         if isinstance(other, ColumnValue):
@@ -344,7 +344,7 @@ class IndexIntegrityTest(WormtableTest):
         self._indexes = []
         for c in cols:
             name = c.get_name()
-            i = wt.Index(self._table, name) 
+            i = wt.Index(self._table, name)
             i.add_key_column(c)
             i.open("w")
             i.build()
@@ -352,7 +352,7 @@ class IndexIntegrityTest(WormtableTest):
             self._indexes.append(i)
         for c1, c2 in itertools.permutations(cols, 2):
             name = c1.get_name() + "+" + c2.get_name()
-            i = wt.Index(self._table, name) 
+            i = wt.Index(self._table, name)
             i.add_key_column(c1)
             i.add_key_column(c2)
             i.open("w")
@@ -361,7 +361,7 @@ class IndexIntegrityTest(WormtableTest):
             self._indexes.append(i)
         for c1, c2, c3 in itertools.permutations(cols, 3):
             name = c1.get_name() + "+" + c2.get_name() + "+" + c3.get_name()
-            i = wt.Index(self._table, name) 
+            i = wt.Index(self._table, name)
             i.add_key_column(c1)
             i.add_key_column(c2)
             i.add_key_column(c3)
@@ -379,20 +379,20 @@ class IndexIntegrityTest(WormtableTest):
             i.open("r")
             cols = i.key_columns()
             if len(cols) == 1:
-                t = [ColumnValue(c, r) for c in cols for r in self._table] 
+                t = [ColumnValue(c, r) for c in cols for r in self._table]
             else:
-                t = [tuple(ColumnValue(c, r) for c in cols) for r in self._table] 
+                t = [tuple(ColumnValue(c, r) for c in cols) for r in self._table]
             keys = [k for k in i.keys()]
-            self.assertEqual(i.min_key(), min(t)) 
-            self.assertEqual(i.max_key(), max(t)) 
+            self.assertEqual(i.min_key(), min(t))
+            self.assertEqual(i.max_key(), max(t))
             c1 = {}
             for k in t:
                 if k not in c1:
-                    c1[k] = 0 
+                    c1[k] = 0
                 c1[k] += 1
             l1 = list(i.keys())
             l2 = sorted(list(c1.keys()))
-            self.assertEqual(l1, l2) 
+            self.assertEqual(l1, l2)
             c2 = i.counter()
             for k, v in c2.items():
                 self.assertEqual(v, c1[k])
@@ -409,7 +409,7 @@ class IndexIntegrityTest(WormtableTest):
         for i in self._indexes:
             i.open("r")
             cols = i.key_columns()
-            t = [[tuple(ColumnValue(c, r) for c in cols), r] for r in self._table] 
+            t = [[tuple(ColumnValue(c, r) for c in cols), r] for r in self._table]
             t.sort(key=lambda x: x[0])
             for (k, r1), r2  in zip(t, i.cursor(read_cols)):
                 self.assertEqual(r1, r2)
@@ -438,12 +438,12 @@ class IndexIntegrityTest(WormtableTest):
                 self.assertEqual(c, stop_index - start_index)
 
             i.close()
-            
+
 
 class BinnedIndexIntegrityTest(WormtableTest):
     """
     Tests the integrity of indexes by building a small table with a
-    a variety of columns and making indexes with bins over these. 
+    a variety of columns and making indexes with bins over these.
     """
     def setUp(self):
         super(BinnedIndexIntegrityTest, self).setUp()
@@ -455,24 +455,24 @@ class BinnedIndexIntegrityTest(WormtableTest):
             if c.get_type() in [wt.WT_INT, wt.WT_UINT]:
                 name = c.get_name()
                 for j in range(1, 10):
-                    i = wt.Index(self._table, name + "_" + str(j)) 
+                    i = wt.Index(self._table, name + "_" + str(j))
                     i.add_key_column(c, j)
                     i.open("w")
                     i.build()
                     i.close()
                     self._indexes.append(i)
-            elif c.get_type() == wt.WT_FLOAT: 
+            elif c.get_type() == wt.WT_FLOAT:
                 name = c.get_name()
                 w = 0.125
-                while w < 10: 
-                    i = wt.Index(self._table, name + "_" + str(w)) 
+                while w < 10:
+                    i = wt.Index(self._table, name + "_" + str(w))
                     i.add_key_column(c, w)
                     i.open("w")
                     i.build()
                     i.close()
                     self._indexes.append(i)
                     w += 0.125
-        
+
     def test_count(self):
         """
         Tests if the counter function is operating correctly.
@@ -481,7 +481,7 @@ class BinnedIndexIntegrityTest(WormtableTest):
             i.open("r")
             c = i.key_columns()[0]
             w = i.bin_widths()[0]
-            t = [r[c.get_position()] for r in self._table] 
+            t = [r[c.get_position()] for r in self._table]
             d = histogram(t, w)
             d2 = dict(i.counter().items())
             for k, v in i.counter().items():
@@ -498,13 +498,13 @@ class MultivalueColumnTest(IndexIntegrityTest):
     def setUp(self):
         super(MultivalueColumnTest, self).setUp()
         # Add some indexes with specific properties.
-        index_cols = [["var_uint"], ["var_uint", "var_int"], 
+        index_cols = [["var_uint"], ["var_uint", "var_int"],
                 ["var_uint", "var_int", "var_char"]]
         index_cols = [[self._table.get_column(c) for c in cols]
                 for cols in index_cols]
-        for cols in index_cols: 
-            name = "multi" + "+".join(c.get_name() for c in cols) 
-            i = wt.Index(self._table, name) 
+        for cols in index_cols:
+            name = "multi" + "+".join(c.get_name() for c in cols)
+            i = wt.Index(self._table, name)
             for c in cols:
                 i.add_key_column(c)
             i.open("w")
@@ -516,8 +516,8 @@ class MultivalueColumnTest(IndexIntegrityTest):
         """
         Make a small random table with small random values.
         """
-        num_rows = num_random_test_rows 
-        max_value = 2 
+        num_rows = num_random_test_rows
+        max_value = 2
         max_len = 5
         self._table = wt.Table(self._homedir)
         t = self._table
@@ -537,7 +537,7 @@ class MultivalueColumnTest(IndexIntegrityTest):
         for j in range(num_rows):
             fu = fixed()
             vu = var()
-            fi = fixed() 
+            fi = fixed()
             vi = var()
             fc = "".join(str(u) for u in fixed())
             vc = "".join(str(u) for u in var())
@@ -551,17 +551,17 @@ class MultivalueColumnTest(IndexIntegrityTest):
 
 class StringIndexIntegrityTest(WormtableTest):
     """
-    Tests the integrity of indexes over variable length length 
+    Tests the integrity of indexes over variable length length
     columns by checking some simple cases over strings.
     """
-    
+
     def test_unique_keys(self):
         """
-        Test the simplest possible case where we have keys that 
+        Test the simplest possible case where we have keys that
         cannot be distinguished if we concatentate the values
         together.
         """
-        t = wt.Table(self._homedir) 
+        t = wt.Table(self._homedir)
         t.add_id_column(1)
         t.add_char_column("s1")
         t.add_char_column("s2")
@@ -581,13 +581,13 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertEqual(c[(b"A", b"AA")], 1)
         self.assertEqual(c[(b"AA", b"A")], 1)
         t.close()
- 
+
     def test_max_prefix(self):
         """
-        Test the simplest possible case where we must get the maximum 
+        Test the simplest possible case where we must get the maximum
         key for a given prefix.
         """
-        t = wt.Table(self._homedir) 
+        t = wt.Table(self._homedir)
         t.add_id_column(1)
         t.add_char_column("s1")
         t.add_char_column("s2")
@@ -610,15 +610,15 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertEqual(i.max_key("A"), (b"A", b"B"))
         self.assertEqual(i.max_key("AA"), (b"AA", b""))
         t.close()
-    
+
     def test_empty_prefix(self):
         """
-        Tests the simplest possible case where we have a 
+        Tests the simplest possible case where we have a
         empty string prefix.
         """
-        # TODO we need to write a more general test class to exercise this 
+        # TODO we need to write a more general test class to exercise this
         # code for min/max with prefixes more thoroughly.
-        t = wt.Table(self._homedir) 
+        t = wt.Table(self._homedir)
         t.add_id_column(1)
         t.add_char_column("s1")
         t.add_char_column("s2")
@@ -649,45 +649,45 @@ class StringIndexIntegrityTest(WormtableTest):
         i.close()
         i.open("r")
         # Max keys
-        self.assertEqual(i.max_key(None), values[2]) 
-        self.assertEqual(i.max_key(None, None), values[2]) 
-        self.assertEqual(i.max_key(None, None, b""), values[1]) 
-        self.assertEqual(i.max_key(b"", b""), values[5]) 
-        self.assertEqual(i.max_key(b"", b"", b"a"), values[3]) 
-        self.assertEqual(i.max_key(b"", b"", b"b"), values[4]) 
-        self.assertEqual(i.max_key(b"", b"", b"c"), values[5]) 
-        self.assertEqual(i.max_key(b"", b"a"), values[7]) 
-        self.assertEqual(i.max_key(b"", b"a", b"z"), values[7]) 
-        self.assertRaises(KeyError, i.max_key, "x") 
-        self.assertRaises(KeyError, i.max_key, "", "x") 
-        self.assertRaises(KeyError, i.max_key, None, "x") 
+        self.assertEqual(i.max_key(None), values[2])
+        self.assertEqual(i.max_key(None, None), values[2])
+        self.assertEqual(i.max_key(None, None, b""), values[1])
+        self.assertEqual(i.max_key(b"", b""), values[5])
+        self.assertEqual(i.max_key(b"", b"", b"a"), values[3])
+        self.assertEqual(i.max_key(b"", b"", b"b"), values[4])
+        self.assertEqual(i.max_key(b"", b"", b"c"), values[5])
+        self.assertEqual(i.max_key(b"", b"a"), values[7])
+        self.assertEqual(i.max_key(b"", b"a", b"z"), values[7])
+        self.assertRaises(KeyError, i.max_key, "x")
+        self.assertRaises(KeyError, i.max_key, "", "x")
+        self.assertRaises(KeyError, i.max_key, None, "x")
         # Min keys
-        self.assertEqual(i.min_key(None), values[0]) 
-        self.assertEqual(i.min_key(None, None), values[0]) 
-        self.assertEqual(i.min_key(None, None, b""), values[1]) 
-        self.assertEqual(i.min_key(b"", b""), values[3]) 
-        self.assertEqual(i.min_key(b"", b"", b"a"), values[3]) 
-        self.assertEqual(i.min_key(b"", b"", b"b"), values[4]) 
-        self.assertEqual(i.min_key(b"", b"", b"c"), values[5]) 
-        self.assertEqual(i.min_key(b"", b"a"), values[6]) 
-        self.assertEqual(i.min_key(b"", b"a", b"z"), values[7]) 
-        self.assertRaises(KeyError, i.min_key, "x") 
-        self.assertRaises(KeyError, i.min_key, "", "x") 
-        self.assertRaises(KeyError, i.min_key, None, "x") 
+        self.assertEqual(i.min_key(None), values[0])
+        self.assertEqual(i.min_key(None, None), values[0])
+        self.assertEqual(i.min_key(None, None, b""), values[1])
+        self.assertEqual(i.min_key(b"", b""), values[3])
+        self.assertEqual(i.min_key(b"", b"", b"a"), values[3])
+        self.assertEqual(i.min_key(b"", b"", b"b"), values[4])
+        self.assertEqual(i.min_key(b"", b"", b"c"), values[5])
+        self.assertEqual(i.min_key(b"", b"a"), values[6])
+        self.assertEqual(i.min_key(b"", b"a", b"z"), values[7])
+        self.assertRaises(KeyError, i.min_key, "x")
+        self.assertRaises(KeyError, i.min_key, "", "x")
+        self.assertRaises(KeyError, i.min_key, None, "x")
         t.close()
 
 
 def ntuples(n, m):
     """
     Generates all m-ary n-tuples using Knuth's mixed radix generation algorithm M.
-    This generates all base m numbers in numerical order, as well as generating the 
+    This generates all base m numbers in numerical order, as well as generating the
     tuples in lexicographic order.
     """
-    if n == 0: 
+    if n == 0:
         yield []
     elif m == 1:
         yield [0 for i in range(n)]
-    else: 
+    else:
         a = [0 for i in range(n + 1)]
         m0 = 2
         j = n
@@ -708,7 +708,7 @@ class IndexMinMaxTest(WormtableTest):
         self.set_values()
         self.min_value = self.values[0]
         self.max_value = self.values[-1]
-        t = wt.Table(self._homedir) 
+        t = wt.Table(self._homedir)
         self._table = t
         t.add_id_column(4)
         for j in range(self.num_columns):
@@ -733,7 +733,7 @@ class IndexMinMaxTest(WormtableTest):
         Adds a single column of the required type to the table.
         """
         self._table.add_uint_column(name, size=1, num_elements=1)
-    
+
     def set_values(self):
         """
         Sets up the range of values that we use to construct the n-tuples.
@@ -746,10 +746,10 @@ class IndexMinMaxTest(WormtableTest):
         v = tuple([self.min_value for j in range(self.num_columns)])
         self.assertEqual(i.min_key(), v)
         v = tuple([self.max_value for j in range(self.num_columns)])
-        self.assertEqual(i.max_key(), v) 
+        self.assertEqual(i.max_key(), v)
         for n in range(1, self.num_columns):
             for a in ntuples(n, len(self.values)):
-                m = self.num_columns - n 
+                m = self.num_columns - n
                 prefix = [self.values[j] for j in a]
                 v = prefix + [self.min_value for j in range(m)]
                 self.assertEqual(i.min_key(*prefix), tuple(v))
@@ -767,11 +767,11 @@ def get_int_range(element_size):
     return min_v, max_v
 
 class IntegerIndexMinMaxTest(object):
-    
+
     def add_column(self, name):
-        self._table.add_int_column(name, size=self.element_size, 
+        self._table.add_int_column(name, size=self.element_size,
                 num_elements=self.num_elements)
-     
+
     def set_values(self):
         self.num_columns = 5
         min_v, max_v = get_int_range(self.element_size)
@@ -779,75 +779,75 @@ class IntegerIndexMinMaxTest(object):
         if self.num_elements == 0:
             values = [tuple([max_v for j in range(k)]) for k in range(4)]
         elif self.num_elements == 1:
-            values = v 
+            values = v
         else:
             values = [tuple([j for k in range(self.num_elements)])
                     for j in v]
-        self.values = [None] + values 
+        self.values = [None] + values
 
 
 class Integer11IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 1
     num_elements = 1
-  
+
 class Integer21IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 1
-    
+
 class Integer31IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 3 
+    element_size = 3
     num_elements = 1
 
 class Integer41IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 4 
+    element_size = 4
     num_elements = 1
 
 class Integer51IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 5 
+    element_size = 5
     num_elements = 1
 
 class Integer12IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 1
     num_elements = 2
-  
+
 class Integer22IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 2
-    
+
 class Integer32IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 3 
+    element_size = 3
     num_elements = 2
 
 class Integer13IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 1
     num_elements = 3
-  
+
 class Integer23IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 3
-    
+
 class Integer33IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 3 
+    element_size = 3
     num_elements = 3
 
 class Integer1VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 1
-    num_elements = 0 
-  
-class Integer2VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
     num_elements = 0
-    
+
+class Integer2VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2
+    num_elements = 0
+
 class Integer3VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 3 
+    element_size = 3
     num_elements = 0
 
 class FloatIndexMinMaxTest(object):
-    
+
     def add_column(self, name):
-        self._table.add_float_column(name, size=self.element_size, 
+        self._table.add_float_column(name, size=self.element_size,
                 num_elements=self.num_elements)
-     
+
     def set_values(self):
         self.num_columns = 5
         if self.num_elements == 0:
@@ -857,62 +857,62 @@ class FloatIndexMinMaxTest(object):
         else:
             values = [tuple([j for k in range(self.num_elements)])
                     for j in range(4)]
-        self.values = [None] + values 
+        self.values = [None] + values
 
 
 class Float21IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 1
- 
+
 class Float41IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 4 
+    element_size = 4
     num_elements = 1
 
 class Float81IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 8 
+    element_size = 8
     num_elements = 1
 
 class Float22IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 2
- 
+
 class Float42IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 4 
+    element_size = 4
     num_elements = 2
 
 class Float82IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 8 
+    element_size = 8
     num_elements = 2
 
 class Float23IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 3
- 
+
 class Float43IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 4 
+    element_size = 4
     num_elements = 3
 
 class Float83IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 8 
+    element_size = 8
     num_elements = 3
 
 class Float2VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 2 
+    element_size = 2
     num_elements = 0
- 
+
 class Float4VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 4 
+    element_size = 4
     num_elements = 0
 
 class Float8VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
-    element_size = 8 
+    element_size = 8
     num_elements = 0
 
 class CharIndexMinMaxTest(object):
-    
+
     def add_column(self, name):
         self._table.add_char_column(name, num_elements=self.num_elements)
-     
+
     def set_values(self):
         self.num_columns = 5
         if self.num_elements == 0:
@@ -926,7 +926,7 @@ class CharIndexMinMaxTest(object):
 
 class Char1IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
     num_elements = 1
-  
+
 class Char2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
     num_elements = 2
 
@@ -973,7 +973,7 @@ class TableCursorTest(WormtableTest):
                 self.assertEqual(t[k], r)
                 k += 1
             self.assertEqual(k, stop)
-        
+
     def test_empty(self):
         t = self._table
         cols = ["row_id"]
@@ -996,8 +996,8 @@ class FloatTest(WormtableTest):
     max_half = (2 - 2**-10) * 2**15
     max_float = (2 - 2**-23) * 2**127
     max_double = (1 + (1 - 2**-52)) * 2**1023
-    # Minimum values 
-    min_half_normal = 2**-14 
+    # Minimum values
+    min_half_normal = 2**-14
     min_half_denormal = 2**-24
     min_float_normal = 2**-126
     min_float_denormal = 2**-149
@@ -1015,19 +1015,19 @@ class FloatTest(WormtableTest):
         t.add_float_column("single", size=4)
         t.add_float_column("double", size=8)
         t.open("w")
-        return t 
+        return t
 
     def assert_tables_equal(self, in_values, out_values):
-        t = self.create_table() 
+        t = self.create_table()
         for r in in_values:
-            t.append([None] + list(r)) 
+            t.append([None] + list(r))
         t.close()
         t.open("r")
         for r1, r2 in zip(out_values, t):
             self.assertEqual(tuple(r1), r2[1:])
             #print(r1, "->", r2)
-        t.close() 
-        
+        t.close()
+
     def test_missing_values(self):
         """
         Checks to ensure missing values are correctly handled.
@@ -1047,7 +1047,7 @@ class FloatTest(WormtableTest):
             in_values.append(x)
             x = (-j, -j, -j)
             in_values.append(x)
-        # And some easy fractions 
+        # And some easy fractions
         in_values = []
         for j in range(10):
             x = (2**-j, 2**-j, 2**-j)
@@ -1062,20 +1062,20 @@ class FloatTest(WormtableTest):
                 x.append(s * 2**j)
             in_values.append(x)
         v = [self.max_half, self.max_float, self.max_double]
-        in_values.append(v) 
-        in_values.append([-1 * x for x in v]) 
-        v = [[self.min_half_normal, self.min_float_normal, 
+        in_values.append(v)
+        in_values.append([-1 * x for x in v])
+        v = [[self.min_half_normal, self.min_float_normal,
                     self.min_double_normal],
-            [self.min_half_denormal, self.min_float_denormal, 
+            [self.min_half_denormal, self.min_float_denormal,
                     self.min_double_denormal]]
-        in_values.extend(v) 
+        in_values.extend(v)
         self.assert_tables_equal(in_values, in_values)
-    
+
     def test_infinity(self):
         """
         Checks to see if overflow values are detected correctly.
         """
-        inf = 1e1000 
+        inf = 1e1000
         values = [
             [inf, inf, inf],
             [1e6, 1e300, 1e500],
@@ -1088,19 +1088,19 @@ class FloatTest(WormtableTest):
         neg = [[-1 * v for v in x] for x in values]
         neg_inf = [[-inf for v in x] for x in values]
         self.assert_tables_equal(neg, neg_inf)
-    
+
     def test_half_infinity(self):
         inf = 1e1000
-        x = self.max_half + 16 
+        x = self.max_half + 16
         values = [x + 0.1, x + 1, x + 10, x + 100, x + 1000]
         self.assert_tables_equal([[v] for v in values],
                 [[inf, None, None] for v in values])
         self.assert_tables_equal([[-v] for v in values],
                 [[-inf, None, None] for v in values])
         values = [self.max_half + j for j in range(16)]
-        self.assert_tables_equal([(v, None, None) for v in values], 
+        self.assert_tables_equal([(v, None, None) for v in values],
                 [(self.max_half, None, None) for v in values])
-        self.assert_tables_equal([(-v, None, None) for v in values], 
+        self.assert_tables_equal([(-v, None, None) for v in values],
                 [[-self.max_half, None, None] for v in values])
         # Below this we can exactly represent values % 32.
         values = [self.max_half - j * 32 for j in range(16)]
@@ -1111,7 +1111,7 @@ class FloatTest(WormtableTest):
 
     def test_underflow(self):
         """
-        Tests to see if the values less than the minimum representable values 
+        Tests to see if the values less than the minimum representable values
         stored underflow to 0 correctly.
         """
         h = self.min_half_denormal
@@ -1132,24 +1132,24 @@ class FloatTest(WormtableTest):
 
     def test_denormal(self):
         """
-        Tests to see if denormal values are stored and retrieved correctly. 
+        Tests to see if denormal values are stored and retrieved correctly.
         """
         h = self.min_half_denormal
         f = self.min_float_denormal
         d = self.min_double_denormal
-        values = [[h * 2**j , f * 2**j, d * 2**j] for j in range(5)] 
+        values = [[h * 2**j , f * 2**j, d * 2**j] for j in range(5)]
         self.assert_tables_equal(values, values)
         values = [[-v for v in r] for r in values]
         self.assert_tables_equal(values, values)
-       
+
     def test_decimal_digits(self):
         """
-        Generates a string of decimal digits of maximum lenght for 
+        Generates a string of decimal digits of maximum lenght for
         each type and verifies that these are stored exactly.
         """
         md = [self.max_half_digits, self.max_float_digits, self.max_double_digits]
         values = []
-        t = self.create_table() 
+        t = self.create_table()
         for j in range(100):
             v = []
             for d in md:
@@ -1164,14 +1164,14 @@ class FloatTest(WormtableTest):
             u = []
             for x, d in zip(r2[1:], md):
                 s = "{0:.{1}f}".format(x, d)
-                u.append(s) 
-            self.assertEqual(r1, u) 
-        t.close() 
+                u.append(s)
+            self.assertEqual(r1, u)
+        t.close()
 
     def test_nan(self):
         """
         Test to see if NaNs inserted are recovered correctly.
-        NaN does not equal itself, so we must do things 
+        NaN does not equal itself, so we must do things
         differently.
         """
         nan = float("NaN")
@@ -1189,8 +1189,8 @@ class FloatTest(WormtableTest):
         for r in t:
             for v in r[1:]:
                 self.assertTrue(math.isnan(v))
-        t.close() 
- 
+        t.close()
+
 
     def test_compare_numpy(self):
         """
@@ -1200,28 +1200,28 @@ class FloatTest(WormtableTest):
         try:
             import numpy as np
             x = np.float16 # Old versions of numpy don't have this
-            ok = True 
+            ok = True
         except:
-            print("Numpy either not present or too old: skipping test; ", 
+            print("Numpy either not present or too old: skipping test; ",
                     end="", file=sys.stderr)
         if ok:
             self.run_numpy_test()
 
     def run_numpy_test(self):
         import numpy as np
-        inf = float("Inf") 
+        inf = float("Inf")
         values = [
             [inf, inf, inf], [-inf, -inf, -inf],
-            [0.0, 0.0, 0.0], [-0.0, -0.0, -0.0], 
+            [0.0, 0.0, 0.0], [-0.0, -0.0, -0.0],
             [self.max_half, self.max_float, self.max_double],
             [2 * self.max_half, 2 * self.max_float, 2 * self.max_double],
-            [self.min_half_normal, self.min_float_normal, 
+            [self.min_half_normal, self.min_float_normal,
                     self.min_double_normal],
-            [self.min_half_denormal, self.min_float_denormal, 
+            [self.min_half_denormal, self.min_float_denormal,
                     self.min_double_denormal],
-            [2* self.min_half_normal, 2 * self.min_float_normal, 
+            [2* self.min_half_normal, 2 * self.min_float_normal,
                     2* self.min_double_normal],
-            [2 * self.min_half_denormal, 2 * self.min_float_denormal, 
+            [2 * self.min_half_denormal, 2 * self.min_float_denormal,
                     2* self.min_double_denormal],
         ]
         for j in range(1, 128):
@@ -1230,12 +1230,12 @@ class FloatTest(WormtableTest):
             v = (x, x, x)
             values.append(v)
             values.append([-x for x in v])
-            # random numbers in (0, 1) 
+            # random numbers in (0, 1)
             x = random.random()
             v = (x, x, x)
             values.append(v)
             values.append([-x for x in v])
-            # random numbers in (0, max_half) 
+            # random numbers in (0, max_half)
             x = self.max_half * random.random()
             v = (x, x, x)
             values.append(v)

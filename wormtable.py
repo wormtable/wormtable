@@ -1,31 +1,31 @@
-# 
+#
 # Copyright (C) 2013, wormtable developers (see AUTHORS.txt).
 #
 # This file is part of wormtable.
-# 
+#
 # Wormtable is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # Wormtable is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public License
 # along with wormtable.  If not, see <http://www.gnu.org/licenses/>.
-# 
+#
 """
 Wormtable is a read-once write-many table for large scale datasets.
 
 This is the high-level module for wormtable, and provides a convenient
 interface to the low-level interface defined in _wormtable. The low
-level interface is not intended to be used directly and is subject 
+level interface is not intended to be used directly and is subject
 to change in non-backward compatible ways.
 """
 from __future__ import print_function
-from __future__ import division 
+from __future__ import division
 
 import os
 import sys
@@ -42,8 +42,8 @@ __version__ = '0.1.1'
 TABLE_METADATA_VERSION = "0.3"
 INDEX_METADATA_VERSION = "0.4"
 
-DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M 
-DEFAULT_CACHE_SIZE_STR = "16M" 
+DEFAULT_CACHE_SIZE = 16 * 2**20 # 16M
+DEFAULT_CACHE_SIZE_STR = "16M"
 
 WT_INT = _wormtable.WT_INT
 WT_UINT = _wormtable.WT_UINT
@@ -56,25 +56,25 @@ WT_VAR_1  = _wormtable.WT_VAR_1
 
 def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
-    Returns a table opened in read mode with cache size 
-    set to the specified value. This is the recommended 
+    Returns a table opened in read mode with cache size
+    set to the specified value. This is the recommended
     interface when opening tables for reading.
-   
-    See :ref:`performance-cache` for details on setting cache sizes. 
-    The cache size may be either an integer specifying the size in 
+
+    See :ref:`performance-cache` for details on setting cache sizes.
+    The cache size may be either an integer specifying the size in
     bytes or a string with the optional suffixes K, M or G.
 
     :param homedir: the filesystem path for the wormtable home directory
     :type homedir: str
     :param db_cache_size: The Berkeley DB cache size for the table.
-    :type db_cache_size: str or int. 
+    :type db_cache_size: str or int.
     """
     t = Table(homedir)
     if not t.exists():
         raise IOError("table '" + homedir + "' not found")
     t.set_db_cache_size(db_cache_size)
     t.open("r")
-    return t   
+    return t
 
 class Column(object):
     """
@@ -88,8 +88,8 @@ class Column(object):
     }
 
     def __init__(self, ll_object):
-        self.__ll_object = ll_object 
-   
+        self.__ll_object = ll_object
+
     def __str__(self):
         s = "NULL Column"
         if self.__ll_object != None:
@@ -99,10 +99,10 @@ class Column(object):
 
     def get_ll_object(self):
         """
-        Returns the low level Column object that this class is a facade for. 
+        Returns the low level Column object that this class is a facade for.
         """
         return self.__ll_object
-   
+
     def get_position(self):
         """
         Returns the position of this column in the table.
@@ -111,21 +111,21 @@ class Column(object):
 
     def get_name(self):
         """
-        Returns the name of this column. This is the unique identifier for 
+        Returns the name of this column. This is the unique identifier for
         a column.
         """
         return self.__ll_object.name.decode()
-   
+
     def get_description(self):
         """
-        Returns the description of this column. This is an optional string 
+        Returns the description of this column. This is an optional string
         describing the purpose of a column.
         """
         return self.__ll_object.description.decode()
-    
+
     def get_type(self):
         """
-        Returns the type code for this column. This is 
+        Returns the type code for this column. This is
         one of WT_INT,  WT_UINT, WT_FLOAT or  WT_CHAR.
         """
         return self.__ll_object.element_type
@@ -135,7 +135,7 @@ class Column(object):
         Returns the string representation of the type of this Column.
         """
         return self.ELEMENT_TYPE_STRING_MAP[self.__ll_object.element_type]
-    
+
     def get_element_size(self):
         """
         Returns the size of each element in the column in bytes.
@@ -144,17 +144,17 @@ class Column(object):
 
     def get_num_elements(self):
         """
-        Returns the number of elements in this column. This is either a 
-        positive integer >= 1 or WT_VAR1. If the number of elements 
+        Returns the number of elements in this column. This is either a
+        positive integer >= 1 or WT_VAR1. If the number of elements
         is WT_VAR1, the number of elements in the column is variable,
         from 0 to 255.
         """
         return self.__ll_object.num_elements
-  
+
     def format_value(self, v):
         """
         Formats the specified value from this column for printing.
-        """ 
+        """
         if v is None:
             s = "NA"
         else:
@@ -164,7 +164,7 @@ class Column(object):
             elif n == 1:
                 s = str(v)
             else:
-                s = ",".join(str(u) for u in v) 
+                s = ",".join(str(u) for u in v)
                 s = "(" + s + ")"
         return s
 
@@ -178,7 +178,7 @@ class Column(object):
         else:
             num_elements = str(self.get_num_elements())
         d = {
-            "name":self.get_name(), 
+            "name":self.get_name(),
             "description":self.get_description(),
             "element_size":str(self.get_element_size()),
             "num_elements":num_elements,
@@ -186,10 +186,10 @@ class Column(object):
         }
         return ElementTree.Element("column", d)
 
-    @classmethod 
+    @classmethod
     def parse_xml(theclass, xmlcol):
         """
-        Parses the specified XML column description and returns a new 
+        Parses the specified XML column description and returns a new
         Column instance.
         """
         reverse = {}
@@ -209,14 +209,14 @@ class Column(object):
         element_type = reverse[xmlcol.get("element_type")]
         col = _wormtable.Column(name, description, element_type, element_size,
                 num_elements)
-        return theclass(col) 
+        return theclass(col)
 
-   
+
 class Database(object):
     """
-    The superclass of database objects. Databases are located in a home 
-    directory and are backed by a two files: a database file and an 
-    xml metadata file. 
+    The superclass of database objects. Databases are located in a home
+    directory and are backed by a two files: a database file and an
+    xml metadata file.
     """
     DB_SUFFIX = ".db"
     def __init__(self, homedir, db_name):
@@ -251,16 +251,16 @@ class Database(object):
 
     def _create_ll_object(self, build):
         """
-        Returns a newly created instance of the low-level object that this 
+        Returns a newly created instance of the low-level object that this
         Database is a facade for.
         """
-        raise NotImplementedError() 
+        raise NotImplementedError()
 
     def exists(self):
         """
         Returns True if this Database exists.
         """
-        p1 = os.path.exists(self.get_metadata_path()) 
+        p1 = os.path.exists(self.get_metadata_path())
         p2 = os.path.exists(self.get_db_path())
         return p1 and p2
 
@@ -286,44 +286,44 @@ class Database(object):
         """
         Returns the path of the permanent file used to store the database.
         """
-        return os.path.join(self.get_homedir(), self.get_db_name() + 
+        return os.path.join(self.get_homedir(), self.get_db_name() +
                 self.DB_SUFFIX)
-    
+
     def get_db_build_path(self):
         """
         Returns the path of the file used to build the database.
         """
         s = "_build_{0}_{1}{2}".format(os.getpid(), self.get_db_name(),
-                self.DB_SUFFIX) 
-        return os.path.join(self.get_homedir(), s) 
+                self.DB_SUFFIX)
+        return os.path.join(self.get_homedir(), s)
 
     def get_db_file_size(self):
         """
-        Returns the size of the database file in bytes.    
+        Returns the size of the database file in bytes.
         """
         statinfo = os.stat(self.get_db_path())
-        return statinfo.st_size 
+        return statinfo.st_size
 
     def get_metadata_path(self):
         """
-        Returns the path of the file used to store metadata for the 
+        Returns the path of the file used to store metadata for the
         database.
         """
         return os.path.join(self.get_homedir(), self.get_db_name() + ".xml")
 
     def set_db_cache_size(self, db_cache_size):
         """
-        Sets the cache size to the specified value. 
-        If db_cache_size is a string, it can be suffixed with 
+        Sets the cache size to the specified value.
+        If db_cache_size is a string, it can be suffixed with
         K, M or G to specify units of Kibibytes, Mibibytes or Gibibytes.
-        
-        This must be called before a table is opened, and has no effect 
+
+        This must be called before a table is opened, and has no effect
         on a table that is already open.
-    
-        See :ref:`performance-cache` for details on setting cache sizes. 
+
+        See :ref:`performance-cache` for details on setting cache sizes.
 
         :param db_cache_size: the size of the cache
-        :type db_cache_size: str or int 
+        :type db_cache_size: str or int
         """
         if isinstance(db_cache_size, str):
             s = db_cache_size
@@ -332,15 +332,15 @@ class Database(object):
             value = s
             if s.endswith(tuple(d.keys())):
                 value = s[:-1]
-                multiplier = d[s[-1]] 
+                multiplier = d[s[-1]]
             n = int(value)
-            self.__db_cache_size = n * multiplier 
+            self.__db_cache_size = n * multiplier
         else:
             self.__db_cache_size = int(db_cache_size)
 
     def write_metadata(self, filename):
         """
-        Writes the metadata for this database to the specified file. 
+        Writes the metadata for this database to the specified file.
         """
         tree = self.get_metadata()
         root = tree.getroot()
@@ -352,14 +352,14 @@ class Database(object):
         pretty = reparsed.toprettyxml(indent="  ")
         with open(filename, "w") as f:
             f.write(pretty)
-   
+
     def read_metadata(self):
         """
-        Reads metadata for this database from the metadata file 
+        Reads metadata for this database from the metadata file
         and calls set_metadata with the result.
         """
         tree = ElementTree.parse(self.get_metadata_path())
-        self.set_metadata(tree) 
+        self.set_metadata(tree)
 
     def finalise_build(self):
         """
@@ -372,20 +372,20 @@ class Database(object):
 
     def is_open(self):
         """
-        Returns True if this database is open for reading or writing. 
+        Returns True if this database is open for reading or writing.
         """
         return self.__ll_object is not None
-   
+
     def get_open_mode(self):
         """
-        Returns the mode that this database is opened in, WT_READ or 
+        Returns the mode that this database is opened in, WT_READ or
         WT_WRITE. If the database is not open, return None.
         """
         return self.__open_mode
 
     def open(self, mode):
         """
-        Opens this table in the specified mode. Mode must be one of 
+        Opens this table in the specified mode. Mode must be one of
         'r' or 'w'.
 
         :param: mode: The mode to open the table in.
@@ -397,15 +397,15 @@ class Database(object):
         m = modes[mode]
         self.__open_mode = None
         self.__ll_object = None
-        build = False 
+        build = False
         if m == WT_WRITE:
-            build = True 
+            build = True
         else:
             self.read_metadata()
         llo = self._create_ll_object(build)
         llo.open(m)
         self.__ll_object = llo
-        self.__open_mode = m 
+        self.__open_mode = m
 
     def close(self):
         """
@@ -440,21 +440,21 @@ class Database(object):
         """
         if mode is None:
             if not self.is_open():
-                raise ValueError("Database must be opened") 
+                raise ValueError("Database must be opened")
         else:
             if self.__open_mode != mode or not self.is_open():
                 m = {WT_WRITE: "write", WT_READ: "read"}
                 s = "Database must be opened in {0} mode".format(m[mode])
                 raise ValueError(s)
-    
+
 
 
 class Table(Database):
     """
-    The main storage table class. 
+    The main storage table class.
     """
     DB_NAME = "table"
-    DATA_SUFFIX = ".dat" 
+    DATA_SUFFIX = ".dat"
     PRIMARY_KEY_NAME = "row_id"
 
     def __init__(self, homedir):
@@ -463,14 +463,14 @@ class Table(Database):
         self.__column_name_map = {}
         self.__num_rows = 0
         self.__total_row_size = 0
-        self.__min_row_size = 0 
+        self.__min_row_size = 0
         self.__max_row_size = 0
-   
+
     def get_data_path(self):
         """
-        Returns the path of the permanent data file. 
+        Returns the path of the permanent data file.
         """
-        return os.path.join(self.get_homedir(), self.get_db_name() + 
+        return os.path.join(self.get_homedir(), self.get_db_name() +
                 self.DATA_SUFFIX)
 
     def get_data_build_path(self):
@@ -478,26 +478,26 @@ class Table(Database):
         Returns the path of the file used to build the database.
         """
         s = "_build_{0}_{1}{2}".format(os.getpid(), self.get_db_name(),
-                self.DATA_SUFFIX) 
-        return os.path.join(self.get_homedir(), s) 
+                self.DATA_SUFFIX)
+        return os.path.join(self.get_homedir(), s)
 
     def get_data_file_size(self):
         """
-        Returns the size of the data file in bytes.    
+        Returns the size of the data file in bytes.
         """
         statinfo = os.stat(self.get_data_path())
-        return statinfo.st_size 
+        return statinfo.st_size
 
     def finalise_build(self):
         """
-        Finalise the build by moving the data and db files to their 
+        Finalise the build by moving the data and db files to their
         permanent values.
         """
         super(Table, self).finalise_build()
         new = self.get_data_path()
         old = self.get_data_build_path()
         os.rename(old, new)
-    
+
     def delete(self):
         """
         Deletes this table.
@@ -525,30 +525,30 @@ class Table(Database):
 
     def _create_ll_object(self, build):
         """
-        Returns a new instance of _wormtable.Table using either the build 
+        Returns a new instance of _wormtable.Table using either the build
         or permanent locations for the db and data files.
         """
         if build:
-            db_file = self.get_db_build_path().encode() 
-            data_file = self.get_data_build_path().encode() 
+            db_file = self.get_db_build_path().encode()
+            data_file = self.get_data_build_path().encode()
         else:
-            db_file = self.get_db_path().encode() 
-            data_file = self.get_data_path().encode() 
+            db_file = self.get_db_path().encode()
+            data_file = self.get_data_path().encode()
         ll_cols = [c.get_ll_object() for c in self.__columns]
-        t = _wormtable.Table(db_file, data_file, ll_cols, 
+        t = _wormtable.Table(db_file, data_file, ll_cols,
                 self.get_db_cache_size())
         return t
 
     def get_fixed_region_size(self):
         """
-        Returns the size of the fixed region in rows. This is the minimum 
-        size that a row can be; if there are no variable sized columns in 
+        Returns the size of the fixed region in rows. This is the minimum
+        size that a row can be; if there are no variable sized columns in
         the table, then this is the exact size of each row.
         """
-        return self.get_ll_object().fixed_region_size 
+        return self.get_ll_object().fixed_region_size
 
     # Helper methods for adding Columns of the various types.
-   
+
     def add_id_column(self, size=4):
         """
         Adds the ID column with the specified size in bytes.
@@ -559,7 +559,7 @@ class Table(Database):
 
     def add_uint_column(self, name, description="", size=2, num_elements=1):
         """
-        Creates a new unsigned integer column with the specified name, 
+        Creates a new unsigned integer column with the specified name,
         element size (in bytes) and number of elements. If num_elements=0
         then the column can hold a variable number of elements.
         """
@@ -567,27 +567,27 @@ class Table(Database):
 
     def add_int_column(self, name, description="", size=2, num_elements=1):
         """
-        Creates a new integer column with the specified name, 
+        Creates a new integer column with the specified name,
         element size (in bytes) and number of elements. If num_elements=0
         then the column can hold a variable number of elements.
         """
         self.add_column(name, description, WT_INT, size, num_elements)
-    
+
     def add_float_column(self, name, description="", size=4, num_elements=1):
         """
-        Creates a new float column with the specified name, 
+        Creates a new float column with the specified name,
         element size (in bytes) and number of elements. If num_elements=0
-        then the column can hold a variable number of elements. Only 4 and 
-        8 byte floats are supported by wormtable; these correspond to the 
+        then the column can hold a variable number of elements. Only 4 and
+        8 byte floats are supported by wormtable; these correspond to the
         usual float and double types.
         """
         self.add_column(name, description, WT_FLOAT, size, num_elements)
 
     def add_char_column(self, name, description="", num_elements=0):
         """
-        Creates a new character column with the specified name, description 
-        and number of elements. If num_elements=0 then the column can hold 
-        variable length strings; otherwise, it can contain strings of a fixed 
+        Creates a new character column with the specified name, description
+        and number of elements. If num_elements=0 then the column can hold
+        variable length strings; otherwise, it can contain strings of a fixed
         length only.
         """
         self.add_column(name, description, WT_CHAR, 1, num_elements)
@@ -611,7 +611,7 @@ class Table(Database):
     # Methods for accessing the columns
     def columns(self):
         """
-        Returns the list of columns in this table. 
+        Returns the list of columns in this table.
         """
         return list(self.__columns)
 
@@ -620,7 +620,7 @@ class Table(Database):
         Returns the :class:`Column` corresponding to the specified id. If this is an
         integer, we return the column at this position; if it is a string
         we return the column with the specified name.
-        
+
         :param: col_id: the column idenifier
         :type: col_id: str or int
         """
@@ -631,11 +631,11 @@ class Table(Database):
             k = self.__column_name_map[col_id]
             ret = self.__columns[k]
         return ret
-    
+
     def translate_columns(self, columns):
         """
-        Translates the specified list of column identifiers into a list 
-        of Column instances. Column identifiers may be strings, integers 
+        Translates the specified list of column identifiers into a list
+        of Column instances. Column identifiers may be strings, integers
         or Column instances.
         """
         cols = []
@@ -650,7 +650,7 @@ class Table(Database):
 
     def read_schema(self, filename):
         """
-        Reads the schema from the specified file and sets up the columns 
+        Reads the schema from the specified file and sets up the columns
         in this table accordingly.
         """
         tree = ElementTree.parse(filename)
@@ -661,7 +661,7 @@ class Table(Database):
         if version is None:
             raise ValueError("invalid xml: schema version missing")
         supported_versions = [TABLE_METADATA_VERSION]
-        if version not in supported_versions: 
+        if version not in supported_versions:
             raise ValueError("Unsupported schema version.")
         address_size = root.get("address_size")
         if address_size is None:
@@ -669,13 +669,13 @@ class Table(Database):
         if address_size != "2":
             raise ValueError("Unsupported address size.")
         self._parse_schema_xml(root)
-    
+
     def write_schema(self, filename):
         """
         Writes the schema for this table to the specified file in XML format.
         """
         root = self._generate_schema_xml()
-        s = "Edit this candidate schema to suit your needs." 
+        s = "Edit this candidate schema to suit your needs."
         comment = ElementTree.Comment(s)
         root.insert(0, comment)
         root.set("version", TABLE_METADATA_VERSION)
@@ -696,18 +696,18 @@ class Table(Database):
         for c in self.__columns:
             columns.append(c.get_xml())
         return schema
-   
+
     def _generate_stats_xml(self):
         """
         Generates the XML representing the statistics for this table.
         """
         stats = ElementTree.Element("stats")
-        l = [ 
-            ("num_rows", self.__num_rows), 
+        l = [
+            ("num_rows", self.__num_rows),
             ("max_row_size", self.__max_row_size),
             ("min_row_size", self.__min_row_size),
             ("total_row_size", self.__total_row_size)
-        ] 
+        ]
         for name, value in l:
             d = {"name":name, "value":str(value)}
             s = ElementTree.Element("stat", d)
@@ -716,7 +716,7 @@ class Table(Database):
 
     def get_metadata(self):
         """
-        Returns an ElementTree instance describing the metadata for this 
+        Returns an ElementTree instance describing the metadata for this
         Table.
         """
         d = {"version":TABLE_METADATA_VERSION}
@@ -756,16 +756,16 @@ class Table(Database):
 
     def set_metadata(self, tree):
         """
-        Sets up this Table to reflect the metadata in the specified xml 
+        Sets up this Table to reflect the metadata in the specified xml
         ElementTree.
         """
         root = tree.getroot()
-        # Be nice to people using beta version or older; this can be 
+        # Be nice to people using beta version or older; this can be
         # removed pretty soon. TODO
         if root.tag == "schema":
             raise ValueError("""
                 You are trying to read a table built with a pre-release version
-                of wormtable which is not compatible. You must rebuild this table. 
+                of wormtable which is not compatible. You must rebuild this table.
                 Sorry.""")
         if root.tag != "table":
             raise ValueError("invalid xml")
@@ -773,40 +773,40 @@ class Table(Database):
         if version is None:
             raise ValueError("invalid xml")
         supported_versions = [TABLE_METADATA_VERSION]
-        if version not in supported_versions: 
+        if version not in supported_versions:
             raise ValueError("Unsupported schema version - rebuild required.")
         schema = root.find("schema")
         self._parse_schema_xml(schema)
         stats = root.find("stats")
         self._parse_stats_xml(stats)
-             
+
 
     def append(self, row):
         """
         Appends the specified row to this table.
         """
         t = self.get_ll_object()
-        j = 0 
+        j = 0
         for v in row:
             if v is not None:
                 t.insert_elements(j, v)
             j += 1
         t.commit_row()
         self.__num_rows += 1
-    
+
     def append_encoded(self, row):
         """
         Appends the specified row to this table.
         """
         t = self.get_ll_object()
-        j = 0 
+        j = 0
         for v in row:
             if v is not None:
                 t.insert_encoded_elements(j, v)
             j += 1
         t.commit_row()
         self.__num_rows += 1
-     
+
 
     def __len__(self):
         """
@@ -818,7 +818,7 @@ class Table(Database):
             if self.__num_rows == 0:
                 self.__num_rows = self.get_ll_object().get_num_rows()
         return self.__num_rows
-    
+
     def __getitem__(self, key):
         """
         Implements the t[key] function.
@@ -835,11 +835,11 @@ class Table(Database):
                 k = n + k
             if k >= n:
                 raise IndexError("table position out of range")
-            ret = t.get_row(k)    
+            ret = t.get_row(k)
         else:
             raise TypeError("table positions must be integers")
         return ret
-  
+
     def __update_stats(self):
         """
         Updates the statistics about the underlying database.
@@ -864,35 +864,35 @@ class Table(Database):
             self.__num_rows = 0
             self.__columns = []
             self.__column_name_map = {}
-    
-    
+
+
     def cursor(self, columns, start=0, stop=None):
         """
-        Returns a cursor over the rows in this table, retrieving only 
-        the specified columns. Rows are returned as Tuple objects, with the 
-        value for each column in the same position as the corresponding 
-        column in the list of columns provided. 
+        Returns a cursor over the rows in this table, retrieving only
+        the specified columns. Rows are returned as Tuple objects, with the
+        value for each column in the same position as the corresponding
+        column in the list of columns provided.
 
-        The columns specified may be either :class:`Column` instances, integers 
+        The columns specified may be either :class:`Column` instances, integers
         or strings. If an integer is provided, the column
-        at the specified position is used and if a string is provided, the column 
+        at the specified position is used and if a string is provided, the column
         with the specified identifier is used. These may be mixed arbitrarily.
 
-        The *start* and *stop* arguments are directly analogous to the built in 
-        :func:`range` function. The cursor will iterate over all rows such that 
-        the *start* <= row_id < stop. Note that *start* is inclusive, and 
-        *stop* is exclusive. 
+        The *start* and *stop* arguments are directly analogous to the built in
+        :func:`range` function. The cursor will iterate over all rows such that
+        the *start* <= row_id < stop. Note that *start* is inclusive, and
+        *stop* is exclusive.
 
         :param columns: columns to retrieve from the table
         :type columns: sequence of column identifiers
-        :param start: the row id of the first row returned 
-        :type start: int 
-        :param stop: the row id of the last row returned, minus 1. 
-        :type stop: int 
+        :param start: the row id of the first row returned
+        :type start: int
+        :param stop: the row id of the last row returned, minus 1.
+        :type stop: int
         """
         self.verify_open(WT_READ)
         col_pos = [c.get_position() for c in self.translate_columns(columns)]
-        tri = _wormtable.TableRowIterator(self.get_ll_object(), col_pos) 
+        tri = _wormtable.TableRowIterator(self.get_ll_object(), col_pos)
         tri.set_min(start)
         if stop is not None:
             tri.set_max(stop)
@@ -900,33 +900,33 @@ class Table(Database):
 
     def indexes(self):
         """
-        Returns an interator over the names of the indexes in this table. 
+        Returns an interator over the names of the indexes in this table.
         """
         self.verify_open(WT_READ)
-        prefix = os.path.join(self.get_homedir(), Index.DB_PREFIX) 
+        prefix = os.path.join(self.get_homedir(), Index.DB_PREFIX)
         suffix = Index.DB_SUFFIX
         for g in glob.glob(prefix + "*" + suffix):
             name = g.replace(prefix, "")
             name = name.replace(suffix, "")
-            yield name 
+            yield name
 
 
     def open_index(self, index_name, db_cache_size=DEFAULT_CACHE_SIZE_STR):
         """
-        Returns an index with the specified name opened in read mode with 
+        Returns an index with the specified name opened in read mode with
         the specified db_cache_size.
-        
-        See :ref:`performance-cache` for details on setting cache sizes. 
-        The cache size may be either an integer specifying the size in 
+
+        See :ref:`performance-cache` for details on setting cache sizes.
+        The cache size may be either an integer specifying the size in
         bytes or a string with the optional suffixes K, M or G.
 
         :param index_name: the name of the index to open
         :type index_name: str
         :param db_cache_size: the size of the cache on the index
-        :type db_cache_size: str or int. 
+        :type db_cache_size: str or int.
         """
         self.verify_open(WT_READ)
-        index = Index(self, index_name) 
+        index = Index(self, index_name)
         if not index.exists():
             raise IOError("index '" + index_name + "' not found")
         index.set_db_cache_size(db_cache_size)
@@ -935,7 +935,7 @@ class Table(Database):
 
 class Index(Database):
     """
-    An index is an auxiliary table that sorts the rows according to 
+    An index is an auxiliary table that sorts the rows according to
     column values.
     """
     DB_PREFIX = "index_"
@@ -945,7 +945,7 @@ class Index(Database):
         self.__table = table
         self.__key_columns = []
         self.__bin_widths = []
-    
+
     def get_name(self):
         """
         Return the name of this index.
@@ -970,7 +970,7 @@ class Index(Database):
         Returns the list of key columns.
         """
         return list(self.__key_columns)
-    
+
     def bin_widths(self):
         """
         Returns the list of bin widths in this index.
@@ -986,21 +986,21 @@ class Index(Database):
 
     def _create_ll_object(self, build):
         """
-        Returns a new instance of _wormtable.Index using ether the build or 
+        Returns a new instance of _wormtable.Index using ether the build or
         permanent locations for the db.
-        """ 
-        filename = self.get_db_path().encode() 
+        """
+        filename = self.get_db_path().encode()
         if build:
-            filename = self.get_db_build_path().encode() 
+            filename = self.get_db_build_path().encode()
         cols = [c.get_position() for c in self.__key_columns]
-        i = _wormtable.Index(self.__table.get_ll_object(), filename, 
+        i = _wormtable.Index(self.__table.get_ll_object(), filename,
                 cols, self.get_db_cache_size())
         i.set_bin_widths(self.__bin_widths)
         return i
-    
+
     def get_metadata(self):
         """
-        Returns an ElementTree instance describing the metadata for this 
+        Returns an ElementTree instance describing the metadata for this
         Index.
         """
         d = {"version":INDEX_METADATA_VERSION}
@@ -1013,16 +1013,16 @@ class Index(Database):
             if c.get_type() == WT_INT | c.get_type() == WT_UINT:
                 w = int(w)
             d = {
-                "name":c.get_name(), 
+                "name":c.get_name(),
                 "bin_width":str(w),
             }
             element = ElementTree.Element("key_column", d)
             key_columns.append(element)
         return ElementTree.ElementTree(root)
-      
+
     def set_metadata(self, tree):
         """
-        Sets up this Index to reflect the metadata in the specified xml 
+        Sets up this Index to reflect the metadata in the specified xml
         ElementTree.
         """
         root = tree.getroot()
@@ -1048,18 +1048,18 @@ class Index(Database):
 
     def build(self, progress_callback=None, callback_rows=100):
         """
-        Builds this index. If progress_callback is not None, invoke this 
+        Builds this index. If progress_callback is not None, invoke this
         calback after every callback_rows have been processed.
         """
-        llo = self.get_ll_object() 
+        llo = self.get_ll_object()
         if progress_callback is not None:
             llo.build(progress_callback, callback_rows)
         else:
-            llo.build() 
+            llo.build()
 
     def open(self, mode):
         """
-        Opens this index in the specified mode. Mode must be one of 
+        Opens this index in the specified mode. Mode must be one of
         'r' or 'w'.
 
         :param: mode: The mode to open the index in.
@@ -1077,10 +1077,10 @@ class Index(Database):
         finally:
             self.__key_columns = []
             self.__bin_widths = []
-    
-    def keys(self): 
+
+    def keys(self):
         """
-        Returns an iterator over all the keys in this Index in sorted 
+        Returns an iterator over all the keys in this Index in sorted
         order.
         """
         self.verify_open(WT_READ)
@@ -1088,10 +1088,10 @@ class Index(Database):
         for k in dvi:
             yield self.ll_to_key(k)
 
-    
+
     def min_key(self, *k):
         """
-        Returns the smallest key greater than or equal to the specified 
+        Returns the smallest key greater than or equal to the specified
         prefix.
         """
         if len(k) == 0:
@@ -1099,59 +1099,59 @@ class Index(Database):
         else:
             key = self.key_to_ll(k)
         v = self.get_ll_object().get_min(key)
-        return self.ll_to_key(v) 
+        return self.ll_to_key(v)
 
     def max_key(self, *k):
         """
-        Returns the largest index key less than the specified prefix. 
+        Returns the largest index key less than the specified prefix.
         """
         if len(k) == 0:
             key = k
         else:
             key = self.key_to_ll(k)
         v = self.get_ll_object().get_max(key)
-        return self.ll_to_key(v) 
+        return self.ll_to_key(v)
 
     def counter(self):
         """
-        Returns an IndexCounter object for this index. This provides an efficient 
+        Returns an IndexCounter object for this index. This provides an efficient
         method of iterating over the keys in the index.
         """
         self.verify_open(WT_READ)
         return IndexCounter(self)
-   
+
 
     def cursor(self, columns, start=None, stop=None):
         """
-        Returns a cursor over the rows in the table in the order defined 
-        by this index, retrieving only the specified columns. Rows are 
-        returned as Tuple objects, with the value for each column in the same 
-        position as the corresponding column in the list of columns provided. 
+        Returns a cursor over the rows in the table in the order defined
+        by this index, retrieving only the specified columns. Rows are
+        returned as Tuple objects, with the value for each column in the same
+        position as the corresponding column in the list of columns provided.
 
-        The columns specified may be either :class:`Column` instances, integers 
+        The columns specified may be either :class:`Column` instances, integers
         or strings. If an integer is provided, the column
-        at the specified position is used and if a string is provided, the column 
+        at the specified position is used and if a string is provided, the column
         with the specified identifier is used. These may be mixed arbitrarily.
 
-        The *start* and *stop* arguments are analogous to the built in 
-        :func:`range` function. The cursor will iterate over all rows such that 
-        the *start* <= key < stop. Note that *start* is inclusive, and 
-        *stop* is exclusive. These parameters may specified values for up to 
-        n columns, for an n column index. For multiple values, a tuple must 
-        be provided; a single value of the relevant type is considered to 
+        The *start* and *stop* arguments are analogous to the built in
+        :func:`range` function. The cursor will iterate over all rows such that
+        the *start* <= key < stop. Note that *start* is inclusive, and
+        *stop* is exclusive. These parameters may specified values for up to
+        n columns, for an n column index. For multiple values, a tuple must
+        be provided; a single value of the relevant type is considered to
         be the same as a singleton tuple consisting of this value.
 
         :param columns: columns to retrieve from the table
         :type columns: sequence of column identifiers
-        :param start: the key prefix that is less than or equal to all keys 
+        :param start: the key prefix that is less than or equal to all keys
             in returned rows.
-        :param stop: the key prefix that is greater than all keys in returned 
+        :param stop: the key prefix that is greater than all keys in returned
             rows.
         """
         self.verify_open(WT_READ)
-        col_pos = [c.get_position() for c in 
+        col_pos = [c.get_position() for c in
                 self.__table.translate_columns(columns)]
-        iri = _wormtable.IndexRowIterator(self.get_ll_object(), col_pos) 
+        iri = _wormtable.IndexRowIterator(self.get_ll_object(), col_pos)
         if start is not None:
             key = self.key_to_ll(start)
             iri.set_min(key)
@@ -1163,7 +1163,7 @@ class Index(Database):
 
     def key_to_ll(self, v):
         """
-        Translates the specified tuple as a key to a tuple ready to 
+        Translates the specified tuple as a key to a tuple ready to
         for use in the low-level API.
         """
         cols = self.__key_columns
@@ -1177,9 +1177,9 @@ class Index(Database):
                 if isinstance(l[j], str):
                     l[j] = l[j].encode()
         return tuple(l)
-    
+
     def ll_to_key(self, v):
-        """ 
+        """
         Translates the specified value from the low-level key value to its
         high-level equivalent.
         """
@@ -1192,17 +1192,17 @@ class Index(Database):
 
 class IndexCounter(collections.Mapping):
     """
-    A counter for Indexes, based on the collections.Counter class. This class 
-    is a dictionary-like object that represents a mapping of the distinct 
+    A counter for Indexes, based on the collections.Counter class. This class
+    is a dictionary-like object that represents a mapping of the distinct
     keys in the index to the number of times those keys appear.
     """
     def __init__(self, index):
         self.__index = index
-    
+
     def __getitem__(self, key):
         k = self.__index.key_to_ll(key)
-        return self.__index.get_ll_object().get_num_rows(k) 
-   
+        return self.__index.get_ll_object().get_num_rows(k)
+
     def __iter__(self):
         dvi = _wormtable.IndexKeyIterator(self.__index.get_ll_object())
         for v in dvi:
@@ -1233,21 +1233,21 @@ class ProgressMonitor(object):
 
     def update(self, processed):
         """
-        Updates this progress monitor to display the specified number 
+        Updates this progress monitor to display the specified number
         of processed items.
         """
         complete = processed / self.__total
         filled = int(complete * self.__progress_width)
-        spaces = self.__progress_width - filled 
+        spaces = self.__progress_width - filled
         bar = self.__bars[self.__bar_index]
         self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
         elapsed = max(1, time.clock() - self.__start_time)
         rate = processed / elapsed
-        s = '\r[{0}{1}] {2:5.1f}% @{3:8.1E} {4}/s {5}'.format('#' * filled, 
+        s = '\r[{0}{1}] {2:5.1f}% @{3:8.1E} {4}/s {5}'.format('#' * filled,
             ' ' * spaces, complete * 100, rate, self.__units, bar)
         sys.stdout.write(s)
         sys.stdout.flush()
-         
+
     def finish(self):
         """
         Completes the progress monitor.
@@ -1256,14 +1256,14 @@ class ProgressMonitor(object):
 
 BROKEN_GZIP_MESSAGE = """
 An error occurred reading the input gzip file. This is probably due to a
-bug in recent versions of Python, resulting in an error when trying 
-to read BGZF files. See http://bugs.python.org/issue17666 
+bug in recent versions of Python, resulting in an error when trying
+to read BGZF files. See http://bugs.python.org/issue17666
 To convert this file to wormtable, you must decompress it first using gunzip.
 """
 
 class FileReader(object):
     """
-    A class for reading data files from a variety of sources and 
+    A class for reading data files from a variety of sources and
     with progress updating.
     """
     def __init__(self, in_file):
@@ -1274,7 +1274,7 @@ class FileReader(object):
                     self.__input_file = sys.stdin.buffer
                 except AttributeError:
                     # When we're testing, we replace stdin with an ordinary
-                    # file. This does not support buffer, but is also not 
+                    # file. This does not support buffer, but is also not
                     # needed so we can skip this step
                     pass
             self.__progress_monitor = None
@@ -1283,7 +1283,7 @@ class FileReader(object):
         else:
             if in_file.endswith(".gz"):
                 # Detect broken GZIP handling in 2.7/3.2 and others and abort
-                # TODO this has been fixed upstream and can be removed at 
+                # TODO this has been fixed upstream and can be removed at
                 # some point.
                 f = gzip.open(in_file, "rb")
                 try:
@@ -1291,35 +1291,35 @@ class FileReader(object):
                 except Exception as e:
                     print(BROKEN_GZIP_MESSAGE)
                     sys.exit(1)
-                f.close() 
+                f.close()
                 # Carry on as before
                 self.__input_file = gzip.open(in_file, "rb")
                 self.__progress_file = self.__input_file.fileobj
             else:
                 self.__input_file = open(in_file, "rb")
-                self.__progress_file = self.__input_file 
+                self.__progress_file = self.__input_file
             statinfo = os.stat(in_file)
-            self.__input_file_size = statinfo.st_size 
-        self.__progress_update_rows = 2**32 
+            self.__input_file_size = statinfo.st_size
+        self.__progress_update_rows = 2**32
         self.__progress_monitor = None
 
     def get_progress_update_rows(self):
         """
-        Returns the number of rows after which we should update the progress 
+        Returns the number of rows after which we should update the progress
         monitor.
         """
         return self.__progress_update_rows
 
     def set_progress_update_rows(self, update_rows):
         """
-        Sets the number of rows after which we should update progress 
+        Sets the number of rows after which we should update progress
         to the specified value.
         """
         self.__progress_update_rows = update_rows
 
     def get_input_file(self):
         """
-        Returns the File object that is the source of the information 
+        Returns the File object that is the source of the information
         in this reader.
         """
         return self.__input_file
@@ -1329,26 +1329,26 @@ class FileReader(object):
         If progress is True turn on progress monitoring for this GTF reader.
         """
         if progress:
-            self.__progress_monitor = ProgressMonitor(self.__input_file_size, 
+            self.__progress_monitor = ProgressMonitor(self.__input_file_size,
                     "bytes")
             self.__progress_monitor.update(0)
             self.__progress_update_rows = 100
             if self.__input_file_size > 2**30:
                 self.__progress_update_rows = 1000
-    
+
     def update_progress(self):
         """
-        Reads the position we are at in the underlying file and uses this to 
+        Reads the position we are at in the underlying file and uses this to
         update the progress bar, if used.
         """
         if self.__progress_monitor is not None:
-            t = self.__progress_file.tell() 
+            t = self.__progress_file.tell()
             self.__progress_monitor.update(t)
 
     def finish_progress(self):
         """
         Finishes up the progress monitor, if in use.
-        """ 
+        """
         if self.__progress_monitor is not None:
             self.update_progress()
             self.__progress_monitor.finish()
@@ -1358,7 +1358,7 @@ class FileReader(object):
         Closes any open files on this Reader.
         """
         self.__input_file.close()
-        if self.__progress_file is not None: 
+        if self.__progress_file is not None:
             self.__progress_file.close()
 
- 
+

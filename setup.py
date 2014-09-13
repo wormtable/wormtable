@@ -3,15 +3,15 @@ import sys
 from distutils.core import setup, Extension
 
 
-# Following the recommendations of PEP 396 we parse the version number 
+# Following the recommendations of PEP 396 we parse the version number
 # out of the module.
 def parse_version(module_file):
     """
     Parses the version string from the specified file.
-    
+
     This implementation is ugly, but there doesn't seem to be a good way
     to do this in general at the moment.
-    """ 
+    """
     f = open(module_file)
     s = f.read()
     f.close()
@@ -23,9 +23,9 @@ def parse_version(module_file):
 f = open("README.txt")
 wormtable_readme = f.read()
 f.close()
-wormtable_version = parse_version("wormtable.py") 
+wormtable_version = parse_version("wormtable.py")
 
-_wormtable_module = Extension('_wormtable', 
+_wormtable_module = Extension('_wormtable',
     sources = ["_wormtablemodule.c", "halffloat.c"],
     libraries = ["db"])
 
@@ -36,14 +36,14 @@ if v < (2, 7) or v == (3, 0) or v == (3, 1):
 
 setup(
     name = "wormtable",
-    version = wormtable_version, 
+    version = wormtable_version,
     description = "Write-once read-many data sets using Berkeley DB.",
     author = "Jerome Kelleher, Dan Halligan, Rob Ness",
     author_email = "jerome.kelleher@ed.ac.uk",
-    url = "http://pypi.python.org/pypi/wormtable", 
-    keywords = ["Berkeley DB", "VCF", "Variant Call Format", "Bioinformatics"], 
+    url = "http://pypi.python.org/pypi/wormtable",
+    keywords = ["Berkeley DB", "VCF", "Variant Call Format", "Bioinformatics"],
     license = "GNU LGPLv3+",
-    platforms = ["POSIX"], 
+    platforms = ["POSIX"],
     classifiers = [
         "Programming Language :: C",
         "Programming Language :: Python",
@@ -62,11 +62,11 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    requires = requirements, 
+    requires = requirements,
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
     py_modules = ['wormtable'],
     scripts = ["scripts/vcf2wt", "scripts/wtadmin", "scripts/gtf2wt"]
 )
 
-    
+
