@@ -1408,10 +1408,9 @@ Column_pack_variable_elements_address(Column *self, void *dest,
 {
     int ret = -1;
     char *v = (char *) dest;
-    /* these are currently hard coded to 2 and 1 - future versions
-     * will support general address_size and var_size */
+    /* future version will support more general address size */
     unsigned int address_size = 2;
-    unsigned int var_size = 1;
+    unsigned int var_size = self->num_elements == WT_VAR_1 ? 1 : 2;
     if (offset >= MAX_ROW_SIZE) {
         PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
@@ -1440,10 +1439,9 @@ Column_unpack_variable_elements_address(Column *self, void *src,
     char *v = (char *) src;
     uint64_t off = 0;
     uint64_t n = 0;
-    /* these are currently hard coded to 2 and 1 - future versions
-     * will support general address_size and var_size */
+    /* future version will support more general address size */
     unsigned int address_size = 2;
-    unsigned int var_size = 1;
+    unsigned int var_size = self->num_elements == WT_VAR_1 ? 1 : 2;
     off = unpack_uint(v, address_size);
     if (off == missing_uint(address_size)) {
         off = 0;
@@ -1656,8 +1654,8 @@ Column_get_fixed_region_size(Column *self)
 {
     int ret = self->element_size * self->num_elements;
     if (Column_is_variable(self)) {
-        /* two byte offset + one byte count */
-        ret = 3;
+        ret = 2; // TODO generalise for large address size.
+        ret += self->num_elements == WT_VAR_1 ? 1 : 2;
     }
     return ret;
 }
@@ -1862,7 +1860,30 @@ static PyMemberDef Column_members[] = {
     {NULL}  /* Sentinel */
 };
 
+PyDoc_STRVAR(Column_is_variable__doc__,
+"is_variable() -> bool\n\n"
+"Return True is this Column holds a variable number of elements.");
+static PyObject *
+Column_is_variable_py(Column *self)
+{
+    return PyBool_FromLong((long) Column_is_variable(self));
+}
+
+PyDoc_STRVAR(Column_get_max_num_elements__doc__,
+"get_max_num_elements() -> int\n\n"
+"Return the maximum number of elements that can be stored in this "
+"Column.");
+static PyObject *
+Column_get_max_num_elements_py(Column *self)
+{
+    return PyLong_FromLong((long) Column_get_max_num_elements(self));
+}
+
 static PyMethodDef Column_methods[] = {
+    {"is_variable", (PyCFunction) Column_is_variable_py, METH_NOARGS,
+        Column_is_variable__doc__},
+    {"get_max_num_elements", (PyCFunction) Column_get_max_num_elements_py,
+        METH_NOARGS, Column_get_max_num_elements__doc__},
     {NULL}  /* Sentinel */
 };
 
@@ -4346,6 +4367,7 @@ init_wormtable(void)
     PyModule_AddObject(module, "WormtableError", WormtableError);
 
     PyModule_AddIntConstant(module, "WT_VAR_1", WT_VAR_1);
+    PyModule_AddIntConstant(module, "WT_VAR_2", WT_VAR_2);
     PyModule_AddIntConstant(module, "WT_CHAR", WT_CHAR);
     PyModule_AddIntConstant(module, "WT_UINT", WT_UINT);
     PyModule_AddIntConstant(module, "WT_INT", WT_INT);
