@@ -35,8 +35,11 @@
 #define WT_CHAR 3
 
 #define WT_VAR_1 0
-#define MAX_NUM_ELEMENTS 254
-#define MAX_ROW_SIZE 65535
+#define WT_VAR_2 (-1)
+#define WT_VAR_1_MAX_ELEMENTS 254
+#define WT_VAR_2_MAX_ELEMENTS 65534
+#define MAX_ROW_SIZE 65536
+
 
 #define WT_MISSING_VALUE 1
 
@@ -434,6 +437,32 @@ missing_float(uint32_t k)
  * Column object
  *==========================================================
  */
+
+/*
+ * Returns true if this Column is variable length.
+ */
+static int
+Column_is_variable(Column *self)
+{
+    return self->num_elements == WT_VAR_1 || self->num_elements == WT_VAR_2;
+}
+
+/*
+ * Returns the maximum number of elements that can be stored in this Column.
+ */
+static uint32_t
+Column_get_max_num_elements(Column *self)
+{
+    uint32_t ret = self->num_elements;
+    if (Column_is_variable(self)) {
+        if (self->num_elements == WT_VAR_1) {
+            ret = WT_VAR_1_MAX_ELEMENTS;
+        } else {
+            ret = WT_VAR_2_MAX_ELEMENTS;
+        }
+    }
+    return ret;
+}
 
 /**************************************
  *
@@ -920,8 +949,8 @@ Column_parse_python_sequence(Column *self, PyObject *elements)
             goto out;
         }
         num_elements = PySequence_Fast_GET_SIZE(seq);
-        if (self->num_elements == WT_VAR_1) {
-            if (num_elements > MAX_NUM_ELEMENTS) {
+        if (Column_is_variable(self)) {
+            if (num_elements > Column_get_max_num_elements(self)) {
                 PyErr_Format(PyExc_ValueError,
                         "too many elements for column '%s'",
                         PyBytes_AsString(self->name));
@@ -958,7 +987,7 @@ Column_python_to_native_uint(Column *self, PyObject *elements)
     PyObject *v;
     int j;
     if (elements == Py_None) {
-        if (self->num_elements == WT_VAR_1) {
+        if (Column_is_variable(self)) {
             self->num_buffered_elements = 0;
         } else {
             for (j = 0; j < self->num_elements; j++) {
@@ -1027,7 +1056,7 @@ Column_python_to_native_int(Column *self, PyObject *elements)
     PyObject *v;
     int j;
     if (elements == Py_None) {
-        if (self->num_elements == WT_VAR_1) {
+        if (Column_is_variable(self)) {
             self->num_buffered_elements = 0;
         } else {
             for (j = 0; j < self->num_elements; j++) {
@@ -1083,7 +1112,7 @@ Column_python_to_native_float(Column *self, PyObject *elements)
     int j;
     conv.bits = missing_float(self->element_size);
     if (elements == Py_None) {
-        if (self->num_elements == WT_VAR_1) {
+        if (Column_is_variable(self)) {
             self->num_buffered_elements = 0;
         } else {
             for (j = 0; j < self->num_elements; j++) {
@@ -1120,7 +1149,7 @@ Column_python_to_native_char(Column *self, PyObject *elements)
     Py_ssize_t length;
 
     if (elements == Py_None) {
-        if (self->num_elements == WT_VAR_1) {
+        if (Column_is_variable(self)) {
             self->num_buffered_elements = 0;
         } else {
             memset(self->element_buffer, 0, self->num_elements);
@@ -1141,8 +1170,8 @@ Column_python_to_native_char(Column *self, PyObject *elements)
                     PyBytes_AsString(self->name));
             goto out;
         }
-        if (self->num_elements == WT_VAR_1) {
-            if (length > MAX_NUM_ELEMENTS) {
+        if (Column_is_variable(self)) {
+            if (length > Column_get_max_num_elements(self)) {
                 PyErr_Format(PyExc_ValueError,
                         "String too long for column '%s'",
                         PyBytes_AsString(self->name));
@@ -1192,8 +1221,7 @@ Column_parse_string_sequence(Column *self, char *s)
 {
     int ret = -1;
     int j, num_elements, delimiter;
-    int max_num_elements = self->num_elements == WT_VAR_1 ? MAX_NUM_ELEMENTS
-            : self->num_elements;
+    int max_num_elements = Column_get_max_num_elements(self);
     self->num_buffered_elements = 0;
     if (self->num_elements == 1) {
         self->input_elements[0] = s;
@@ -1219,7 +1247,7 @@ Column_parse_string_sequence(Column *self, char *s)
             j++;
         }
     }
-    if (self->num_elements != WT_VAR_1) {
+    if (!Column_is_variable(self)) {
         if (num_elements != self->num_elements) {
             Column_encoded_elements_parse_error(self,
                     "incorrect number of elements", s);
@@ -1346,8 +1374,8 @@ Column_string_to_native_char(Column *self, char *string)
 {
     int ret = -1;
     size_t length = strlen(string);
-    if (self->num_elements == WT_VAR_1) {
-        if (length > MAX_NUM_ELEMENTS) {
+    if (Column_is_variable(self)) {
+        if (length > Column_get_max_num_elements(self)) {
             PyErr_Format(PyExc_ValueError,
                     "String too long for column '%s'",
                     PyBytes_AsString(self->name));
@@ -1388,7 +1416,7 @@ Column_pack_variable_elements_address(Column *self, void *dest,
         PyErr_SetString(PyExc_SystemError, "Row overflow");
         goto out;
     }
-    if (num_elements > MAX_NUM_ELEMENTS) {
+    if (num_elements > Column_get_max_num_elements(self)) {
         PyErr_SetString(PyExc_SystemError, "too many elements");
         goto out;
     }
@@ -1426,7 +1454,7 @@ Column_unpack_variable_elements_address(Column *self, void *src,
             PyErr_SetString(PyExc_SystemError, "Row overflow");
             goto out;
         }
-        if (n > MAX_NUM_ELEMENTS) {
+        if (n > Column_get_max_num_elements(self)) {
             PyErr_SetString(PyExc_SystemError, "too many elements");
             goto out;
         }
@@ -1457,7 +1485,7 @@ Column_update_row(Column *self, void *row, uint32_t row_size)
         goto out;
     }
     dest = v + self->fixed_region_offset;
-    if (self->num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         bytes_added = data_size;
         if (row_size + bytes_added > MAX_ROW_SIZE) {
             PyErr_SetString(PyExc_ValueError, "Row overflow");
@@ -1495,7 +1523,7 @@ Column_extract_key(Column *self, void *key_buffer, uint32_t offset,
     uint32_t num_elements = self->num_elements;
     int not_done;
 
-    if (num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         /* count the number of elements until we hit the sentinel */
         num_elements = 0;
         not_done = 1;
@@ -1548,7 +1576,7 @@ Column_extract_elements(Column *self, void *row)
     void *src;
     uint32_t offset, num_elements;
     src = v + self->fixed_region_offset;
-    if (self->num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         if (Column_unpack_variable_elements_address(self, src, &offset,
                 &num_elements) < 0) {
             goto out;
@@ -1627,7 +1655,7 @@ static int
 Column_get_fixed_region_size(Column *self)
 {
     int ret = self->element_size * self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
+    if (Column_is_variable(self)) {
         /* two byte offset + one byte count */
         ret = 3;
     }
@@ -1792,7 +1820,7 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
     }
-    if (self->num_elements > MAX_NUM_ELEMENTS) {
+    if (self->num_elements > Column_get_max_num_elements(self)) {
         PyErr_SetString(PyExc_ValueError, "Too many elements");
         goto out;
     }
@@ -1801,8 +1829,8 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         goto out;
     }
     max_num_elements = self->num_elements;
-    if (self->num_elements == WT_VAR_1) {
-        max_num_elements = MAX_NUM_ELEMENTS;
+    if (Column_is_variable(self)) {
+        max_num_elements = Column_get_max_num_elements(self);
     }
     self->element_buffer = PyMem_Malloc(max_num_elements
             * native_element_size);
@@ -2699,9 +2727,9 @@ Index_init(Index *self, PyObject *args, PyObject *kwds)
         self->columns[j] = (uint32_t) k;
         col = self->table->columns[k];
         n = col->num_elements;
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             /* allow space for the sentinel */
-            n = MAX_NUM_ELEMENTS + 1;
+            n = Column_get_max_num_elements(col) + 1;
             /* allow space for the missing value indicator */
             self->key_buffer_size += 1;
         }
@@ -2811,7 +2839,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
             ret = wt_ret;
             goto out;
         }
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             /* insert the missing value prefix */
             *v = wt_ret == WT_MISSING_VALUE ? 0 : 1;
             v++;
@@ -2831,7 +2859,7 @@ Index_fill_key(Index *self, void *row, DBT *skey)
         }
         v += len;
         skey->size += len;
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             /* insert the sentinel */
             for (k = 0; k < col->element_size; k++) {
                 *v = 0;
@@ -2882,12 +2910,12 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
             goto out;
         }
         m = col->num_buffered_elements * col->element_size;
-        overhead = col->num_elements == WT_VAR_1 ? 1 + col->element_size: 0;
+        overhead = Column_is_variable(col) ? 1 + col->element_size: 0;
         if (key_size + m + overhead > self->key_buffer_size) {
             PyErr_Format(PyExc_SystemError, "Max key_size exceeded.");
             goto out;
         }
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             /* insert the missing value prefix */
             *key_buffer = wt_ret == WT_MISSING_VALUE? 0 : 1;
             key_buffer++;
@@ -2896,7 +2924,7 @@ Index_set_key(Index *self, PyObject *args, void *buffer)
         col->pack_elements(col, key_buffer);
         key_buffer += m;
         key_size += m;
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             /* insert the sentinel */
             for (k = 0; k < col->element_size; k++) {
                 *key_buffer = 0;
@@ -2959,7 +2987,7 @@ Index_key_to_python(Index *self, void *key_buffer, uint32_t key_size)
         missing_value = 0;
         col = self->table->columns[self->columns[j]];
         n = 0;
-        if (col->num_elements == WT_VAR_1) {
+        if (Column_is_variable(col)) {
             v = (char *) key_buffer;
             v += offset;
             missing_value = *v == 0;
@@ -4326,9 +4354,11 @@ init_wormtable(void)
     PyModule_AddIntConstant(module, "WT_READ", WT_READ);
     PyModule_AddIntConstant(module, "WT_WRITE", WT_WRITE);
 
+    PyModule_AddIntConstant(module, "WT_VAR_1_MAX_ELEMENTS",
+            WT_VAR_1_MAX_ELEMENTS);
+    PyModule_AddIntConstant(module, "WT_VAR_2_MAX_ELEMENTS",
+            WT_VAR_2_MAX_ELEMENTS);
     PyModule_AddIntConstant(module, "MAX_ROW_SIZE", MAX_ROW_SIZE);
-    PyModule_AddIntConstant(module, "MAX_NUM_ELEMENTS", MAX_NUM_ELEMENTS);
-
     /* test for minimum supported version of DB at run time */
     db_version_str = db_version(&db_major, &db_minor, NULL);
     if (db_major < 4 || (db_major == 4 && db_minor < 8)) {

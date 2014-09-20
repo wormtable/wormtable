@@ -31,7 +31,10 @@ import _wormtable
 from _wormtable import WT_READ
 from _wormtable import WT_WRITE
 from _wormtable import MAX_ROW_SIZE
-from _wormtable import WT_VAR_1 as WT_VARIABLE
+from _wormtable import WT_VAR_1 as WT_VARIABLE  # FIXME
+from _wormtable import WT_VAR_1_MAX_ELEMENTS
+from _wormtable import WT_VAR_2_MAX_ELEMENTS
+
 from _wormtable import WormtableError
 
 __column_id = 0
@@ -296,7 +299,7 @@ class TestListParsers(TestDatabase):
             self.assertRaises(ValueError, rb.insert_encoded_elements, i2, sse)
         for k in self._variable_cols:
             for l in range(1, 50):
-                s = [0 for j in range(_wormtable.MAX_NUM_ELEMENTS + l)]
+                s = [0 for j in range(WT_VAR_1_MAX_ELEMENTS + l)]
                 self.assertRaises(ValueError, rb.insert_elements, k, s)
                 ss = ",".join([str(u) for u in s])
                 sse = ss.encode()
@@ -311,7 +314,7 @@ class TestDatabaseLimits(TestDatabase):
     def get_columns(self):
         var_1_overhead = 3
         n = (_wormtable.MAX_ROW_SIZE - self._key_size) // (
-                _wormtable.MAX_NUM_ELEMENTS * 8 + var_1_overhead)
+                WT_VAR_1_MAX_ELEMENTS * 8 + var_1_overhead)
 
         columns = [get_int_column(8) for j in range(n)]
         return columns
@@ -322,7 +325,7 @@ class TestDatabaseLimits(TestDatabase):
         it should overflow whatever we do.
         """
         rb = self._row_buffer
-        v = [j for j in range(_wormtable.MAX_NUM_ELEMENTS)]
+        v = [j for j in range(WT_VAR_1_MAX_ELEMENTS)]
         n = len(self._columns)
         for k in range(1, n):
             rb.insert_elements(k, v)
@@ -389,7 +392,7 @@ class TestDatabaseInteger(TestDatabase):
                 else:
                     n = c.num_elements
                     if n == _wormtable.WT_VAR_1:
-                        n = random.randint(1, _wormtable.MAX_NUM_ELEMENTS)
+                        n = random.randint(1, WT_VAR_1_MAX_ELEMENTS)
                     v = tuple([v for l in range(n)])
                     row[k] = v
                 if j % 2 == 0:
@@ -430,9 +433,9 @@ class TestDatabaseInteger(TestDatabase):
                         n = 0
                         u = random.random()
                         if u < 0.5:
-                            n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                            n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
                         elif u < 0.75:
-                            n = _wormtable.MAX_NUM_ELEMENTS
+                            n = WT_VAR_1_MAX_ELEMENTS
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
                     row[k] = v
                 if j % 2 == 1:
@@ -687,9 +690,9 @@ class TestDatabaseFloat(TestDatabase):
                         n = 0
                         u = random.random()
                         if u < 0.5:
-                            n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                            n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
                         elif u < 0.75:
-                            n = _wormtable.MAX_NUM_ELEMENTS
+                            n = WT_VAR_1_MAX_ELEMENTS
                     row[k] = tuple([f() for l in range(n)])
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k])
@@ -760,9 +763,9 @@ class TestDatabaseChar(TestDatabase):
                     n = 0
                     u = random.random()
                     if u < 0.5:
-                        n = random.randint(0, _wormtable.MAX_NUM_ELEMENTS)
+                        n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
                     elif u < 0.75:
-                        n = _wormtable.MAX_NUM_ELEMENTS
+                        n = WT_VAR_1_MAX_ELEMENTS
                 row[k] = random_string(n).encode()
                 if j % 2 == 0:
                     rb.insert_elements(k, row[k])
@@ -782,7 +785,7 @@ class TestDatabaseCharIntegrity(TestDatabaseChar):
             c = self._columns[j]
             n = c.num_elements
             if n == _wormtable.WT_VAR_1:
-                n = _wormtable.MAX_NUM_ELEMENTS
+                n = WT_VAR_1_MAX_ELEMENTS
                 for k in [1, 2, 3, 10, 500, 1000]:
                     s = random_string(n + k).encode()
                     self.assertRaises(ValueError, rb.insert_elements, j, s)
