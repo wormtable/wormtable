@@ -116,6 +116,19 @@ def random_string(n):
     s = ''.join(random.choice(string.ascii_letters) for x in range(n))
     return s
 
+def get_random_num_elements(col):
+    """
+    Returns a random number of elements of the specified column. If the
+    column is fixed, return the number of elements. If not, return a
+    random number.
+    """
+    n = col.num_elements
+    if n == _wormtable.WT_VAR_1:
+        n = random.randint(1, _wormtable.WT_VAR_1_MAX_ELEMENTS)
+    elif n == _wormtable.WT_VAR_2:
+        n = random.randint(1, 2 * _wormtable.WT_VAR_1_MAX_ELEMENTS)
+    return n
+
 class TestModule(unittest.TestCase):
     """
     Runs top level module tests.
@@ -271,11 +284,14 @@ class TestListParsers(TestDatabase):
             self._float_columns[j] = k
             cols.append(get_float_column(4, j))
             k += 1
-        self._variable_cols = [k]
-        cols.append(get_int_column(1, WT_VAR_1))
-        k += 1
-        self._variable_cols.append(k)
-        cols.append(get_float_column(4, WT_VAR_1))
+        self._variable_cols = {}
+        for s in [WT_VAR_1, WT_VAR_2]:
+            cols.append(get_int_column(1, s))
+            self._variable_cols[k] = cols[-1]
+            k += 1
+            cols.append(get_float_column(4, s))
+            self._variable_cols[k] = cols[-1]
+            k += 1
         return cols
 
     def test_malformed_python_lists(self):
@@ -298,9 +314,9 @@ class TestListParsers(TestDatabase):
             sse = ss.encode()
             self.assertRaises(ValueError, rb.insert_encoded_elements, f2, sse)
             self.assertRaises(ValueError, rb.insert_encoded_elements, i2, sse)
-        for k in self._variable_cols:
+        for k, col in self._variable_cols.items():
             for l in range(1, 50):
-                s = [0 for j in range(WT_VAR_1_MAX_ELEMENTS + l)]
+                s = [0 for j in range(col.get_max_num_elements() + l)]
                 self.assertRaises(ValueError, rb.insert_elements, k, s)
                 ss = ",".join([str(u) for u in s])
                 sse = ss.encode()
@@ -344,7 +360,7 @@ class TestDatabaseLimits(TestDatabase):
         self.assertRaises(ValueError, get_float_column, -100, 1)
 
         # Test negative num_elements
-        self.assertRaises(ValueError, get_int_column, 1, -1)
+        self.assertRaises(ValueError, get_int_column, 1, -2)
         self.assertRaises(ValueError, get_float_column, 1, -100)
 
 class TestDatabaseInteger(TestDatabase):
@@ -353,13 +369,14 @@ class TestDatabaseInteger(TestDatabase):
     to ensure they are retreived correctly.
     """
     def get_columns(self):
-        q = WT_VAR_1
-        columns = [get_int_column(j, q) for j in range(1, 9)] \
+        columns = [get_int_column(j, WT_VAR_1) for j in range(1, 9)] \
+            + [get_int_column(j, WT_VAR_2) for j in range(1, 9)] \
             + [get_int_column(j, 1) for j in range(1, 9)] \
             + [get_int_column(j, 2) for j in range(1, 9)] \
             + [get_int_column(j, 3) for j in range(1, 9)] \
             + [get_int_column(j, 4) for j in range(1, 9)] \
-            + [get_uint_column(j, q) for j in range(1, 9)] \
+            + [get_uint_column(j, WT_VAR_1) for j in range(1, 9)] \
+            + [get_uint_column(j, WT_VAR_2) for j in range(1, 9)] \
             + [get_uint_column(j, 1) for j in range(1, 9)] \
             + [get_uint_column(j, 2) for j in range(1, 9)] \
             + [get_uint_column(j, 3) for j in range(1, 9)] \
@@ -392,8 +409,8 @@ class TestDatabaseInteger(TestDatabase):
                     row[k] = v
                 else:
                     n = c.num_elements
-                    if n == WT_VAR_1:
-                        n = random.randint(1, WT_VAR_1_MAX_ELEMENTS)
+                    if c.is_variable():
+                        n = get_random_num_elements(c)
                     v = tuple([v for l in range(n)])
                     row[k] = v
                 if j % 2 == 0:
@@ -430,11 +447,10 @@ class TestDatabaseInteger(TestDatabase):
                     row[k] = random.randint(min_v, max_v)
                 else:
                     n = c.num_elements
-                    if n == WT_VAR_1:
-                        n = 0
+                    if c.is_variable():
                         u = random.random()
                         if u < 0.5:
-                            n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
+                            n = get_random_num_elements(c)
                         elif u < 0.75:
                             n = WT_VAR_1_MAX_ELEMENTS
                     v = tuple([random.randint(min_v, max_v) for l in range(n)])
@@ -460,7 +476,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_bad_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == WT_VAR_1:
+        if column.is_variable():
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -472,7 +488,7 @@ class TestDatabaseIntegerLimits(TestDatabaseInteger):
     def insert_good_value(self, column, value):
         rb = self._row_buffer
         v = value
-        if column.num_elements == WT_VAR_1:
+        if column.is_variable():
             v = [value]
         elif column.num_elements != 1:
             v = [value for j in range(column.num_elements)]
@@ -642,8 +658,10 @@ class TestDatabaseFloat(TestDatabase):
     """
     def get_columns(self):
         q = WT_VAR_1
+        r = WT_VAR_2
         columns = [
                 get_float_column(2, q), get_float_column(4, q), get_float_column(8, q),
+                get_float_column(2, r), get_float_column(4, r), get_float_column(8, r),
                 get_float_column(2, 1), get_float_column(4, 1), get_float_column(8, 1),
                 get_float_column(2, 2), get_float_column(4, 2), get_float_column(8, 2),
                 get_float_column(2, 3), get_float_column(4, 3), get_float_column(8, 3),
@@ -687,11 +705,11 @@ class TestDatabaseFloat(TestDatabase):
                     row[k] = f()
                 else:
                     n = c.num_elements
-                    if n == WT_VAR_1:
+                    if c.is_variable():
                         n = 0
                         u = random.random()
                         if u < 0.5:
-                            n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
+                            n = get_random_num_elements(c)
                         elif u < 0.75:
                             n = WT_VAR_1_MAX_ELEMENTS
                     row[k] = tuple([f() for l in range(n)])
@@ -741,6 +759,9 @@ class TestDatabaseChar(TestDatabase):
         columns.append(get_char_column(WT_VAR_1))
         columns.append(get_char_column(WT_VAR_1))
         columns.append(get_char_column(WT_VAR_1))
+        columns.append(get_char_column(WT_VAR_2))
+        columns.append(get_char_column(WT_VAR_2))
+        columns.append(get_char_column(WT_VAR_2))
         random.shuffle(columns)
         return columns
 
@@ -760,11 +781,11 @@ class TestDatabaseChar(TestDatabase):
             for k in range(1, self.num_columns):
                 c = self._columns[k]
                 n = c.num_elements
-                if n == WT_VAR_1:
+                if c.is_variable():
                     n = 0
                     u = random.random()
                     if u < 0.5:
-                        n = random.randint(0, WT_VAR_1_MAX_ELEMENTS)
+                        n = get_random_num_elements(c)
                     elif u < 0.75:
                         n = WT_VAR_1_MAX_ELEMENTS
                 row[k] = random_string(n).encode()
@@ -777,25 +798,18 @@ class TestDatabaseChar(TestDatabase):
 
 class TestDatabaseCharIntegrity(TestDatabaseChar):
 
-    def test_illegal_length_strings(self):
+    def test_illegal_long_strings(self):
         """
-        Test to ensure that long and short strings are trapped correctly.
+        Test to ensure that long strings are trapped correctly.
         """
         rb = self._row_buffer
         for j in range(1, len(self._columns)):
             c = self._columns[j]
-            n = c.num_elements
-            if n == WT_VAR_1:
-                n = WT_VAR_1_MAX_ELEMENTS
-                for k in [1, 2, 3, 10, 500, 1000]:
-                    s = random_string(n + k).encode()
-                    self.assertRaises(ValueError, rb.insert_elements, j, s)
-                    self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
-            else:
-                for k in [0, n - 1, n + 1, n + 2, n + 100]:
-                    s = b"x" * k
-                    self.assertRaises(ValueError, rb.insert_elements, j, s)
-                    self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
+            n = c.get_max_num_elements()
+            for k in [1, 2, 3, 10, 500, 1000]:
+                s = random_string(n + k).encode()
+                self.assertRaises(ValueError, rb.insert_elements, j, s)
+                self.assertRaises(ValueError, rb.insert_encoded_elements, j, s)
 
 
     def test_variable_char_retrieval(self):
@@ -1185,7 +1199,7 @@ class TestMissingValues(object):
         n = 10
         for j in range(n):
             for k, c in enumerate(self._columns):
-                if c.num_elements == WT_VAR_1:
+                if c.is_variable():
                     self._row_buffer.insert_elements(k, ev)
             self._row_buffer.commit_row()
         self.open_reading()
@@ -1193,7 +1207,7 @@ class TestMissingValues(object):
             r = self._database.get_row(j)
             for k, c in enumerate(self._columns):
                 v = None if k > 0 else j
-                if c.num_elements == WT_VAR_1:
+                if c.is_variable():
                     v = ev
                 self.assertEqual(r[k], v)
 

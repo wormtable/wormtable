@@ -52,7 +52,8 @@ WT_CHAR = _wormtable.WT_CHAR
 
 WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
-WT_VAR_1  = _wormtable.WT_VAR_1
+WT_VAR_1 = _wormtable.WT_VAR_1
+WT_VAR_2 = _wormtable.WT_VAR_2
 
 def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
@@ -175,6 +176,8 @@ class Column(object):
         n = self.get_num_elements()
         if n == WT_VAR_1:
             num_elements = "var(1)"
+        elif n == WT_VAR_2:
+            num_elements = "var(2)"
         else:
             num_elements = str(self.get_num_elements())
         d = {
@@ -204,6 +207,8 @@ class Column(object):
         s = xmlcol.get("num_elements")
         if s == "var(1)":
             num_elements = WT_VAR_1
+        elif s == "var(2)":
+            num_elements = WT_VAR_2
         else:
             num_elements = int(s)
         element_type = reverse[xmlcol.get("element_type")]

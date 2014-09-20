@@ -81,6 +81,7 @@ class WormtableTest(unittest.TestCase):
         t.add_float_column("float", size=4)
         t.add_char_column("char", num_elements=3)
         t.add_uint_column("uintv", num_elements=wt.WT_VAR_1)
+        t.add_float_column("floatv", size=2, num_elements=wt.WT_VAR_2)
         t.open("w")
         def g():
             return random.random() < 0.25
@@ -91,8 +92,10 @@ class WormtableTest(unittest.TestCase):
             s = str(random.randint(0, max_value)).zfill(3)
             c = None if g() else s.encode()
             n = random.randint(0, 5)
-            v = [0 for j in range(n)]
-            t.append([None, u, i, f, c, v])
+            vi = [0 for j in range(n)]
+            n = random.randint(0, 1024)
+            vf = [0 for j in range(n)]
+            t.append([None, u, i, f, c, vi, vf])
             if random.random() < 0.33:
                 t.append([])
         t.close()
@@ -242,6 +245,10 @@ class TableBuildTest(WormtableTest):
         t.add_int_column("i_v", num_elements=wt.WT_VAR_1)
         t.add_float_column("f_v", num_elements=wt.WT_VAR_1)
         t.add_char_column("c_v", num_elements=wt.WT_VAR_1)
+        t.add_uint_column("u_v2", num_elements=wt.WT_VAR_2)
+        t.add_int_column("i_v2", num_elements=wt.WT_VAR_2)
+        t.add_float_column("f_v2", num_elements=wt.WT_VAR_2)
+        t.add_char_column("c_v2", num_elements=wt.WT_VAR_2)
         t.open("w")
         t.append([])
         t.close()
@@ -498,8 +505,8 @@ class MultivalueColumnTest(IndexIntegrityTest):
     def setUp(self):
         super(MultivalueColumnTest, self).setUp()
         # Add some indexes with specific properties.
-        index_cols = [["var_uint"], ["var_uint", "var_int"],
-                ["var_uint", "var_int", "var_char"]]
+        index_cols = [["var1_uint"], ["var1_uint", "var1_int"],
+                ["var1_uint", "var1_int", "var1_char"]]
         index_cols = [[self._table.get_column(c) for c in cols]
                 for cols in index_cols]
         for cols in index_cols:
@@ -523,11 +530,14 @@ class MultivalueColumnTest(IndexIntegrityTest):
         t = self._table
         t.add_id_column(4)
         t.add_uint_column("fixed_uint", num_elements=max_len)
-        t.add_uint_column("var_uint", num_elements=wt.WT_VAR_1)
+        t.add_uint_column("var1_uint", num_elements=wt.WT_VAR_1)
+        t.add_uint_column("var2_uint", num_elements=wt.WT_VAR_2)
         t.add_int_column("fixed_int", num_elements=max_len)
-        t.add_int_column("var_int", num_elements=wt.WT_VAR_1)
+        t.add_int_column("var1_int", num_elements=wt.WT_VAR_1)
+        t.add_int_column("var2_int", num_elements=wt.WT_VAR_2)
         t.add_char_column("fixed_char", num_elements=max_len)
-        t.add_char_column("var_char", num_elements=wt.WT_VAR_1)
+        t.add_char_column("var1_char", num_elements=wt.WT_VAR_1)
+        t.add_char_column("var2_char", num_elements=wt.WT_VAR_2)
         t.open("w")
         def fixed():
             return [random.randint(0, max_value) for j in range(max_len)]
@@ -541,7 +551,8 @@ class MultivalueColumnTest(IndexIntegrityTest):
             vi = var()
             fc = "".join(str(u) for u in fixed())
             vc = "".join(str(u) for u in var())
-            t.append([None, fu, vu, fi, vi, fc.encode(), vc.encode()])
+            t.append([None, fu, vu, vu, fi, vi, vi, fc.encode(), vc.encode(),
+                vc.encode()])
             if random.random() < 0.33:
                 t.append([])
         t.close()
@@ -564,7 +575,7 @@ class StringIndexIntegrityTest(WormtableTest):
         t = wt.Table(self._homedir)
         t.add_id_column(1)
         t.add_char_column("s1")
-        t.add_char_column("s2")
+        t.add_char_column("s2", num_elements=wt.WT_VAR_2)
         t.open("w")
         t.append([None, b"A", b"AA"])
         t.append([None, b"AA", b"A"])
@@ -776,7 +787,7 @@ class IntegerIndexMinMaxTest(object):
         self.num_columns = 5
         min_v, max_v = get_int_range(self.element_size)
         v = [min_v, min_v + 1, max_v - 1, max_v]
-        if self.num_elements == 0:
+        if self.num_elements in [wt.WT_VAR_1, wt.WT_VAR_2]:
             values = [tuple([max_v for j in range(k)]) for k in range(4)]
         elif self.num_elements == 1:
             values = v
@@ -830,17 +841,30 @@ class Integer33IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 3
     num_elements = 3
 
-class Integer1VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+class Integer1Var1IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 1
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
 
-class Integer2VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+class Integer2Var1IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 2
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
 
-class Integer3VarIndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+class Integer3Var1IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
     element_size = 3
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
+
+class Integer1Var2IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 1
+    num_elements = wt.WT_VAR_2
+
+class Integer2Var2IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2
+    num_elements = wt.WT_VAR_2
+
+class Integer3Var2IndexMinMaxTest(IntegerIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 3
+    num_elements = wt.WT_VAR_2
+
 
 class FloatIndexMinMaxTest(object):
 
@@ -850,7 +874,7 @@ class FloatIndexMinMaxTest(object):
 
     def set_values(self):
         self.num_columns = 5
-        if self.num_elements == 0:
+        if self.num_elements in [wt.WT_VAR_1, wt.WT_VAR_2]:
             values = [tuple([0.25 for j in range(k)]) for k in range(4)]
         elif self.num_elements == 1:
             values = list(range(4))
@@ -896,17 +920,30 @@ class Float83IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
     element_size = 8
     num_elements = 3
 
-class Float2VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+class Float2Var1IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
     element_size = 2
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
 
-class Float4VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+class Float41Var1IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
     element_size = 4
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
 
-class Float8VarIndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+class Float8Var1IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
     element_size = 8
-    num_elements = 0
+    num_elements = wt.WT_VAR_1
+
+class Float2Var2IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 2
+    num_elements = wt.WT_VAR_2
+
+class Float42Var2IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 4
+    num_elements = wt.WT_VAR_2
+
+class Float8Var2IndexMinMaxTest(FloatIndexMinMaxTest, IndexMinMaxTest):
+    element_size = 8
+    num_elements = wt.WT_VAR_2
+
 
 class CharIndexMinMaxTest(object):
 
@@ -915,7 +952,7 @@ class CharIndexMinMaxTest(object):
 
     def set_values(self):
         self.num_columns = 5
-        if self.num_elements == 0:
+        if self.num_elements in [wt.WT_VAR_1, wt.WT_VAR_2]:
             values = ["1" * k for k in range(4)]
         elif self.num_elements == 1:
             values = ["{0}".format(j) for j in range(4)]
@@ -933,9 +970,11 @@ class Char2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
 class Char2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
     num_elements = 3
 
-class CharVarIndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
-    num_elements = 0
+class CharVar1IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = wt.WT_VAR_1
 
+class CharVar2IndexMinMaxTest(CharIndexMinMaxTest, IndexMinMaxTest):
+    num_elements = wt.WT_VAR_2
 
 class TableCursorTest(WormtableTest):
     """

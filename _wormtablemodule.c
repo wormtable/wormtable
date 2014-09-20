@@ -1818,17 +1818,16 @@ Column_init(Column *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Unknown element type");
         goto out;
     }
-    if (self->num_elements > Column_get_max_num_elements(self)) {
-        PyErr_SetString(PyExc_ValueError, "Too many elements");
-        goto out;
-    }
-    if (self->num_elements < 0) {
-        PyErr_SetString(PyExc_ValueError, "negative num elements");
-        goto out;
-    }
     max_num_elements = self->num_elements;
     if (Column_is_variable(self)) {
         max_num_elements = Column_get_max_num_elements(self);
+    } else if (self->num_elements > Column_get_max_num_elements(self)) {
+        PyErr_SetString(PyExc_ValueError, "Too many elements");
+        goto out;
+    }
+    if (self->num_elements < WT_VAR_2) { /* VAR_2 = -1 */
+        PyErr_SetString(PyExc_ValueError, "negative num elements");
+        goto out;
     }
     self->element_buffer = PyMem_Malloc(max_num_elements
             * native_element_size);
