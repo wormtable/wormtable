@@ -71,7 +71,9 @@ def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
     t = Table(homedir)
     if not t.exists():
-        raise IOError("table '" + homedir + "' not found")
+        msg = "Wormtable home directory '{0}' not found or not in "\
+              "wormtable format.".format(homedir)
+        raise IOError(msg)
     t.set_db_cache_size(db_cache_size)
     t.open("r")
     return t
