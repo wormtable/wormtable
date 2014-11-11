@@ -39,11 +39,11 @@
 #define WT_VAR_1_MAX_ELEMENTS 254
 #define WT_VAR_2_MAX_ELEMENTS 65534
 #define MAX_ROW_SIZE 65536
-
-
 #define WT_MISSING_VALUE 1
-
 #define OFFSET_LEN_RECORD_SIZE 10
+
+/* This is the default defined by the linux fopen man pages. */
+#define WT_DB_FILE_PERMS 0666
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for wormtable"
@@ -2217,7 +2217,8 @@ Table_open(Table* self, PyObject *args)
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);
-    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags,
+            WT_DB_FILE_PERMS);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         self->db->close(self->db, 0);
@@ -3461,7 +3462,8 @@ Index_open(Index* self, PyObject *args)
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);
-    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags,
+            WT_DB_FILE_PERMS);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         self->db->close(self->db, 0);

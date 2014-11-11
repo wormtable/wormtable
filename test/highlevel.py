@@ -25,11 +25,11 @@ import wormtable as wt
 import os
 import sys
 import math
-import unittest
-import tempfile
+import random
 import shutil
 import os.path
-import random
+import unittest
+import tempfile
 import itertools
 
 from xml.etree import ElementTree
@@ -256,6 +256,7 @@ class TableBuildTest(WormtableTest):
 
 
 
+
 class IndexBuildTest(WormtableTest):
     """
     Tests for the build process in indexes.
@@ -294,6 +295,25 @@ class IndexBuildTest(WormtableTest):
         col = [r[1] for r in self._table]
         self.assertEqual(keys, col)
         i.close()
+
+    def test_permissions(self):
+        """
+        Tests if the permissions on the DB and XML files are equal.
+        """
+        t = self._table
+        i = wt.Index(t, "index")
+        i.add_key_column(t.get_column(1))
+        i.open("w")
+        i.build()
+        i.close()
+        for w in t, i:
+            # ensure the permissions are the same.
+            m1 = os.stat(w.get_metadata_path()).st_mode
+            m2 = os.stat(w.get_db_path()).st_mode
+            self.assertEqual(m1, m2)
+        m3 = os.stat(t.get_data_path()).st_mode
+        self.assertEqual(m1, m3)
+
 
 class ColumnValue(object):
     """
