@@ -1,3 +1,7 @@
+v0.1.2, 2014.11
+
+    * Fixed file permission bug and confusing error message.
+
 v0.1.1, 2014.08
 
     * Fixed index cache size bug in wtadmin.

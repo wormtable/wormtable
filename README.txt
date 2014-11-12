@@ -244,10 +244,3 @@ Solaris 11.1            SPARC           2.6.8           gcc 4.5.2
 Solaris 11.1            SPARC           2.6.8           Sun C 5.12
 Scientific Linux 6.2    x86-64          2.6.6           icc 12.0.0
 ====================    ========        ======          ===========
-
-************
-Build Status
-************
-
-.. image:: https://travis-ci.org/wormtable/wormtable.svg?branch=master
-   :target: https://travis-ci.org/wormtable/wormtable
