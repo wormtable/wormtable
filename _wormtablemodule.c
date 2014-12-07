@@ -2041,6 +2041,10 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     Py_INCREF(self->data_filename);
     self->num_columns = PyList_GET_SIZE(columns);
     self->columns = PyMem_Malloc(self->num_columns * sizeof(Column *));
+    if (self->columns == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     for (j = 0; j < self->num_columns; j++) {
         col = (Column *) PyList_GET_ITEM(columns, j);
         Py_INCREF(col);
