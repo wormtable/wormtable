@@ -452,11 +452,14 @@ class IndexIntegrityTest(WormtableTest):
                 if len(cols) == 1:
                     start_key = start_key[0]
                     stop_key = stop_key[0]
-                for r1, r2 in zip(i.cursor(read_cols, start_key, stop_key), l):
+                cursor = i.cursor(read_cols, start_key, stop_key)
+                for r1, r2 in zip(cursor, l):
                     self.assertEqual(r1, r2)
                     c += 1
                 self.assertEqual(c, stop_index - start_index)
-
+                # Verify that the cursor continues to raise StopIteration
+                # after we're done.
+                self.assertRaises(StopIteration, next, cursor)
             i.close()
 
 
@@ -1005,6 +1008,12 @@ class TableCursorTest(WormtableTest):
         self.assertEqual(v, [])
         v = [r for r in t.cursor(cols, start=2 * len(t), stop=3 * len(t))]
         self.assertEqual(v, [])
+
+    def test_protocol(self):
+        cursor = self._table.cursor(["row_id"])
+        for r in cursor:
+            pass
+        self.assertRaises(StopIteration, next, cursor)
 
 
 class FloatTest(WormtableTest):
