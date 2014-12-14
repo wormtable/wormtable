@@ -117,6 +117,7 @@ typedef struct {
     PyObject_HEAD
     Index *index;
     DBC *cursor;
+    int completed;
     uint32_t *read_columns;
     uint32_t num_read_columns;
     void *min_key;
@@ -130,6 +131,7 @@ typedef struct {
     PyObject_HEAD
     Table *table;
     DBC *cursor;
+    int completed;
     uint32_t *read_columns;
     uint32_t num_read_columns;
     void *min_key;
@@ -3607,6 +3609,8 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
     PyObject *columns = NULL;
     Table *table = NULL;
     Column *id_col = NULL;
+
+    self->completed = 0;
     self->read_columns = NULL;
     self->table = NULL;
     self->min_key = NULL;
@@ -3655,7 +3659,6 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
     }
     ret = 0;
 out:
-
     return ret;
 }
 
@@ -3667,7 +3670,7 @@ static PyMemberDef TableRowIterator_members[] = {
 
 
 static PyObject *
-TableRowIterator_next(TableRowIterator *self)
+TableRowIterator_next_iter(TableRowIterator *self)
 {
     PyObject *ret = NULL;
     PyObject *t = NULL;
@@ -3742,11 +3745,21 @@ TableRowIterator_next(TableRowIterator *self)
         /* Iteration is finished - free the cursor */
         self->cursor->close(self->cursor);
         self->cursor = NULL;
+        self->completed = 1;
     }
 out:
     return ret;
 }
 
+static PyObject *
+TableRowIterator_next(TableRowIterator *self)
+{
+    PyObject *ret = NULL;
+    if (!self->completed) {
+        ret = TableRowIterator_next_iter(self);
+    }
+    return ret;
+}
 
 static PyObject *
 TableRowIterator_set_min(TableRowIterator *self, PyObject *args)
@@ -3896,6 +3909,8 @@ IndexRowIterator_init(IndexRowIterator *self, PyObject *args, PyObject *kwds)
     PyObject *v = NULL;
     PyObject *columns = NULL;
     Index *index = NULL;
+
+    self->completed = 0;
     self->read_columns = NULL;
     self->index = NULL;
     self->cursor = NULL;
@@ -3955,7 +3970,7 @@ static PyMemberDef IndexRowIterator_members[] = {
 
 
 static PyObject *
-IndexRowIterator_next(IndexRowIterator *self)
+IndexRowIterator_next_iter(IndexRowIterator *self)
 {
     PyObject *ret = NULL;
     PyObject *t = NULL;
@@ -4039,10 +4054,22 @@ IndexRowIterator_next(IndexRowIterator *self)
         /* Iteration is finished - free the cursor */
         self->cursor->close(self->cursor);
         self->cursor = NULL;
+        self->completed = 1;
     }
 out:
     return ret;
 }
+
+static PyObject *
+IndexRowIterator_next(IndexRowIterator *self)
+{
+    PyObject *ret = NULL;
+    if (!self->completed) {
+        ret = IndexRowIterator_next_iter(self);
+    }
+    return ret;
+}
+
 
 
 static PyObject *
