@@ -54,6 +54,8 @@ WT_READ = _wormtable.WT_READ
 WT_WRITE = _wormtable.WT_WRITE
 WT_VAR_1  = _wormtable.WT_VAR_1
 
+KEY_UNSET = "KEY_UNSET"
+
 def open_table(homedir, db_cache_size=DEFAULT_CACHE_SIZE_STR):
     """
     Returns a table opened in read mode with cache size
@@ -1123,7 +1125,7 @@ class Index(Database):
         return IndexCounter(self)
 
 
-    def cursor(self, columns, start=None, stop=None):
+    def cursor(self, columns, start=KEY_UNSET, stop=KEY_UNSET):
         """
         Returns a cursor over the rows in the table in the order defined
         by this index, retrieving only the specified columns. Rows are
@@ -1154,10 +1156,12 @@ class Index(Database):
         col_pos = [c.get_position() for c in
                 self.__table.translate_columns(columns)]
         iri = _wormtable.IndexRowIterator(self.get_ll_object(), col_pos)
-        if start is not None:
+        # We use the KEY_UNSET protocol here because None is actually a valid
+        # key when we have a single column index
+        if start != KEY_UNSET:
             key = self.key_to_ll(start)
             iri.set_min(key)
-        if stop is not None:
+        if stop != KEY_UNSET:
             key = self.key_to_ll(stop)
             iri.set_max(key)
         return iri

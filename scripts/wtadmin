@@ -316,8 +316,12 @@ class DumpRunner(ProgramRunner):
             self._index.open("r")
             if self._start is not None:
                 self._start = self.parse_index_key(self._start)
+            else:
+                self._start = wt.KEY_UNSET
             if self._stop is not None:
                 self._stop = self.parse_index_key(self._stop)
+            else:
+                self._stop = wt.KEY_UNSET
         else:
             if self._start is not None:
                 self._start = [int(self._start)]

@@ -290,12 +290,12 @@ class WtadminTest(UtilityTest):
                 for u, v in zip(l, r):
                     self.assertEqual(u.encode(), v)
 
-    def verify_dump(self, index, start=None, stop=None):
+    def verify_dump(self, index, start=wt.KEY_UNSET, stop=wt.KEY_UNSET):
         cols = [col.get_name() for col in index.key_columns()]
         args = cols + ["--index=" + index.get_name()]
-        if start is not None:
+        if start != wt.KEY_UNSET:
             args += ["--start=" + start.decode()]
-        if stop is not None:
+        if stop != wt.KEY_UNSET:
             args += ["--stop=" + stop.decode()]
         s = self.run_dump(args)
         n1 = 0

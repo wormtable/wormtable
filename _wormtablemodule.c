@@ -4071,7 +4071,6 @@ IndexRowIterator_next(IndexRowIterator *self)
 }
 
 
-
 static PyObject *
 IndexRowIterator_set_min(IndexRowIterator *self, PyObject *args)
 {

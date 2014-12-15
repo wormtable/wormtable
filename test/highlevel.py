@@ -448,15 +448,17 @@ class IndexIntegrityTest(WormtableTest):
                 stop_key = keys[k]
                 stop_index = key_rows.index(stop_key)
                 l = [r for k, r in t[start_index:stop_index]]
-                c = 0
                 if len(cols) == 1:
                     start_key = start_key[0]
                     stop_key = stop_key[0]
+                c = 0
+                for r1 in i.cursor(read_cols, start_key, stop_key):
+                    c += 1
+                self.assertEqual(c, stop_index - start_index)
+                self.assertEqual(c, len(l))
                 cursor = i.cursor(read_cols, start_key, stop_key)
                 for r1, r2 in zip(cursor, l):
                     self.assertEqual(r1, r2)
-                    c += 1
-                self.assertEqual(c, stop_index - start_index)
                 # Verify that the cursor continues to raise StopIteration
                 # after we're done.
                 self.assertRaises(StopIteration, next, cursor)
