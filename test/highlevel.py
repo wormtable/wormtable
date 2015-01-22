@@ -25,11 +25,11 @@ import wormtable as wt
 import os
 import sys
 import math
-import unittest
-import tempfile
+import random
 import shutil
 import os.path
-import random
+import unittest
+import tempfile
 import itertools
 
 from xml.etree import ElementTree
@@ -263,6 +263,7 @@ class TableBuildTest(WormtableTest):
 
 
 
+
 class IndexBuildTest(WormtableTest):
     """
     Tests for the build process in indexes.
@@ -301,6 +302,25 @@ class IndexBuildTest(WormtableTest):
         col = [r[1] for r in self._table]
         self.assertEqual(keys, col)
         i.close()
+
+    def test_permissions(self):
+        """
+        Tests if the permissions on the DB and XML files are equal.
+        """
+        t = self._table
+        i = wt.Index(t, "index")
+        i.add_key_column(t.get_column(1))
+        i.open("w")
+        i.build()
+        i.close()
+        for w in t, i:
+            # ensure the permissions are the same.
+            m1 = os.stat(w.get_metadata_path()).st_mode
+            m2 = os.stat(w.get_db_path()).st_mode
+            self.assertEqual(m1, m2)
+        m3 = os.stat(t.get_data_path()).st_mode
+        self.assertEqual(m1, m3)
+
 
 class ColumnValue(object):
     """
@@ -435,15 +455,20 @@ class IndexIntegrityTest(WormtableTest):
                 stop_key = keys[k]
                 stop_index = key_rows.index(stop_key)
                 l = [r for k, r in t[start_index:stop_index]]
-                c = 0
                 if len(cols) == 1:
                     start_key = start_key[0]
                     stop_key = stop_key[0]
-                for r1, r2 in zip(i.cursor(read_cols, start_key, stop_key), l):
-                    self.assertEqual(r1, r2)
+                c = 0
+                for r1 in i.cursor(read_cols, start_key, stop_key):
                     c += 1
                 self.assertEqual(c, stop_index - start_index)
-
+                self.assertEqual(c, len(l))
+                cursor = i.cursor(read_cols, start_key, stop_key)
+                for r1, r2 in zip(cursor, l):
+                    self.assertEqual(r1, r2)
+                # Verify that the cursor continues to raise StopIteration
+                # after we're done.
+                self.assertRaises(StopIteration, next, cursor)
             i.close()
 
 
@@ -1024,6 +1049,12 @@ class TableCursorTest(WormtableTest):
         self.assertEqual(v, [])
         v = [r for r in t.cursor(cols, start=2 * len(t), stop=3 * len(t))]
         self.assertEqual(v, [])
+
+    def test_protocol(self):
+        cursor = self._table.cursor(["row_id"])
+        for r in cursor:
+            pass
+        self.assertRaises(StopIteration, next, cursor)
 
 
 class FloatTest(WormtableTest):

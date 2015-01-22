@@ -39,11 +39,11 @@
 #define WT_VAR_1_MAX_ELEMENTS 254
 #define WT_VAR_2_MAX_ELEMENTS 65534
 #define MAX_ROW_SIZE 65536
-
-
 #define WT_MISSING_VALUE 1
-
 #define OFFSET_LEN_RECORD_SIZE 10
+
+/* This is the default defined by the linux fopen man pages. */
+#define WT_DB_FILE_PERMS 0666
 
 #define MODULE_DOC \
 "Low level Berkeley DB interface for wormtable"
@@ -117,6 +117,7 @@ typedef struct {
     PyObject_HEAD
     Index *index;
     DBC *cursor;
+    int completed;
     uint32_t *read_columns;
     uint32_t num_read_columns;
     void *min_key;
@@ -130,6 +131,7 @@ typedef struct {
     PyObject_HEAD
     Table *table;
     DBC *cursor;
+    int completed;
     uint32_t *read_columns;
     uint32_t num_read_columns;
     void *min_key;
@@ -2040,6 +2042,10 @@ Table_init(Table *self, PyObject *args, PyObject *kwds)
     Py_INCREF(self->data_filename);
     self->num_columns = PyList_GET_SIZE(columns);
     self->columns = PyMem_Malloc(self->num_columns * sizeof(Column *));
+    if (self->columns == NULL) {
+        PyErr_NoMemory();
+        goto out;
+    }
     for (j = 0; j < self->num_columns; j++) {
         col = (Column *) PyList_GET_ITEM(columns, j);
         Py_INCREF(col);
@@ -2216,7 +2222,8 @@ Table_open(Table* self, PyObject *args)
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);
-    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags,
+            WT_DB_FILE_PERMS);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         self->db->close(self->db, 0);
@@ -3460,7 +3467,8 @@ Index_open(Index* self, PyObject *args)
     }
     /* Disable DB error messages */
     self->db->set_errcall(self->db, NULL);
-    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags, 0);
+    db_ret = self->db->open(self->db, NULL, db_name, NULL, DB_BTREE, flags,
+            WT_DB_FILE_PERMS);
     if (db_ret != 0) {
         handle_bdb_error(db_ret);
         self->db->close(self->db, 0);
@@ -3600,6 +3608,8 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
     PyObject *columns = NULL;
     Table *table = NULL;
     Column *id_col = NULL;
+
+    self->completed = 0;
     self->read_columns = NULL;
     self->table = NULL;
     self->min_key = NULL;
@@ -3648,7 +3658,6 @@ TableRowIterator_init(TableRowIterator *self, PyObject *args, PyObject *kwds)
     }
     ret = 0;
 out:
-
     return ret;
 }
 
@@ -3660,7 +3669,7 @@ static PyMemberDef TableRowIterator_members[] = {
 
 
 static PyObject *
-TableRowIterator_next(TableRowIterator *self)
+TableRowIterator_next_iter(TableRowIterator *self)
 {
     PyObject *ret = NULL;
     PyObject *t = NULL;
@@ -3735,11 +3744,21 @@ TableRowIterator_next(TableRowIterator *self)
         /* Iteration is finished - free the cursor */
         self->cursor->close(self->cursor);
         self->cursor = NULL;
+        self->completed = 1;
     }
 out:
     return ret;
 }
 
+static PyObject *
+TableRowIterator_next(TableRowIterator *self)
+{
+    PyObject *ret = NULL;
+    if (!self->completed) {
+        ret = TableRowIterator_next_iter(self);
+    }
+    return ret;
+}
 
 static PyObject *
 TableRowIterator_set_min(TableRowIterator *self, PyObject *args)
@@ -3889,6 +3908,8 @@ IndexRowIterator_init(IndexRowIterator *self, PyObject *args, PyObject *kwds)
     PyObject *v = NULL;
     PyObject *columns = NULL;
     Index *index = NULL;
+
+    self->completed = 0;
     self->read_columns = NULL;
     self->index = NULL;
     self->cursor = NULL;
@@ -3948,7 +3969,7 @@ static PyMemberDef IndexRowIterator_members[] = {
 
 
 static PyObject *
-IndexRowIterator_next(IndexRowIterator *self)
+IndexRowIterator_next_iter(IndexRowIterator *self)
 {
     PyObject *ret = NULL;
     PyObject *t = NULL;
@@ -4032,8 +4053,19 @@ IndexRowIterator_next(IndexRowIterator *self)
         /* Iteration is finished - free the cursor */
         self->cursor->close(self->cursor);
         self->cursor = NULL;
+        self->completed = 1;
     }
 out:
+    return ret;
+}
+
+static PyObject *
+IndexRowIterator_next(IndexRowIterator *self)
+{
+    PyObject *ret = NULL;
+    if (!self->completed) {
+        ret = IndexRowIterator_next_iter(self);
+    }
     return ret;
 }
 

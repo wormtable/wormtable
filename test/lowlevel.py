@@ -21,10 +21,11 @@ from __future__ import print_function
 from __future__ import division
 
 import os
-import tempfile
-import unittest
 import random
 import string
+import tempfile
+import unittest
+import collections
 
 import _wormtable
 
@@ -590,31 +591,34 @@ class TestDatabaseIntegerIntegrity(TestDatabaseInteger):
         self.open_reading()
         n = self.num_rows
         cols = list(range(self.num_columns))
+        def get_iter(bottom=None, top=None):
+            ri = _wormtable.TableRowIterator(self._database, cols)
+            if bottom is not None:
+                ri.set_min(bottom)
+            if top is not None:
+                ri.set_max(top)
+            return ri
         for j in range(10):
             l = [random.randint(0, n - 1), random.randint(0, n - 1)]
             bottom = min(l)
             top = max(l)
-            ri = _wormtable.TableRowIterator(self._database, cols)
-            ri.set_min(top)
-            ri.set_max(bottom)
+            ri = get_iter(top, bottom)
             self.assertEqual([], [r for r in ri])
-            ri.set_min(bottom)
+            ri = get_iter(bottom, bottom)
             self.assertEqual([], [r for r in ri])
-            ri.set_min(bottom)
-            ri.set_max(top)
+            ri = get_iter(bottom, top)
             j = bottom
             for r in ri:
                 self.assertEqual(r, self._database.get_row(j))
                 j += 1
             self.assertEqual(j, top)
-            ri.set_min(0)
+            ri = get_iter(0, top)
             j = 0
             for r in ri:
                 self.assertEqual(r, self._database.get_row(j))
                 j += 1
             self.assertEqual(j, top)
-            ri.set_min(top)
-            ri.set_max(n + 1)
+            ri = get_iter(top, n + 1)
             j = top
             for r in ri:
                 self.assertEqual(r, self._database.get_row(j))
@@ -1060,7 +1064,25 @@ class TestIndexIntegrity(object):
         self.assertRaises(TypeError, index.set_bin_widths, [b"str"])
         self.destroy_indexes()
 
-
+    def test_iterator_behaviour(self):
+        """
+        Tests the cursors to make sure that the follow the Python
+        iterator protocol correctly.
+        """
+        self.create_indexes()
+        index = self._indexes[1]
+        index.open(WT_READ)
+        i1 = _wormtable.TableRowIterator(self._database, [0])
+        i2 = _wormtable.IndexRowIterator(index, [0])
+        for i in [i1, i2]:
+            self.assertTrue(isinstance(i, collections.Iterable))
+            # Empty the iterator and check to ensure that stop it keeps
+            # raising StopIteration
+            for row in i:
+                pass
+            for j in range(10):
+                self.assertRaises(StopIteration, next, i)
+        index.close()
 
 class TestDatabaseFloatIndexIntegrity(TestDatabaseFloat, TestIndexIntegrity):
     """

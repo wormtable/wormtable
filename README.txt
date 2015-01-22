@@ -191,7 +191,7 @@ Now, download
 the latest version of wormtable, untar it and `cd` to the new directory.
 We can then install it locally::
 
-        $ CFLAGS=-I$HOME/.local/include LDFLAGS=$HOME/.local/lib/ python setup.py install --user
+        $ CFLAGS=-I$HOME/.local/include LDFLAGS=-L$HOME/.local/lib/ python setup.py install --user
 
 Now we need to set up some paths so that we can use this at run time. Put the following
 lines into your $HOME/.bashrc (or equivalent if you use another shell)::
@@ -244,10 +244,3 @@ Solaris 11.1            SPARC           2.6.8           gcc 4.5.2
 Solaris 11.1            SPARC           2.6.8           Sun C 5.12
 Scientific Linux 6.2    x86-64          2.6.6           icc 12.0.0
 ====================    ========        ======          ===========
-
-************
-Build Status
-************
-
-.. image:: https://travis-ci.org/wormtable/wormtable.svg?branch=master
-   :target: https://travis-ci.org/wormtable/wormtable
