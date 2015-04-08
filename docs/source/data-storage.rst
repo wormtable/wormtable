@@ -37,7 +37,7 @@ either fixed or variable. In a column with a fixed number of elements,
 space is reserved for all of these elements, and so the total space used
 by that column is always *num_elements* * *element_size*.
 In variable length columns, we can store
-from 0 to 255 elements for ``var(1)`` and from 0 to 16535 in ``var(2)``.
+from 0 to 255 elements for ``var(1)`` and from 0 to 65535 in ``var(2)``.
 
 .. _int-types-index:
 
@@ -113,8 +113,9 @@ Character columns
 Character columns store strings of bytes, and are treated in a slightly different way to the numeric
 columns seen above. For a character column, the `element_size` must be equal to 1, since
 only one-byte character sets are supported. A fixed size of column `num_elements` elements can
-therefore store strings of length up to `num_elements`. Variable length `char` columns
-can store strings of length 0 to 255 bytes.
+therefore store strings of length up to `num_elements`. Variable length `var(1)` `char` columns
+can store strings of length 0 to 255 bytes, and `var(2)` columns can store strings of
+up to 65535 bytes.
 
 
 ----------
@@ -189,10 +190,11 @@ region; the first two hold the address where the elements for this column
 start, and the third byte holds the number of elements stored. This
 format defines the fundamental limits of wormtable's row format: since
 we have two bytes to describe addresses, rows are a maximum of 64K long.
-Similarly, since we have one byte to hold the number of elements in a
-variable length column, we store a maximum of 255 elements within
-a variable length column. Similarly, ``var(2)`` columns are assigned
-four bytes in the fixed region and hold a maximum of 16535 elements.
+Since we have one byte to hold the number of elements in a
+``var(1)`` column, we store a maximum of 255 elements within
+a variable length column. However, ``var(2)`` columns are assigned
+four bytes in the fixed region and can therefore
+hold a maximum of 65535 elements.
 
 **************
 Column storage
