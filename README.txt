@@ -125,7 +125,7 @@ For Homebrew, get the current Berkeley DB version and again build wormtable
 after setting CFLAGS and LDFLAGS appropriately::
 
     $ brew install berkeley-db
-    $ CFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ LDFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ python setup.py build
+    $ CFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/include/ LDFLAGS=-I/usr/local/Cellar/berkeley-db/5.3.21/lib/ python setup.py build
     $ sudo python setup.py install
 
 For more details of Berkely DB versions, see here: https://www.macports.org/ports.php?by=category&substr=databases
