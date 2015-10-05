@@ -22,6 +22,16 @@
 #include <db.h>
 #include "halffloat.h"
 
+#ifdef _WIN32
+#ifdef __MINGW32__
+#define fseeko fseeko64
+#define ftello ftello64
+#else
+#define fseeko _fseeki64
+#define ftello _ftelli64
+#endif
+#endif
+
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
 #endif
@@ -2190,10 +2200,10 @@ Table_open(Table* self, PyObject *args)
     }
     if (mode == WT_WRITE) {
         flags = DB_CREATE|DB_TRUNCATE;
-        data_mode = "w";
+        data_mode = "wb";
     } else if (mode == WT_READ) {
         flags = DB_RDONLY|DB_NOMMAP;
-        data_mode = "r";
+        data_mode = "rb";
     } else {
         PyErr_Format(PyExc_ValueError, "mode must be WT_READ or WT_WRITE.");
         goto out;
