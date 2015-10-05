@@ -239,6 +239,10 @@ class Database(object):
         self.__ll_object = None
         self.__open_mode = None
 
+    def __del__(self):
+        if self.is_open():
+            self.close()
+
     def __enter__(self):
         """
         Context manager entry.
