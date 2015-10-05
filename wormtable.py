@@ -32,6 +32,7 @@ import sys
 import time
 import glob
 import gzip
+import shutil
 import collections
 from xml.dom import minidom
 from xml.etree import ElementTree
@@ -385,7 +386,7 @@ class Database(object):
         """
         new = self.get_db_path()
         old = self.get_db_build_path()
-        os.rename(old, new)
+        shutil.move(old, new)
         self.write_metadata(self.get_metadata_path())
 
     def is_open(self):
@@ -514,7 +515,7 @@ class Table(Database):
         super(Table, self).finalise_build()
         new = self.get_data_path()
         old = self.get_data_build_path()
-        os.rename(old, new)
+        shutil.move(old, new)
 
     def delete(self):
         """
