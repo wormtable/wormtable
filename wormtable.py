@@ -241,7 +241,12 @@ class Database(object):
 
     def __del__(self):
         if self.is_open():
-            self.close()
+            # TODO add in a logging.warning message here.
+            # print("closing dangling table.", self.__ll_object)
+            try:
+                self.__ll_object.close()
+            finally:
+                self.__ll_object = None
 
     def __enter__(self):
         """

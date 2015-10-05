@@ -63,8 +63,11 @@ class WormtableTest(unittest.TestCase):
     """
     def setUp(self):
         self._homedir = tempfile.mkdtemp(prefix="wthl_")
+        self._table = None
 
     def tearDown(self):
+        if self._table is not None:
+            self._table.close()
         shutil.rmtree(self._homedir)
 
     def make_random_table(self):
@@ -99,7 +102,7 @@ class WormtableTest(unittest.TestCase):
             if random.random() < 0.33:
                 t.append([])
         t.close()
-        t.open("r")
+        self._table.open("r")
 
 class VacuousDatabase(wt.Database):
     """
@@ -616,6 +619,7 @@ class StringIndexIntegrityTest(WormtableTest):
         c = i.counter()
         self.assertEqual(c[(b"A", b"AA")], 1)
         self.assertEqual(c[(b"AA", b"A")], 1)
+        i.close()
         t.close()
 
     def test_max_prefix(self):
@@ -645,6 +649,7 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertEqual(i.max_key(), (b"B", b"A"))
         self.assertEqual(i.max_key("A"), (b"A", b"B"))
         self.assertEqual(i.max_key("AA"), (b"AA", b""))
+        i.close()
         t.close()
 
     def test_empty_prefix(self):
@@ -710,6 +715,7 @@ class StringIndexIntegrityTest(WormtableTest):
         self.assertRaises(KeyError, i.min_key, "x")
         self.assertRaises(KeyError, i.min_key, "", "x")
         self.assertRaises(KeyError, i.min_key, None, "x")
+        i.close()
         t.close()
 
 
@@ -763,6 +769,10 @@ class IndexMinMaxTest(WormtableTest):
         i.close()
         i.open("r")
         self._index = i
+
+    def tearDown(self):
+        self._index.close()
+        self._table.close()
 
     def add_column(self, name):
         """
@@ -1245,12 +1255,6 @@ class FloatTest(WormtableTest):
         differently.
         """
         nan = float("NaN")
-        t = wt.Table(self._homedir)
-        t.add_id_column()
-        t.add_float_column("half", size=2)
-        t.add_float_column("single", size=4)
-        t.add_float_column("double", size=8)
-        t.open("w")
         t = self.create_table()
         t.append([None, nan, nan, nan])
         t.append_encoded([None, b"nan", b"NaN", b"NAN"])
