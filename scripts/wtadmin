@@ -25,6 +25,7 @@ from __future__ import print_function
 from __future__ import division
 
 import re
+import os
 import sys
 import argparse
 import signal
@@ -465,8 +466,9 @@ def main(cmdline_args=None):
                 of values for each column in the index.""")
     dump_parser.set_defaults(runner=DumpRunner)
 
-    # Set signal handler for SIGPIPE to quietly kill the program.
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    if os.name == "posix":
+        # Set signal handler for SIGPIPE to quietly kill the program.
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
     args = parser.parse_args(cmdline_args)
     if "runner" not in args:
