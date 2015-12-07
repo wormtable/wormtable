@@ -20,3 +20,6 @@
 __version__ = '0.1.5a1'
 
 from .tables import *  # NOQA
+from .vcf2wt import vcf2wt_main
+from .gtf2wt import gtf2wt_main
+from .wtadmin import wtadmin_main

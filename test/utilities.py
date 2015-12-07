@@ -21,9 +21,6 @@ from __future__ import print_function
 from __future__ import division
 
 import wormtable as wt
-import scripts.vcf2wt as vcf2wt
-import scripts.gtf2wt as gtf2wt
-import scripts.wtadmin as wtadmin
 
 import unittest
 import random
@@ -139,7 +136,7 @@ class Vcf2wtTest(UtilityTest):
     """
 
     def get_program(self):
-        return vcf2wt.main
+        return wt.vcf2wt_main
 
 
 
@@ -236,7 +233,7 @@ class WtadminTest(UtilityTest):
 
     def setUp(self):
         super(WtadminTest, self).setUp()
-        vcf2wt.main([EXAMPLE_VCF, self._homedir, "-fq"])
+        wt.vcf2wt_main([EXAMPLE_VCF, self._homedir, "-fq"])
         self._table = wt.open_table(self._homedir)
 
     def tearDown(self):
@@ -253,7 +250,7 @@ class WtadminTest(UtilityTest):
         return self.run_command(["hist", self._homedir] + args)
 
     def get_program(self):
-        return wtadmin.main
+        return wt.wtadmin_main
 
     def test_dump_all(self):
         s = self.run_dump()
@@ -392,7 +389,7 @@ class Gtf2wtTest(UtilityTest):
     """
 
     def get_program(self):
-        return gtf2wt.main
+        return wt.gtf2wt_main
 
 class GtfBuildTest(object):
     """
