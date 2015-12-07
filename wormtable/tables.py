@@ -39,7 +39,6 @@ from xml.etree import ElementTree
 
 import _wormtable
 
-__version__ = '0.1.4a1'
 TABLE_METADATA_VERSION = "0.3"
 INDEX_METADATA_VERSION = "0.4"
 
