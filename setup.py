@@ -23,7 +23,7 @@ def parse_version(module_file):
 f = open("README.txt")
 wormtable_readme = f.read()
 f.close()
-wormtable_version = parse_version("wormtable.py")
+wormtable_version = parse_version("wormtable/__init__.py")
 
 _wormtable_module = Extension('_wormtable',
     sources = ["_wormtablemodule.c", "halffloat.c"],
@@ -65,7 +65,7 @@ setup(
     requires = requirements,
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
-    py_modules = ['wormtable'],
+    packages = ['wormtable'],
     scripts = ["scripts/vcf2wt", "scripts/wtadmin", "scripts/gtf2wt"]
 )
 
