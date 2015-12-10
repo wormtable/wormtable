@@ -195,6 +195,7 @@ class ProgramRunner(object):
 def gtf2wt_main(args=None):
     prog_description = "Convert a GTF file to Wormtable format."
     parser = argparse.ArgumentParser(description=prog_description)
+    cli.add_version_argument(parser)
     parser.add_argument("SOURCE",
         help="GTF file to convert (use '-' for STDIN)")
     parser.add_argument("DEST",

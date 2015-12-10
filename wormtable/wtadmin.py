@@ -391,9 +391,7 @@ def add_colspec_argument(parser):
 def wtadmin_main(cmdline_args=None):
     prog_description = "Wormtable administration program."
     parser = argparse.ArgumentParser(description=prog_description)
-    parser.add_argument(
-        "-V", "--version", action='version',
-        version='%(prog)s {}'.format(wt.__version__))
+    cli.add_version_argument(parser)
     subparsers = parser.add_subparsers(title='subcommands',)
 
     # help

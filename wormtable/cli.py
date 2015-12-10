@@ -27,9 +27,16 @@ import os
 import sys
 import time
 
-#
-# Utilities for the command line programs.
-#
+import wormtable as wt
+
+
+def add_version_argument(parser):
+    """
+    Adds a version argument to the specified argparse parser.
+    """
+    parser.add_argument(
+        "-V", "--version", action='version',
+        version='%(prog)s {}'.format(wt.__version__))
 
 
 class ProgressMonitor(object):
@@ -174,4 +181,3 @@ class FileReader(object):
         self.__input_file.close()
         if self.__progress_file is not None:
             self.__progress_file.close()
-

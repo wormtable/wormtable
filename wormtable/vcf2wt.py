@@ -433,6 +433,7 @@ class ProgramRunner(object):
 def vcf2wt_main(args=None):
     prog_description = "Convert a VCF file to Wormtable format."
     parser = argparse.ArgumentParser(description=prog_description)
+    cli.add_version_argument(parser)
     parser.add_argument("SOURCE",
         help="VCF file to convert (use '-' for STDIN)")
     parser.add_argument("DEST",
