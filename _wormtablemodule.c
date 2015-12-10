@@ -29,8 +29,23 @@
 #else
 #define fseeko _fseeki64
 #define ftello _ftelli64
+
 #endif
 #endif
+
+/* Dealing with Windows and MSVC... */
+/* the declspec allows compiling of a dll in Visual Studio
+and, if necessary, simply renaming the file to .pyd for it 
+to work as a setuptools-compiled module. We first define it 
+as an empty preprocessor directive so compilation doesn't break 
+on non-MSVC build systems. */
+
+#define DLLEXPORT
+
+#ifdef _MSC_VER
+#define DLLEXPORT __declspec(dllexport)
+#endif
+
 
 #if PY_MAJOR_VERSION >= 3
 #define IS_PY3K
@@ -59,6 +74,7 @@
 "Low level Berkeley DB interface for wormtable"
 
 static PyObject *WormtableError;
+
 
 typedef struct Column_t {
     PyObject_HEAD
@@ -4341,7 +4357,7 @@ PyInit__wormtable(void)
 #else
 #define INITERROR return
 
-void
+DLLEXPORT void
 init_wormtable(void)
 #endif
 {
