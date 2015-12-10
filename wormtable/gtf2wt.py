@@ -209,7 +209,3 @@ def gtf2wt_main(args=None):
     parsed_args = parser.parse_args(args)
     runner = ProgramRunner(parsed_args)
     runner.run()
-
-
-if __name__ == "__main__":
-    gtf2wt_main()

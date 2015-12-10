@@ -467,7 +467,3 @@ def vcf2wt_main(args=None):
         runner.run()
     finally:
         runner.cleanup()
-
-if __name__ == "__main__":
-    vcf2wt_main()
-
