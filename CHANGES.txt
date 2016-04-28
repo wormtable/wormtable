@@ -1,3 +1,9 @@
+v0.1.5, 2016.04
+
+    * Support for longer variable length columns with var(2).
+    * Basic support for windows.
+    * Stricter VCF header parsing, allows for spaces in sample names.
+
 v0.1.2, 2014.11
 
     * Fixed file permission bug and confusing error message.
