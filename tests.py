@@ -24,6 +24,7 @@ import random
 import tempfile
 import optparse
 import shutil
+import sys
 import os
 
 import test.lowlevel
@@ -67,13 +68,18 @@ def main():
     # create the temporary directory we use for all files.
     tmp_dir = tempfile.mkdtemp(prefix="wt_test_")
     tempfile.tempdir = tmp_dir
+    error = False
     try:
         for i in range(iterations):
             r = unittest.TextTestRunner(verbosity=2).run(suite)
             if len(r.errors) > 0 or len(r.failures) > 0:
                 print("Error detected at iteration {0}: exiting!".format(i))
+                error = True
                 break
     finally:
         cleanup(tmp_dir)
+    if error:
+        sys.exit(1)
+
 if __name__ == '__main__':
     main()
