@@ -35,7 +35,13 @@ def cleanup(tmp_dir):
     """
     Remove temporary files after interrupt.
     """
-    shutil.rmtree(tmp_dir)
+    try:
+        shutil.rmtree(tmp_dir)
+    except WindowsError as e:
+        # Exceptions occur here on Windows. Not ideal, but let's not
+        # fail the tests because of it.
+        print("Warning: exception occured deleting", tmp_dir, ":", e)
+
 
 def main():
     usage = "usage: %prog [options] "

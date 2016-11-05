@@ -1426,9 +1426,12 @@ class TestIndex(unittest.TestCase):
         os.close(fd)
 
     def tearDown(self):
-        os.unlink(self._table_db_file)
-        os.unlink(self._table_data_file)
-        os.unlink(self._index_db_file)
+        try:
+            os.unlink(self._table_db_file)
+            os.unlink(self._table_data_file)
+            os.unlink(self._index_db_file)
+        except WindowsError as e:
+            print("Warning: error occured deleting files:", e)
         self._table = None
         self._columns = None
 
