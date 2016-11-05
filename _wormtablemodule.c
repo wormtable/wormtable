@@ -1381,14 +1381,16 @@ Column_string_to_native_float(Column *self, char *string)
             goto out;
         }
         if (v == tail) {
-            Column_encoded_elements_parse_error(self, "parse error", string);
-            goto out;
+            native[j] = nan("");
+	    //Column_encoded_elements_parse_error(self, "parse error", string);
+            //goto out;
         }
         if (*tail != '\0') {
             if (!(isspace(*tail) || *tail == ',' || *tail == ';')) {
-                Column_encoded_elements_parse_error(self, "parse error",
-                        string);
-                goto out;
+		native[j] = nan("");               
+		//Column_encoded_elements_parse_error(self, "parse error",
+		//string);
+                //goto out;
             }
         }
     }
