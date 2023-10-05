@@ -49,7 +49,7 @@ class ProgressMonitor(object):
         self.__progress_width = 40
         self.__bar_index = 0
         self.__bars = "/-\\|"
-        self.__start_time = time.clock()
+        self.__start_time = time.process_time()
 
     def update(self, processed):
         """
@@ -61,7 +61,7 @@ class ProgressMonitor(object):
         spaces = self.__progress_width - filled
         bar = self.__bars[self.__bar_index]
         self.__bar_index = (self.__bar_index + 1) % len(self.__bars)
-        elapsed = max(1, time.clock() - self.__start_time)
+        elapsed = max(1, time.process_time() - self.__start_time)
         rate = processed / elapsed
         s = '\r[{0}{1}] {2:5.1f}% @{3:8.1E} {4}/s {5}'.format('#' * filled,
             ' ' * spaces, complete * 100, rate, self.__units, bar)

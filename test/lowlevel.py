@@ -1075,7 +1075,7 @@ class TestIndexIntegrity(object):
         i1 = _wormtable.TableRowIterator(self._database, [0])
         i2 = _wormtable.IndexRowIterator(index, [0])
         for i in [i1, i2]:
-            self.assertTrue(isinstance(i, collections.Iterable))
+            self.assertTrue(isinstance(i, collections.abc.Iterable))
             # Empty the iterator and check to ensure that stop it keeps
             # raising StopIteration
             for row in i:

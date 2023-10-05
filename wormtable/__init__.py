@@ -17,7 +17,7 @@
 # along with wormtable.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 from .tables import *  # NOQA
 from .vcf2wt import vcf2wt_main
