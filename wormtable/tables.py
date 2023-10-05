@@ -747,7 +747,7 @@ class Table(Database):
         Parses the schema xml and updates the state of this table.
         """
         xml_columns = schema.find("columns")
-        for xmlcol in xml_columns.getchildren():
+        for xmlcol in xml_columns:
             col = Column.parse_xml(xmlcol)
             self.__column_name_map[col.get_name()]= len(self.__columns)
             self.__columns.append(col)
@@ -756,7 +756,7 @@ class Table(Database):
         """
         Parses the specified XML to retrieve the statistics for this table.
         """
-        for stat in stats.getchildren():
+        for stat in stats:
             name = stat.get("name")
             value = stat.get("value")
             # TODO this really isn't very good at all.
@@ -1054,7 +1054,7 @@ class Index(Database):
         if version not in supported_versions:
             raise ValueError("Unsupported index metadata version - rebuild required.")
         xml_key_columns = root.find("key_columns")
-        for xmlcol in xml_key_columns.getchildren():
+        for xmlcol in xml_key_columns:
             if xmlcol.tag != "key_column":
                 raise ValueError("invalid xml")
             name = xmlcol.get("name")
@@ -1209,7 +1209,7 @@ class Index(Database):
         return ret
 
 
-class IndexCounter(collections.Mapping):
+class IndexCounter(collections.abc.Mapping):
     """
     A counter for Indexes, based on the collections.Counter class. This class
     is a dictionary-like object that represents a mapping of the distinct
