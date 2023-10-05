@@ -29,11 +29,6 @@ _wormtable_module = Extension('_wormtable',
     sources = ["_wormtablemodule.c", "halffloat.c"],
     libraries = ["db"])
 
-requirements = []
-v = sys.version_info[:2]
-if v < (2, 7) or v == (3, 0) or v == (3, 1):
-    requirements.append("argparse")
-
 setup(
     name = "wormtable",
     version = wormtable_version,
@@ -47,13 +42,10 @@ setup(
     classifiers = [
         "Programming Language :: C",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 2",
-        "Programming Language :: Python :: 2.6",
-        "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.1",
-        "Programming Language :: Python :: 3.2",
-        "Programming Language :: Python :: 3.3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Development Status :: 4 - Beta",
         "Environment :: Other Environment",
         "Intended Audience :: Science/Research",
@@ -62,7 +54,6 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    requires = requirements,
     long_description = wormtable_readme,
     ext_modules = [_wormtable_module],
     packages = ['wormtable'],
